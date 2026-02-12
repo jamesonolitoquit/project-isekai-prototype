@@ -1,13 +1,14 @@
-export function loadWorldTemplate() {
-  console.log('[worldEngine] Stub: loadWorldTemplate called');
-  return {};
-}
 import { Event, appendEvent, getEventsForWorld } from "./public";
-import CanonJournal, { CanonJournal as CJ, summarizeStateMinimal } from "./canonJournal";
+import CJ, { summarizeStateMinimal } from "./canonJournal";
 import { rebuildState } from "./stateRebuilder";
 import { validateWorldState } from "./constraintValidator";
 import { processAction, Action } from "./actionPipeline";
 import { authorizeAction, AuthorizationContext } from "./authorization/authorizeAction";
+import { createSave, loadSave, verifySaveIntegrity } from "./saveLoadEngine";
+import { resolveNpcLocation, updateNpcLocations, applyLocationUpdates } from "./scheduleEngine";
+import { resolveWeather, getWeatherVisuals } from "./weatherEngine";
+import { resolveSeason, getSeasonalVisuals } from "./seasonEngine";
+import { checkLocationHazards, applyHazardDamage, applyHazardStatus } from "./hazardEngine";
 import templateJson from '../data/luxfier-world.json';
 import schemaJson from '../data/luxfier-world.schema.json';
 
@@ -47,11 +48,79 @@ try {
   WORLD_TEMPLATE = null;
 }
 
-export type Location = { id: string; name: string };
-export type NPC = { id: string; name: string; locationId: string; questId?: string; dialogue?: any[]; availability?: { startHour?: number; endHour?: number } };
-export type Quest = { id: string; title: string; description?: string; objective?: { type: "visit"; location: string }; dependencies?: string[]; rewards?: any; expiresInHours?: number };
+export type Location = { id: string; name: string; conditionalSeason?: string; description?: string };
+export type NPC = { id: string; name: string; locationId: string; questId?: string; dialogue?: any[]; availability?: { startHour?: number; endHour?: number }; routine?: Record<string, string>; stats?: any; hp?: number; maxHp?: number; reputationRequired?: Record<string, number>; statusEffects?: string[]; personality?: { type: string } };
+export type CombatState = {
+  active: boolean;
+  participants: string[];
+  turnIndex: number;
+  roundNumber: number;
+  log: string[];
+  initiator: string;
+};
+export type QuestObjective = { 
+  type: "visit" | "combat" | "exploration" | "challenge" | "gather" | "craft"; 
+  location?: string;
+  target?: string;
+  quantity?: number;
+  timeConstraints?: { startHour?: number; endHour?: number };
+};
+export type Quest = { 
+  id: string; 
+  title: string; 
+  description?: string; 
+  objectives?: QuestObjective[];
+  objective?: QuestObjective;
+  dependencies?: string[]; 
+  rewards?: any; 
+  expiresInHours?: number;
+  currentObjectiveIndex?: number;
+  gatedReward?: { location?: string; access?: boolean };
+};
 
-export type PlayerQuestState = { status: "not_started" | "in_progress" | "completed" | "failed"; startedAt?: number; expiresAt?: number };
+export type ResourceNode = {
+  id: string;
+  lootTableId: string;
+  locationId: string;
+  depletedAt?: number; // Tick when depleted; null = available
+  regeneratesInHours: number;
+};
+
+export type WorldEvent = {
+  id: string;
+  name: string;
+  type: "climate-change" | "market-closure" | "monster-infestation" | "festival" | "disaster";
+  activeFrom: number; // tick
+  activeTo: number; // tick
+  effects: {
+    locationLocked?: string[];
+    itemPriceMultiplier?: number;
+    npcDialogueOverride?: Record<string, string[]>;
+  };
+  trigger?: {
+    type: "random" | "scheduled" | "condition";
+    season?: string;
+    dayPhase?: string;
+    chance?: number;
+  };
+};
+
+export type PlayerQuestState = { status: "not_started" | "in_progress" | "completed" | "failed"; startedAt?: number; completedAt?: number; expiresAt?: number; currentObjectiveIndex?: number };
+
+export type InventoryItem = {
+  itemId: string;
+  quantity: number;
+  equipped?: boolean;
+};
+
+export type EquipmentSlots = {
+  head?: string;
+  chest?: string;
+  mainHand?: string;
+  offHand?: string;
+  feet?: string;
+  accessory?: string;
+};
 
 export type PlayerState = {
   id: string;
@@ -60,7 +129,24 @@ export type PlayerState = {
   dialogueHistory?: { npcId: string; text: string; timestamp: number; options?: { id: string; text: string }[] }[];
   npcDialogueIndex?: Record<string, number>;
   gold?: number;
+  experience?: number;
+  xp?: number;
+  level?: number;
+  attributePoints?: number;
   reputation?: Record<string, number>;
+  hp?: number;
+  maxHp?: number;
+  statusEffects?: string[];
+  stats?: {
+    str: number;
+    agi: number;
+    int: number;
+    cha: number;
+    end: number;
+    luk: number;
+  };
+  inventory?: InventoryItem[];
+  equipment?: EquipmentSlots;
 };
 
 export type WorldState = {
@@ -75,7 +161,11 @@ export type WorldState = {
   locations: Location[];
   npcs: NPC[];
   quests: Quest[];
+  resourceNodes?: ResourceNode[];
+  activeEvents?: WorldEvent[];
+  combatState?: CombatState;
   player: PlayerState;
+  needsCharacterCreation?: boolean;
   metadata?: any;
 };
 
@@ -104,6 +194,9 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
   // initial reputation may be supplied by template.metadata.initialReputation as { npcId: number }
   const initialRep = tpl?.metadata?.initialReputation ? structuredCloneSafe(tpl.metadata.initialReputation) : {};
 
+  // Initial player health (starting at full HP until character is created with customized endurance)
+  const INITIAL_MAX_HP = 100;
+
   return {
     id,
     tick: 0,
@@ -115,8 +208,53 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     locations,
     npcs,
     quests,
-    player: { id: "player1", location: "town", quests: {}, dialogueHistory: [], npcDialogueIndex: {}, gold: 0, reputation: initialRep },
+    player: {
+      id: "player1",
+      location: locations.length > 0 ? locations[0].id : "town",
+      quests: {},
+      dialogueHistory: [],
+      npcDialogueIndex: {},
+      gold: 0,
+      experience: 0,
+      xp: 0,
+      level: 1,
+      attributePoints: 0,
+      reputation: initialRep,
+      hp: INITIAL_MAX_HP,
+      maxHp: INITIAL_MAX_HP,
+      statusEffects: [],
+      stats: {
+        str: 10,
+        agi: 10,
+        int: 10,
+        cha: 10,
+        end: 10,
+        luk: 10
+      },
+      inventory: [
+        { itemId: 'healing-potion-minor', quantity: 2 },
+        { itemId: 'rare-herb', quantity: 1 }
+      ],
+      equipment: {
+        mainHand: 'rusty-sword'
+      }
+    },
+    needsCharacterCreation: true,
     time: { tick: 0, baseHour: 8, baseDay: 1, hour: 8, day: 1, season: baseSeason as WorldState['season'] },
+    resourceNodes: tpl?.resourceNodes ? structuredCloneSafe(tpl.resourceNodes) : [
+      { id: 'iron-vein-forge', lootTableId: 'mine-ore', locationId: 'forge-summit', regeneratesInHours: 3 },
+      { id: 'herbs-thornwood', lootTableId: 'forest-herbs', locationId: 'thornwood-depths', regeneratesInHours: 2 },
+      { id: 'herbs-frozen', lootTableId: 'forest-herbs', locationId: 'frozen-lake', regeneratesInHours: 4 }
+    ],
+    activeEvents: [],
+    combatState: {
+      active: false,
+      participants: [],
+      turnIndex: 0,
+      roundNumber: 0,
+      log: [],
+      initiator: ''
+    },
     metadata,
   };
 }
@@ -146,43 +284,170 @@ export function createWorldController(initial?: WorldState, dev = false) {
     const prevTick = state.tick ?? 0;
     const nextTick = prevTick + Math.max(0, Math.floor(amount));
 
-    // season progression derived deterministically from tick (e.g., every 7 days)
-    const seasonOrder: WorldState["season"][] = ["winter", "spring", "summer", "autumn"];
-    const seasonIndex = Math.floor((nextTick / (24 * 7)) % 4);
-    const nextSeason = seasonOrder[seasonIndex];
-
-    // compute hour/day from baseHour/baseDay in time object
+    // Compute hour from base and tick
     const baseHour = (state.time && (state.time as any).baseHour) ?? state.hour ?? 0;
     const baseDay = (state.time && (state.time as any).baseDay) ?? state.day ?? 1;
     const totalHours = baseHour + nextTick;
     const nextHour = totalHours % 24;
     const nextDay = baseDay + Math.floor(totalHours / 24);
+
+    // Use seasonEngine for deterministic seasonal progression
+    const { current: nextSeason, dayOfSeason, hasChanged: seasonChanged, transitionEvent: seasonTransition } = resolveSeason(nextTick, state.season);
+
+    // Determine day phase
     let nextDayPhase: WorldState['dayPhase'] = 'morning';
     if (nextHour < 6) nextDayPhase = 'night';
     else if (nextHour < 12) nextDayPhase = 'morning';
     else if (nextHour < 18) nextDayPhase = 'afternoon';
     else nextDayPhase = 'evening';
 
-    // weather influenced by season — deterministic using hour
-    const chance = (nextHour % 6) / 6;
-    let nextWeather: WorldState['weather'] = 'clear';
-    if (nextSeason === 'winter' && chance > 0.5) nextWeather = 'snow';
-    else if (nextSeason === 'summer' && chance > 0.7) nextWeather = 'rain';
+    // Use weatherEngine for deterministic weather resolution
+    const { current: nextWeather, intensity: weatherIntensity, hasChanged: weatherChanged, transitionEvent: weatherTransition } = resolveWeather(nextSeason, nextHour, state.weather);
 
-    state = { ...state, tick: nextTick, hour: nextHour, day: nextDay, dayPhase: nextDayPhase, season: nextSeason, weather: nextWeather, time: { ...(state.time || {}), tick: nextTick, hour: nextHour, day: nextDay, season: nextSeason } as any };
+    // Update NPC locations via scheduleEngine
+    const npcLocationUpdates = updateNpcLocations(state.npcs, nextHour);
+    const updatedNpcs = applyLocationUpdates(state.npcs, npcLocationUpdates);
 
+    // Filter available locations based on season conditions
+    const availableLocations = state.locations.filter(loc => 
+      !loc.conditionalSeason || loc.conditionalSeason === nextSeason
+    );
+
+    state = { 
+      ...state, 
+      tick: nextTick, 
+      hour: nextHour, 
+      day: nextDay, 
+      dayPhase: nextDayPhase, 
+      season: nextSeason, 
+      weather: nextWeather,
+      npcs: updatedNpcs,
+      locations: availableLocations,
+      time: { ...(state.time || {}), tick: nextTick, hour: nextHour, day: nextDay, season: nextSeason } as any 
+    };
+
+    // Emit base TICK event
     const ev: Event = {
       id: `tick-${Date.now()}`,
       worldInstanceId: state.id,
       actorId: "system",
       type: "TICK",
-      payload: { time: state.time, hour: state.hour, day: state.day, season: state.season, weather: state.weather },
+      payload: { time: state.time, hour: state.hour, day: state.day, season: state.season, weather: state.weather, weatherIntensity },
       templateOrigin: state.metadata?.templateOrigin,
       timestamp: Date.now(),
     };
     appendEvent(ev);
 
-    // check for quest expirations after tick advances (based on game tick)
+    // Emit WEATHER_CHANGED if weather changed
+    if (weatherChanged) {
+      const weatherEv: Event = {
+        id: `weather-${Date.now()}`,
+        worldInstanceId: state.id,
+        actorId: "system",
+        type: "WEATHER_CHANGED",
+        payload: { reason: weatherTransition, from: state.weather, to: nextWeather, weatherIntensity },
+        templateOrigin: state.metadata?.templateOrigin,
+        timestamp: Date.now(),
+      };
+      appendEvent(weatherEv);
+    }
+
+    // Emit SEASON_CHANGED if season changed
+    if (seasonChanged) {
+      const seasonEv: Event = {
+        id: `season-${Date.now()}`,
+        worldInstanceId: state.id,
+        actorId: "system",
+        type: "SEASON_CHANGED",
+        payload: { reason: seasonTransition, from: state.season, to: nextSeason, dayOfSeason },
+        templateOrigin: state.metadata?.templateOrigin,
+        timestamp: Date.now(),
+      };
+      appendEvent(seasonEv);
+
+      // Emit LOCATION_DISCOVERED for newly available seasonal locations
+      const newLocations = availableLocations.filter(loc => 
+        loc.conditionalSeason === nextSeason && 
+        !state.locations.find(l => l.id === loc.id)
+      );
+      newLocations.forEach(loc => {
+        const discoverEv: Event = {
+          id: `location-discover-${Date.now()}-${loc.id}`,
+          worldInstanceId: state.id,
+          actorId: "system",
+          type: "LOCATION_DISCOVERED",
+          payload: { locationId: loc.id, locationName: loc.name, reason: `now available in ${nextSeason}` },
+          templateOrigin: state.metadata?.templateOrigin,
+          timestamp: Date.now(),
+        };
+        appendEvent(discoverEv);
+      });
+    }
+
+    // Emit NPC_LOCATION_CHANGED for each NPC that moved
+    Object.entries(npcLocationUpdates).forEach(([npcId, newLocationId]) => {
+      const npc = updatedNpcs.find(n => n.id === npcId);
+      if (npc) {
+        const movedEv: Event = {
+          id: `npc-moved-${Date.now()}-${npcId}`,
+          worldInstanceId: state.id,
+          actorId: npcId,
+          type: "NPC_LOCATION_CHANGED",
+          payload: { npcId, npcName: npc.name, from: npcLocationUpdates[npcId === npcId ? npcId : ''], to: newLocationId },
+          templateOrigin: state.metadata?.templateOrigin,
+          timestamp: Date.now(),
+        };
+        appendEvent(movedEv);
+      }
+    });
+
+    // Check for environmental hazards
+    try {
+      const hazards = state.metadata?.hazards || (WORLD_TEMPLATE?.hazards || []);
+      const hazardResults = checkLocationHazards(state, hazards);
+
+      hazardResults.forEach(result => {
+        if (result.triggered) {
+          // Apply damage if applicable
+          if (result.damage > 0) {
+            state = {
+              ...state,
+              player: applyHazardDamage(state.player, result.damage)
+            };
+          }
+
+          // Apply status if applicable
+          if (result.statusApplied) {
+            state = {
+              ...state,
+              player: applyHazardStatus(state.player, result.statusApplied)
+            };
+          }
+
+          // Emit HAZARD_DAMAGE event
+          const hazardEv: Event = {
+            id: `hazard-${Date.now()}-${result.hazardId}`,
+            worldInstanceId: state.id,
+            actorId: 'system',
+            type: 'HAZARD_DAMAGE',
+            payload: {
+              hazardId: result.hazardId,
+              hazardName: result.hazardName,
+              damage: result.damage,
+              statusApplied: result.statusApplied,
+              playerHpRemaining: state.player.hp || 0,
+            },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(hazardEv);
+        }
+      });
+    } catch (err) {
+      // Hazard checking error - non-fatal
+    }
+
+    // Check for quest expirations after tick advances
     try {
       const nowTick = nextTick;
       const updatedQuests: Record<string, PlayerQuestState> = { ...(state.player.quests || {}) };
@@ -208,7 +473,8 @@ export function createWorldController(initial?: WorldState, dev = false) {
     } catch (err) {
       // non-fatal
     }
-    // validate state invariants after tick
+
+    // Validate state invariants after tick
     try { validateWorldState(state, journal); } catch (err) { throw err; }
     emit();
   }
@@ -231,7 +497,7 @@ export function createWorldController(initial?: WorldState, dev = false) {
     // Authorization gate: run deterministic, pure checks before mutating state
     // Build an authorization context from canonical engine state (do not trust caller-provided actorId)
     const canonicalActorId = state.player?.id;
-    const ctx: AuthorizationContext = { actorId: canonicalActorId, templateId: state.metadata?.templateOrigin || '', tick: state.tick ?? 0 };
+    const ctx: AuthorizationContext = { playerId: canonicalActorId };
     // Quick sanity: reject if caller-supplied actorId does not match canonical actor
     if (action.playerId && canonicalActorId && action.playerId !== canonicalActorId) {
       const rej: Event = {
@@ -273,6 +539,13 @@ export function createWorldController(initial?: WorldState, dev = false) {
     const questsStarted: string[] = [];
     events.forEach(e => {
       switch (e.type) {
+        case "CHARACTER_CREATED": {
+          const character = e.payload?.character;
+          if (character) {
+            state = { ...state, player: character, needsCharacterCreation: false };
+          }
+          break;
+        }
         case "MOVE":
           state = { ...state, player: { ...state.player, location: e.payload.to } };
           break;
@@ -311,6 +584,12 @@ export function createWorldController(initial?: WorldState, dev = false) {
           state = { ...state, player: { ...state.player, reputation: rep } };
           break;
         }
+        case "COMBAT_HIT":
+        case "COMBAT_MISS":
+        case "COMBAT_DODGE":
+          // Combat events are logged for history but don't modify core state
+          // In a full system, would apply damage, trigger special effects, etc.
+          break;
         case "QUEST_LOCKED":
           break;
       }
@@ -370,20 +649,30 @@ export function createWorldController(initial?: WorldState, dev = false) {
   }
 
   function save() {
-    const key = `luxfier_save_${state.id}`;
-    localStorage.setItem(key, JSON.stringify(state));
+    const events = getEventsForWorld(state.id);
     try {
-      // also persist journal to localStorage (already persisted on each record, but ensure sync)
-      // journal entries are stored under their own key; nothing else to do here.
-    } catch (e) {}
+      createSave(`Luxfier Autosave - ${new Date().toLocaleString()}`, state, events, state.id, state.tick ?? 0);
+    } catch (e) {
+      console.error('Failed to save game:', e);
+    }
   }
 
   function load() {
+    // Find the most recent save for this world
     const key = `luxfier_save_${state.id}`;
     const raw = localStorage.getItem(key);
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as WorldState;
+        // Verify integrity before applying
+        const saveMeta = parsed as any;
+        if (saveMeta.checksum) {
+          // This is from saveLoadEngine
+          const isValid = verifySaveIntegrity(saveMeta);
+          if (!isValid) {
+            console.warn('Loaded save failed integrity check. Proceeding with caution.');
+          }
+        }
         state = parsed;
         // if loaded state has a different id, rebind journal to that id
         try {
@@ -410,7 +699,7 @@ export function createWorldController(initial?: WorldState, dev = false) {
     // Keep returning the raw events array for callers, but ensure the replay is canonical.
     const events = getEventsForWorld(state.id);
     try {
-      const { candidateState } = rebuildState(state.id) as any;
+      const { candidateState } = rebuildState(state, events) as any;
       // validate against a fresh canon journal for this instance
       const replayJournal = new CJ(state.id);
       try {

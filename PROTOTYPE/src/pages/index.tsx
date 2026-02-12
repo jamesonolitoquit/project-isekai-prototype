@@ -6,10 +6,16 @@ import QuestPanel from "../client/components/QuestPanel";
 import DialogPanel from "../client/components/DialogPanel";
 import ParticleVisualizer from "../client/components/ParticleVisualizer";
 import AudioVisualizer from "../client/components/AudioVisualizer";
+import useAudioController from "../client/hooks/useAudioController";
 import { getEventsForWorld } from "../engine/public";
 import PlayerState from "../client/components/PlayerState";
+import CombatLog from "../client/components/CombatLog";
+import InventoryPanel from "../client/components/InventoryPanel";
+import LevelUpModal from "../client/components/LevelUpModal";
+import CraftingModal from "../client/components/CraftingModal";
 import TemplatePanel from "../client/dev/TemplatePanel";
 import SchemaForm from "../client/dev/SchemaForm";
+import CharacterCreation from "../client/components/CharacterCreation";
 import * as localBackups from "../client/dev/localBackups";
 import sampleTpl from '../data/luxfier-world.json';
 import tplSchema from '../data/luxfier-world.schema.json';
@@ -20,6 +26,9 @@ export default function HomePage() {
   const [state, setState] = useState<any | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
+  const [showLevelUPModal, setShowLevelUpModal] = useState(false);
+  const [showCraftingModal, setShowCraftingModal] = useState(false);
 
   useEffect(() => {
     const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
@@ -87,6 +96,13 @@ export default function HomePage() {
     return () => clearInterval(id);
   }, [controller]);
 
+  // Wire audio controller for soundscape transitions
+  useAudioController(
+    state?.player?.location,
+    state?.weather,
+    state?.metadata?.audioVolume ?? 0.8
+  );
+
   const doMove = (to: string) => {
     if (!controller) return;
     controller.performAction({ worldId: controller.getState().id, playerId: controller.getState().player.id, type: "MOVE", payload: { to } });
@@ -120,6 +136,128 @@ export default function HomePage() {
     controller.performAction({ worldId: controller.getState().id, playerId: controller.getState().player.id, type: "COMPLETE_QUEST", payload: { questId } });
   };
 
+  const doSubmitCharacter = (character: any) => {
+    if (!controller) return;
+    const stats = character.stats;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "SUBMIT_CHARACTER",
+      payload: { name: character.name, race: character.race, stats }
+    });
+  };
+
+  const doAttack = (npcId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "ATTACK",
+      payload: { targetId: npcId }
+    });
+  };
+
+  const doDefend = (npcId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "DEFEND",
+      payload: { targetId: npcId }
+    });
+  };
+
+  const doParry = (npcId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "PARRY",
+      payload: { targetId: npcId }
+    });
+  };
+
+  const doHeal = () => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "HEAL",
+      payload: {}
+    });
+  };
+
+  const doRest = () => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "REST",
+      payload: {}
+    });
+  };
+
+  const doPickupItem = (itemId: string, quantity: number) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "PICKUP_ITEM",
+      payload: { itemId, quantity }
+    });
+  };
+
+  const doDropItem = (itemId: string, quantity: number) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "DROP_ITEM",
+      payload: { itemId, quantity }
+    });
+  };
+
+  const doEquipItem = (itemId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "EQUIP_ITEM",
+      payload: { itemId }
+    });
+  };
+
+  const doUseItem = (itemId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "USE_ITEM",
+      payload: { itemId }
+    });
+  };
+
+  const doAllocateStat = (stat: string, amount: number) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "ALLOCATE_STAT",
+      payload: { stat, amount }
+    });
+  };
+
+  const doCraft = (recipeId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "CRAFT_ITEM",
+      payload: { recipeId }
+    });
+    setShowCraftingModal(false);
+  };
+
   const doSave = () => controller?.save();
   const doLoad = () => controller?.load();
 
@@ -134,11 +272,18 @@ export default function HomePage() {
         </div>
         <div className="top-right">
           <button onClick={() => setDevDockOpen(s => !s)} style={{ marginRight: 8 }}>{devDockOpen ? 'Hide Dev Dock' : 'Show Dev Dock'}</button>
+          <button onClick={() => setShowInventory(s => !s)} style={{ marginRight: 8 }}>📦 Inventory</button>
+          <button onClick={() => setShowCraftingModal(s => !s)} style={{ marginRight: 8 }}>🔨 Craft</button>
           <button onClick={() => { /* placeholder for other controls */ }}>Enable Audio</button>
         </div>
       </div>
 
       <div className="main-shell">
+        {state?.needsCharacterCreation ? (
+          <div className="gameplay-area">
+            <CharacterCreation onCharacterCreated={doSubmitCharacter} startingLocation={state?.player?.location} />
+          </div>
+        ) : (
         <div className="gameplay-area">
           <div className="gameplay-columns">
             <div className="gameplay-left">
@@ -162,22 +307,37 @@ export default function HomePage() {
                         }
                         const title = avail ? `Available ${String(avail.startHour).padStart(2,'0')}:00–${String(avail.endHour).padStart(2,'0')}:00` : undefined;
                         return (
-                          <li key={n.id} title={title} style={!isAvailable ? { opacity: 0.4, cursor: 'pointer' } : { cursor: 'pointer' }} onClick={() => {
-                            if (!controller) return;
-                            if (!isAvailable) {
-                              // immediate user feedback while engine also emits NPC_UNAVAILABLE
-                              const next = avail?.startHour ?? 0;
-                              alert(`The ${n.name} is closed. Returns at ${String(next).padStart(2,'0')}:00.`);
-                            }
-                            doInteract(n.id);
-                          }}>{n.name}{!isAvailable && ' (closed)'}</li>
+                          <li key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 4, opacity: !isAvailable ? 0.4 : 1, flexWrap: 'wrap', gap: 4 }}>
+                            <span title={title}>{n.name}{!isAvailable && ' (closed)'}</span>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              <button onClick={() => doInteract(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4 }}>Talk</button>
+                              <button onClick={() => doAttack(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#d34' }}>Attack</button>
+                              <button onClick={() => doDefend(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#4CAF50' }}>Defend</button>
+                              <button onClick={() => doParry(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#2196F3' }}>Parry</button>
+                            </div>
+                          </li>
                         );
                       })}
                     </ul>
                 </div>
                 <div style={{ marginTop: 8 }} className="controls">
-                  <button onClick={() => doMove("town")} disabled={state?.player?.location === "town"}>Move to Town</button>
-                  <button onClick={() => doMove("forest")} disabled={state?.player?.location === "forest"}>Move to Forest</button>
+                  <div style={{ marginBottom: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <button onClick={() => doHeal()} style={{ fontSize: 12, padding: 6, backgroundColor: '#FF6B6B' }}>🔮 Heal Self</button>
+                    <button onClick={() => doRest()} style={{ fontSize: 12, padding: 6, backgroundColor: '#8956E7' }}>😴 Rest 1h</button>
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Navigate:</strong>
+                    {(state?.locations ?? []).map((loc: any) => (
+                      <button
+                        key={loc.id}
+                        onClick={() => doMove(loc.id)}
+                        disabled={state?.player?.location === loc.id}
+                        style={{ marginRight: 6, marginBottom: 4, fontSize: 11 }}
+                      >
+                        {loc.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -189,10 +349,26 @@ export default function HomePage() {
               <div className="context-panels">
                 <QuestPanel state={state} />
                 <PlayerState state={state} />
+                {showInventory && (
+                  <div className="panel">
+                    <InventoryPanel
+                      state={state}
+                      onPickupItem={doPickupItem}
+                      onDropItem={doDropItem}
+                      onEquipItem={doEquipItem}
+                      onUseItem={doUseItem}
+                    />
+                  </div>
+                )}
+                <div className="panel" style={{ fontSize: 12 }}>
+                  <h4 style={{ marginTop: 0 }}>Combat Log</h4>
+                  <CombatLog events={events} maxEntries={8} />
+                </div>
               </div>
             </div>
           </div>
         </div>
+        )}
 
         <div className={`dev-dock ${devDockOpen ? 'open' : 'collapsed'}`}>
           {isDevMode && (
@@ -231,15 +407,14 @@ export default function HomePage() {
                       <button style={{ marginLeft: 8 }} onClick={() => setEditorBackups(localBackups.listBackups())}>Refresh</button>
                     </div>
                     <div style={{ maxHeight: 200, overflow: 'auto' }}>
-                      {editorBackups.map(b => (
-                        <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 6, borderBottom: '1px solid #eee' }}>
+                      {editorBackups.map((b, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: 6, borderBottom: '1px solid #eee' }}>
                           <div>
-                            <div style={{ fontSize: 12 }}>{b.label}</div>
-                            <div style={{ fontSize: 11, color: '#666' }}>{new Date(b.timestamp).toLocaleString()}</div>
+                            <div style={{ fontSize: 12 }}>{b}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={() => { const d = localBackups.loadBackup(b.id); if (d) { setEditorWorking(d); setEditorJson(JSON.stringify(d, null,2)); setEditorTab('edit'); } }}>Load</button>
-                            <button onClick={() => { localBackups.deleteBackup(b.id); setEditorBackups(localBackups.listBackups()); }}>Delete</button>
+                            <button onClick={() => { const d = localBackups.loadBackup(b); if (d) { setEditorWorking(d); setEditorJson(JSON.stringify(d, null,2)); setEditorTab('edit'); } }}>Load</button>
+                            <button onClick={() => { localBackups.deleteBackup(b); setEditorBackups(localBackups.listBackups()); }}>Delete</button>
                           </div>
                         </div>
                       ))}
@@ -279,6 +454,22 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {state && state.player && state.player.attributePoints > 0 && (
+        <LevelUpModal
+          state={state}
+          isOpen={true}
+          onAllocateStat={doAllocateStat}
+          onClose={() => setShowLevelUpModal(false)}
+        />
+      )}
+
+      <CraftingModal
+        state={state}
+        isOpen={showCraftingModal}
+        onCraft={doCraft}
+        onClose={() => setShowCraftingModal(false)}
+      />
 
       <ParticleVisualizer state={state} />
       <AudioVisualizer state={state} />

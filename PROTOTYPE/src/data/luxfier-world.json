@@ -1,4 +1,269 @@
 {
-  "name": "stub-world",
-  "description": "Placeholder world data"
+  "name": "Luxfier Alpha Prototype",
+  "description": "A nascent world where magic stirs and ancient powers awaken. Five factions vie for control while corruption spreads from the Abyss edge.",
+  "season": "spring",
+  "locations": [
+    {
+      "id": "eldergrove-village",
+      "name": "Eldergrove Village"
+    },
+    {
+      "id": "luminara-grand-market",
+      "name": "Luminara Grand Market"
+    },
+    {
+      "id": "thornwood-depths",
+      "name": "Thornwood Depths"
+    },
+    {
+      "id": "moonwell-shrine",
+      "name": "Moonwell Shrine"
+    },
+    {
+      "id": "forge-summit",
+      "name": "Forge Summit"
+    },
+    {
+      "id": "frozen-lake",
+      "name": "Frozen Lake",
+      "conditionalSeason": "winter",
+      "description": "A pristine frozen expanse, revealed only in the depths of winter"
+    }
+  ],
+  "npcs": [
+    {
+      "id": "brother-theron",
+      "name": "Brother Theron",
+      "locationId": "eldergrove-village",
+      "routine": {
+        "6-12": "eldergrove-village",
+        "12-18": "moonwell-shrine",
+        "18-20": "eldergrove-village",
+        "20-6": "eldergrove-village"
+      },
+      "dialogue": [
+        "Welcome, traveler. I am Brother Theron, healer and keeper of lore.",
+        "The Sacred Grove provides for those who respect its ways.",
+        "If you seek to aid our village, there is always work to be done."
+      ],
+      "dialogueVariations": {
+        "default": [
+          "Welcome, traveler. I am Brother Theron, healer and keeper of lore.",
+          "The Sacred Grove provides for those who respect its ways."
+        ],
+        "rain": [
+          "Stay dry, friend! The rains can be treacherous.",
+          "Perfect weather for tending the medicinal herbs."
+        ],
+        "snow": [
+          "Bitter cold today. I hope you're well-prepared.",
+          "Winter reveals the true nature of our resolve."
+        ],
+        "winter": [
+          "The season of rest and reflection is upon us.",
+          "Many come to the shrine seeking warmth in winter."
+        ],
+        "quest_completed_herbs-for-the-healer": [
+          "Thanks again for those herbs. They're already helping the village.",
+          "Your gathering effort saved many lives."
+        ]
+      },
+      "availability": {
+        "startHour": 6,
+        "endHour": 20
+      },
+      "stats": {
+        "str": 8,
+        "agi": 10,
+        "int": 16,
+        "cha": 14,
+        "end": 12,
+        "luk": 10
+      },
+      "hp": 45,
+      "maxHp": 45
+    },
+    {
+      "id": "smitty-ironhammer",
+      "name": "Smitty Ironhammer",
+      "locationId": "forge-summit",
+      "routine": {
+        "7-12": "forge-summit",
+        "12-13": "luminara-grand-market",
+        "13-18": "forge-summit",
+        "18-7": "forge-summit"
+      },
+      "dialogue": [
+        "Ah, another adventurer seeks the forge!",
+        "Quality craftsmanship takes time and skill. You got coin?",
+        "I got weapons, armor, and custom runic infusions."
+      ],
+      "availability": {
+        "startHour": 7,
+        "endHour": 18
+      },
+      "stats": {
+        "str": 14,
+        "agi": 8,
+        "int": 10,
+        "cha": 11,
+        "end": 14,
+        "luk": 9
+      },
+      "hp": 55,
+      "maxHp": 55
+    },
+    {
+      "id": "sergeant-brynn",
+      "name": "Sergeant Brynn",
+      "locationId": "luminara-grand-market",
+      "routine": {
+        "0-24": "luminara-grand-market"
+      },
+      "dialogue": [
+        "Gate Sergeant, at your service. Keep the peace in Luminara.",
+        "No trouble here. We patrol regular-like.",
+        "Report any disturbances to the city guard."
+      ],
+      "availability": {
+        "startHour": 0,
+        "endHour": 24
+      },
+      "stats": {
+        "str": 13,
+        "agi": 12,
+        "int": 10,
+        "cha": 13,
+        "end": 15,
+        "luk": 10
+      },
+      "hp": 60,
+      "maxHp": 60
+    }
+  ],
+  "quests": [
+    {
+      "id": "herbs-for-the-healer",
+      "title": "Herbs for the Healer",
+      "description": "Brother Theron needs rare herbs from Thornwood Depths to prepare medicines for the village. Gather the required plants and return safely.",
+      "objective": {
+        "type": "exploration",
+        "location": "thornwood-depths"
+      },
+      "dependencies": [],
+      "rewards": {
+        "xp": 75,
+        "gold": 20
+      },
+      "expiresInHours": 168
+    },
+    {
+      "id": "shadows-in-the-thornwood",
+      "title": "Shadows in the Thornwood",
+      "description": "Corrupted creatures have been spotted deeper in the forest. Investigate the source and report back to Brother Theron.",
+      "objective": {
+        "type": "combat",
+        "location": "thornwood-depths"
+      },
+      "dependencies": [
+        "herbs-for-the-healer"
+      ],
+      "rewards": {
+        "xp": 150,
+        "gold": 50
+      },
+      "expiresInHours": 240
+    },
+    {
+      "id": "the-forge-awakens",
+      "title": "The Forge Awakens",
+      "description": "Smitty Ironhammer wants to test your crafting potential. Gather iron ore from nearby caverns and forge your first weapon.",
+      "objective": {
+        "type": "challenge",
+        "location": "forge-summit"
+      },
+      "dependencies": [],
+      "rewards": {
+        "xp": 100,
+        "gold": 30
+      },
+      "expiresInHours": 360
+    },
+    {
+      "id": "midnight-offering",
+      "title": "Midnight Offering",
+      "description": "Brother Theron requests a sacred offering at the Moonwell Shrine at the stroke of midnight. The ritual is only potent during those hallowed hours.",
+      "objective": {
+        "type": "visit",
+        "location": "moonwell-shrine",
+        "timeConstraints": {
+          "startHour": 0,
+          "endHour": 1
+        }
+      },
+      "dependencies": [
+        "herbs-for-the-healer"
+      ],
+      "rewards": {
+        "xp": 120,
+        "gold": 40
+      },
+      "expiresInHours": 480
+    }
+  ],
+  "hazards": [
+    {
+      "id": "hypothermia-frozen-lake",
+      "name": "Hypothermia",
+      "affectedLocationId": "frozen-lake",
+      "condition": {
+        "season": "winter"
+      },
+      "effect": {
+        "type": "health_drain",
+        "severity": "moderate",
+        "chance": 0.15,
+        "damagePerTick": 3
+      }
+    },
+    {
+      "id": "corruption-thornwood",
+      "name": "Corrupted Miasma",
+      "affectedLocationId": "thornwood-depths",
+      "condition": {
+        "weather": "rain"
+      },
+      "effect": {
+        "type": "status_apply",
+        "severity": "moderate",
+        "chance": 0.08,
+        "statusEffect": "poisoned"
+      }
+    },
+    {
+      "id": "night-cold-village",
+      "name": "Cold Night",
+      "affectedLocationId": "eldergrove-village",
+      "condition": {
+        "season": "winter",
+        "maxDayPhase": "night"
+      },
+      "effect": {
+        "type": "health_drain",
+        "severity": "minor",
+        "chance": 0.05,
+        "damagePerTick": 1
+      }
+    }
+  ],
+  "metadata": {
+    "templateId": "luxfier-alpha-prototype",
+    "audioVolume": 0.8,
+    "particleDensity": "medium",
+    "initialReputation": {
+      "brother-theron": 10,
+      "smitty-ironhammer": 5,
+      "sergeant-brynn": 0
+    }
+  }
 }

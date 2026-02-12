@@ -1,3 +1,2 @@
-export const events = {
-  emit: (e: any) => console.log('[events] stub emit', e)
-};
+export type { Event } from './mutationLog';
+export { appendEvent, getEventsForWorld, getReplayableEvents, clearEventLog } from './mutationLog';

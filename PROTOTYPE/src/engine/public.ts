@@ -1,3 +1,4 @@
 // Re-exports for public API
 export { createWorldController, createInitialWorld } from './worldEngine';
-export { Event, appendEvent, getEventsForWorld } from '../events/mutationLog';
+export type { Event } from '../events/mutationLog';
+export { appendEvent, getEventsForWorld } from '../events/mutationLog';

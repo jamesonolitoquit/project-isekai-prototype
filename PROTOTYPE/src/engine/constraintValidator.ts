@@ -1,4 +1,3 @@
-// Stub for constraintValidator
-export function validateWorldState(state: any) {
+export function validateWorldState(state: any, journal?: any): boolean {
   return true;
 }

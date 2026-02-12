@@ -1,8 +1,19 @@
-// Stub for authorizeAction
-export type AuthorizationContext = {
-  // stub
-};
+export interface AuthorizationContext {
+  playerId?: string;
+  role?: string;
+  permissions?: string[];
+}
 
-export function authorizeAction(action: any, context: AuthorizationContext) {
-  return true;
+export interface AuthorizationResult {
+  allowed: boolean;
+  reason?: string;
+  code?: string;
+}
+
+export function authorizeAction(
+  state: any,
+  action: any,
+  context: AuthorizationContext
+): AuthorizationResult {
+  return { allowed: true };
 }
