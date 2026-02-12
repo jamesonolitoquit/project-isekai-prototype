@@ -1,0 +1,54 @@
+[
+  {
+    "id": "h1",
+    "worldInstanceId": "det-world",
+    "actorId": "a1",
+    "type": "T1",
+    "payload": {
+      "v": 1
+    },
+    "timestamp": 100,
+    "eventIndex": 1,
+    "prevHash": "",
+    "hash": "32df36ce22dfca6c3582b13ff49e621922a2f7512f74b5d25f37ba5408d20941"
+  },
+  {
+    "id": "h2",
+    "worldInstanceId": "det-world",
+    "actorId": "a1",
+    "type": "T2",
+    "payload": {
+      "v": 2
+    },
+    "timestamp": 110,
+    "eventIndex": 2,
+    "prevHash": "32df36ce22dfca6c3582b13ff49e621922a2f7512f74b5d25f37ba5408d20941",
+    "hash": "544a9bc434f97ffaacf496474873b6fa1a0b94d25baba126a1627978fe104d26"
+  },
+  {
+    "id": "h3",
+    "worldInstanceId": "other-world",
+    "actorId": "b1",
+    "type": "O1",
+    "payload": {
+      "p": "x"
+    },
+    "timestamp": 120,
+    "eventIndex": 1,
+    "prevHash": "",
+    "hash": "39f96cf289bf4ef4fcc2cb189237ae04920427c70b5a32194a089859f292c819"
+  },
+  {
+    "id": "h4",
+    "worldInstanceId": "det-world",
+    "actorId": "a2",
+    "type": "T3",
+    "payload": {
+      "v": 3
+    },
+    "timestamp": 130,
+    "eventIndex": 3,
+    "prevHash": "544a9bc434f97ffaacf496474873b6fa1a0b94d25baba126a1627978fe104d26",
+    "hash": "fb58d15f337ba4e4685ca6f895111c3de4bd74e4b78c4dfba6c6e03adf84c679"
+  }
+]
