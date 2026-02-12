@@ -1,0 +1,41 @@
+name: Auto Tag & Release (Post-merge)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  create_tag_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for existing tag
+        id: check_tag
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/v0.1-baseline-hardening"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create annotated tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a v0.1-baseline-hardening -m "Baseline: ledger hardening (canonicalization, hash chain, invariants)"
+          git push origin v0.1-baseline-hardening
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v0.1-baseline-hardening
+          name: v0.1 Baseline — Ledger Hardening
+          body_path: RELEASE_NOTES.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

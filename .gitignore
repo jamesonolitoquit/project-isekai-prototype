@@ -1,0 +1,55 @@
+/node_modules/
+/.idea/
+/.vscode/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PROTOTYPE build & test artifacts
+/PROTOTYPE/.next/
+/PROTOTYPE/node_modules/
+/PROTOTYPE/coverage/
+/PROTOTYPE/.parcel-cache/
+/PROTOTYPE/jest.out
+/PROTOTYPE/*.out
+/PROTOTYPE/jest_*.out
+/PROTOTYPE/jest*.log
+/PROTOTYPE/.cache/
+/PROTOTYPE/.pnp.*
+/PROTOTYPE/.turbo/
+/PROTOTYPE/.parcel-cache/
+/PROTOTYPE/.next/
+/PROTOTYPE/.vercel/
+/PROTOTYPE/public/avatars/
+/PROTOTYPE/public/sounds/
+
+# Workspace
+*.code-workspace
+
+# Misc
+*.status
+.branchname
+
+# Browser baseline and visual artifacts
+baseline-browser*
+visual-test-*
+
+# Pack/archives produced by git or package managers
+*.pack.gz
+index.pack.gz
+
+# Temp and system files
+*.tmp
+*.temp
+*.cache
+*.bak
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Exclude compiled output folders
+/dist/
+/build/
+
