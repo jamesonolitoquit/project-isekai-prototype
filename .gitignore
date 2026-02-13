@@ -25,6 +25,20 @@ Thumbs.db
 /PROTOTYPE/public/avatars/
 /PROTOTYPE/public/sounds/
 
+# ALPHA build & test artifacts
+/ALPHA/.next/
+/ALPHA/node_modules/
+/ALPHA/coverage/
+/ALPHA/.parcel-cache/
+/ALPHA/jest.out
+/ALPHA/*.out
+/ALPHA/jest_*.out
+/ALPHA/jest*.log
+/ALPHA/.cache/
+/ALPHA/.pnp.*
+/ALPHA/.turbo/
+/ALPHA/.vercel/
+
 # Workspace
 *.code-workspace
 
