@@ -1,26 +1,20 @@
-import type { NPC, WorldState } from './worldEngine';
+import type { NPC, WorldState, NpcPersonality, PersonalityType } from './worldEngine';
 import type { Action } from './actionPipeline';
 import type { CombatantStats } from './ruleEngine';
+import { random } from './prng';
 
-export type PersonalityType = 'aggressive' | 'cautious' | 'tactical' | 'healer' | 'balanced';
-
-export interface NpcPersonality {
-  type: PersonalityType;
-  attackThreshold: number; // HP % to switch to defensive
-  defendThreshold: number; // HP % to start healing
-  riskTolerance: number; // 0-1, higher = riskier
-}
+export { PersonalityType, NpcPersonality };
 
 /**
  * Get default personality for an NPC based on type or explicit personality field
  */
-export function getNpcPersonality(npc: NPC & { personality?: NpcPersonality }): NpcPersonality {
+export function getNpcPersonality(npc: NPC): NpcPersonality {
   if (npc.personality) {
     return npc.personality;
   }
 
   // Default personality based on NPC class
-  const personalityMap: Record<string, NpcPersonality> = {
+  const personalityMap: Record<PersonalityType, NpcPersonality> = {
     aggressive: {
       type: 'aggressive',
       attackThreshold: 0.3, // Attack until 30% HP
@@ -53,7 +47,7 @@ export function getNpcPersonality(npc: NPC & { personality?: NpcPersonality }): 
     }
   };
 
-  return personalityMap[npc.personality?.type || 'balanced'] || personalityMap.balanced;
+  return personalityMap.balanced;
 }
 
 /**
@@ -69,7 +63,7 @@ function getHealthPercent(npc: NPC): number {
  * Check if NPC is in combat with player
  */
 function isInCombatWithPlayer(npc: NPC, state: WorldState): boolean {
-  return (
+  return !!(
     state.combatState?.active &&
     state.combatState?.participants?.includes(npc.id) &&
     state.combatState?.participants?.includes(state.player.id)
@@ -150,7 +144,7 @@ export function decideNpcAction(npc: NPC, state: WorldState): Action {
   // Tactical: mixed approach
   if (personality.type === 'tactical') {
     const attackChance = 0.4 + healthPercent * 0.4;
-    if (Math.random() < attackChance) {
+    if (random() < attackChance) {
       return {
         worldId: state.id,
         playerId: npc.id,

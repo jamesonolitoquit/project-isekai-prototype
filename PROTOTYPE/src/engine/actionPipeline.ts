@@ -1,10 +1,25 @@
 import { WorldState } from './worldEngine';
 import { Event } from '../events/mutationLog';
+import { random } from './prng';
 import { createPlayerCharacter, validateStatAllocation } from './characterCreation';
 import { resolveCombat, resolveDefense, resolveParry, resolveHeal, CombatantStats, getEquipmentBonuses, applyEquipmentBonuses } from './ruleEngine';
 import { isNpcAvailable, resolveDialogue } from './npcEngine';
 import { resolveLootTable, validateRecipe, rollCraftingCheck, deductMaterials, addCraftResult, type Recipe } from './craftingEngine';
+import { resolveSpell, getSpellById } from './magicEngine';
+import { calculateDrift, validateAuthority, getParadoxSeverity, checkForSpellBackfire } from './paradoxEngine';
+import { calculateMorphCost, generateRitualChallenge, performRitualCheck, handleMorphSuccess, handleMorphFailure, calculateEssenceDecay, checkMorphCooldown, findNearestAltar } from './morphEngine';
+import { calculateEncounterChance, selectEncounterType, generateEncounterNpc, generateEncounterCombatant, calculateTravelDistance, hasHiddenAreas, getLocationBiome, calculateSearchDifficulty, performSearchCheck } from './encounterEngine';
+import { calculateRelicBonus, shouldRelicRebel, checkInfusionStability, calculateUnbindCost, isRelicRebelling, generateRelicDialogue, applyRelicRebellion, getWieldingRequirement, calculateItemCorruption } from './artifactEngine';
 import itemsData from '../data/items.json';
+import encountersData from '../data/encounters.json';
+import runesData from '../data/runes.json';
+
+// Helper: Check if item exists in Set or array
+function hasItem(container: Set<string> | string[] | undefined, item: string): boolean {
+  if (!container) return false;
+  if (Array.isArray(container)) return container.includes(item);
+  return container.has(item);
+}
 
 // Build item templates map from items.json
 const ITEM_TEMPLATES: Record<string, any> = {};
@@ -30,6 +45,73 @@ if ((itemsData as any).loot_tables && typeof (itemsData as any).loot_tables === 
   });
 }
 
+/**
+ * MetagameValidator checks for suspicious player actions that suggest metagaming
+ * (e.g., targeting NPC before discovering them, moving to undiscovered locations)
+ */
+function validateMetagaming(state: WorldState, action: Action): { isSuspicious: boolean; reason?: string } {
+  const knowledgeBase = state.player.knowledgeBase;
+  const visitedLocations = state.player.visitedLocations;
+  
+  switch (action.type) {
+    case 'MOVE': {
+      const targetLocation = action.payload?.to;
+      // Check if player hasn't discovered this location through gameplay
+      if (targetLocation && !hasItem(visitedLocations, targetLocation) && !hasItem(knowledgeBase, `location:${targetLocation}`)) {
+        return {
+          isSuspicious: true,
+          reason: 'Moved to undiscovered location - possible metagaming'
+        };
+      }
+      break;
+    }
+    
+    case 'INTERACT_NPC': {
+      const npcId = action.payload?.npcId;
+      // Check if NPC hasn't been identified yet
+      if (npcId && !hasItem(knowledgeBase, `npc:${npcId}`)) {
+        return {
+          isSuspicious: true,
+          reason: 'Interacted with unknown NPC - possible metagaming'
+        };
+      }
+      break;
+    }
+    
+    case 'CAST_SPELL': {
+      const targetId = action.payload?.targetId;
+      // Check if targeting NPC that hasn't been identified
+      if (targetId && targetId !== state.player.id) {
+        const isNpc = state.npcs.some(n => n.id === targetId);
+        if (isNpc && !hasItem(knowledgeBase, `npc:${targetId}`)) {
+          return {
+            isSuspicious: true,
+            reason: 'Cast spell on unknown NPC - possible metagaming'
+          };
+        }
+      }
+      break;
+    }
+    
+    case 'ATTACK': {
+      const targetId = action.payload?.targetId;
+      // Check if attacking NPC that hasn't been identified
+      if (targetId && targetId !== state.player.id) {
+        const isNpc = state.npcs.some(n => n.id === targetId);
+        if (isNpc && !hasItem(knowledgeBase, `npc:${targetId}`)) {
+          return {
+            isSuspicious: true,
+            reason: 'Attacked unknown NPC - possible metagaming'
+          };
+        }
+      }
+      break;
+    }
+  }
+  
+  return { isSuspicious: false };
+}
+
 export type Action = {
   worldId: string;
   playerId: string;
@@ -38,19 +120,60 @@ export type Action = {
 };
 
 function createEvent(state: WorldState, action: Action, type: string, payload: any): Event {
+  const tick = state.tick || 0;
+  const randTag = Math.floor(random() * 0xffffff).toString(16);
   return {
-    id: `${type.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    id: `${type.toLowerCase()}-t${tick}-${randTag}`,
     worldInstanceId: state.id,
     actorId: state.player.id,
     type,
     payload,
     templateOrigin: state.metadata?.templateOrigin,
-    timestamp: Date.now(),
+    timestamp: tick * 1000,
   };
 }
 
 export function processAction(state: WorldState, action: Action): Event[] {
   const events: Event[] = [];
+
+  // Phase 12: Check AI DM authority - is this action permitted by the cosmos?
+  const authorityCheck = validateAuthority(action, state);
+  if (!authorityCheck.allowed) {
+    // AI DM denies the action
+    events.push(createEvent(state, action, 'AUTHORITY_INTERVENTION', {
+      interventionText: authorityCheck.interventionText || 'Reality refuses.',
+      action: action.type,
+      payload: action.payload,
+      reason: 'Metagame knowledge exploitation detected'
+    }));
+    return events;  // Stop processing this action
+  }
+
+  // Check for metagaming attempts
+  const metagameCheck = validateMetagaming(state, action);
+  if (metagameCheck.isSuspicious) {
+    // Increase suspicion and potentially trigger DM interference
+    if (!state.player.beliefLayer) {
+      state.player.beliefLayer = {
+        npcLocations: {},
+        npcStats: {},
+        facts: {},
+        suspicionLevel: 0
+      };
+    }
+    state.player.beliefLayer.suspicionLevel = (state.player.beliefLayer.suspicionLevel || 0) + 10;
+    
+    // If suspicion threshold exceeded, emit META_SUSPICION event for DM interference
+    if ((state.player.beliefLayer.suspicionLevel || 0) >= 30) {
+      events.push(createEvent(state, action, 'META_SUSPICION', {
+        level: state.player.beliefLayer.suspicionLevel,
+        reason: metagameCheck.reason,
+        triggeringAction: action.type,
+        dmInterference: 'Environmental anomaly or hostile entity manifestation'
+      }));
+      // After suspicious activity, we still process the action but with consequences
+    }
+  }
 
   switch (action.type) {
     case 'MOVE': {
@@ -224,6 +347,41 @@ export function processAction(state: WorldState, action: Action): Event[] {
         state.id
       );
       events.push(...combatEvents);
+
+      // Add faction events for combat victories
+      // Check if defender was defeated and has a faction
+      const defenderDefeatedEvent = combatEvents.find(e => 
+        (e.type === 'NPC_DEFEATED' || e.type === 'COMBAT_VICTORY') && 
+        e.payload?.targetId === defenderId
+      );
+
+      if (defenderDefeatedEvent && (defender as any).factionId) {
+        const defenderFactionId = (defender as any).factionId;
+        events.push(createEvent(state, action, 'FACTION_COMBAT_VICTORY', {
+          victoryType: 'defeated_npc',
+          defenderNpcId: defenderId,
+          defenderFactionId: defenderFactionId,
+          victoryFactionId: 'player',  // Could be replaced with player faction
+          reputationGain: 10,           // Faction reputation for defeating enemy
+          powerGain: 3                  // Faction power for defeating enemy
+        }));
+
+        // Auto-loot: Roll on loot table and grant items
+        const lootTableId = (defender as any).lootTable || 'common_npc';
+        const lootTable = LOOT_TABLES[lootTableId] || LOOT_TABLES['common_npc'];
+        if (lootTable && Array.isArray(lootTable)) {
+          const roll = Math.floor(random() * 100);
+          for (const lootEntry of lootTable) {
+            if (roll >= lootEntry.chance_min && roll <= lootEntry.chance_max) {
+              events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
+                itemId: lootEntry.item_id,
+                quantity: lootEntry.quantity || 1
+              }));
+              break;
+            }
+          }
+        }
+      }
       break;
     }
 
@@ -311,34 +469,39 @@ export function processAction(state: WorldState, action: Action): Event[] {
     }
 
     case 'REST': {
-      // Rest action: restore 10% HP per game hour spent resting
+      // Rest action: restore 10% HP per game hour spent resting, and 25% MP
       const currentHp = state.player.hp || 100;
       const maxHp = state.player.maxHp || 100;
       const hpPerRest = Math.ceil(maxHp * 0.1); // 10% per hour
       const newHp = Math.min(maxHp, currentHp + hpPerRest);
       const hpRestored = newHp - currentHp;
 
+      // Mana restoration during rest (25% per hour)
+      const currentMp = state.player.mp ?? 0;
+      const maxMp = state.player.maxMp ?? 0;
+      const mpPerRest = Math.ceil(maxMp * 0.25); // 25% per hour
+      const newMp = Math.min(maxMp, currentMp + mpPerRest);
+      const mpRestored = newMp - currentMp;
+
       events.push(createEvent(state, action, 'PLAYER_REST', {
         hpRestored,
         newHp,
         maxHp,
+        mpRestored,
+        newMp,
+        maxMp,
         hoursCost: 1,
-        message: `Rested 1 hour. HP restored: ${hpRestored}`
+        message: `Rested 1 hour. HP restored: ${hpRestored}, MP restored: ${mpRestored}`
       }));
       break;
     }
 
     case 'SUBMIT_CHARACTER': {
-      const { name, race, stats } = action.payload;
-      if (!name || !race || !stats || !validateStatAllocation(stats)) {
+      const { character } = action.payload;
+      if (!character || !character.name || !character.race || !character.stats || !validateStatAllocation(character.stats)) {
         return []; // Invalid character creation
       }
-      try {
-        const character = createPlayerCharacter(name, race, stats);
-        events.push(createEvent(state, action, 'CHARACTER_CREATED', { character }));
-      } catch {
-        return []; // Error creating character
-      }
+      events.push(createEvent(state, action, 'CHARACTER_CREATED', { character }));
       break;
     }
 
@@ -375,6 +538,16 @@ export function processAction(state: WorldState, action: Action): Event[] {
       if (!itemId) return [];
 
       events.push(createEvent(state, action, 'ITEM_EQUIPPED', {
+        itemId
+      }));
+      break;
+    }
+
+    case 'USE_ITEM': {
+      const { itemId } = action.payload;
+      if (!itemId) return [];
+
+      events.push(createEvent(state, action, 'ITEM_USED', {
         itemId
       }));
       break;
@@ -433,7 +606,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       gathered.forEach(item => {
         events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
           itemId: item.itemId,
-          quantity: item.quantity,
+          quantity: (item as any).quantity || 1,
           source: 'gather',
           nodeId: node.id
         }));
@@ -645,6 +818,696 @@ export function processAction(state: WorldState, action: Action): Event[] {
       break;
     }
 
+    case 'ENTER_COMBAT': {
+      const { targetIds = [] } = action.payload;
+      if (!targetIds || targetIds.length === 0) return [];
+
+      const participants = [state.player.id, ...targetIds];
+      events.push(createEvent(state, action, 'COMBAT_STARTED', {
+        participants,
+        initiatorId: state.player.id,
+        targetIds
+      }));
+
+      events.push(createEvent(state, action, 'COMBAT_LOG_ENTRY', {
+        message: `Combat started! Participants: ${participants.join(', ')}`,
+        roundNumber: 0
+      }));
+
+      break;
+    }
+
+    case 'EXIT_COMBAT': {
+      events.push(createEvent(state, action, 'COMBAT_ENDED', {
+        exitedAt: state.tick || 0,
+        combatDuration: ((state.tick || 0) - ((state.combatState?.initiator as any)?.startedAt || 0))
+      }));
+
+      events.push(createEvent(state, action, 'COMBAT_LOG_ENTRY', {
+        message: 'Combat has ended.',
+        roundNumber: state.combatState?.roundNumber || 0
+      }));
+
+      break;
+    }
+
+    case 'WAIT': {
+      const { reason } = action.payload;
+      events.push(createEvent(state, action, 'ACTOR_WAITED', {
+        actorId: action.playerId,
+        reason,
+        roundNumber: state.combatState?.roundNumber || 0
+      }));
+      break;
+    }
+
+    case 'CAST_SPELL': {
+      const { spellId, targetId } = action.payload;
+      const spell = getSpellById(spellId);
+
+      if (!spell) {
+        events.push(createEvent(state, action, 'SPELL_CAST_FAILED', {
+          spellId,
+          reason: 'Spell not found'
+        }));
+        break;
+      }
+
+      // Find target (could be NPC or player)
+      let target = state.npcs.find(n => n.id === targetId);
+      if (!target && targetId === state.player.id) {
+        target = state.player as any;
+      }
+
+      if (!target) {
+        events.push(createEvent(state, action, 'SPELL_CAST_FAILED', {
+          spellId,
+          reason: 'Target not found',
+          targetId
+        }));
+        break;
+      }
+
+      // Resolve spell
+      const spellResult = resolveSpell(
+        spellId,
+        state.player.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 },
+        target.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 },
+        state.player
+      );
+
+      if (!spellResult.success) {
+        events.push(createEvent(state, action, 'SPELL_CAST_FAILED', {
+          spellId,
+          reason: spellResult.message,
+          manaCost: spell.manaCost
+        }));
+        break;
+      }
+
+      // Phase 12: Check for paradox-induced spell backfire
+      const chaosScore = calculateDrift(state);
+      const backfireCheck = checkForSpellBackfire(chaosScore);
+
+      if (backfireCheck.backfires && backfireCheck.penalty) {
+        // Spell backfires due to high paradox
+        events.push(createEvent(state, action, 'PARADOX_STRIKE', {
+          spellId,
+          spellName: spell.name,
+          targetId: state.player.id,
+          damage: backfireCheck.penalty,
+          temporalCost: 10,
+          description: `${spell.name} backfires due to reality strain!`,
+          chaosScore
+        }));
+        break;  // Stop spell processing - backfire instead
+      }
+
+      // Spell succeeded - emit event
+      events.push(createEvent(state, action, 'SPELL_CAST', {
+        spellId,
+        spellName: spell.name,
+        discipline: spell.discipline,
+        targetId,
+        targetName: target.name || 'Unknown',
+        damageDealt: spellResult.damageDealt,
+        healing: spellResult.healing,
+        statusApplied: spellResult.statusApplied,
+        manaCost: spellResult.manaConsumed,
+        message: spellResult.message
+      }));
+      break;
+    }
+
+    case 'DRAIN_MANA': {
+      const { locationId } = action.payload;
+      const location = state.locations.find(loc => loc.id === locationId);
+
+      if (!location) {
+        events.push(createEvent(state, action, 'DRAIN_MANA_FAILED', {
+          reason: 'Location not found',
+          locationId
+        }));
+        break;
+      }
+
+      // Check if location has spiritDensity
+      const spiritDensity = (location as any).spiritDensity ?? 0;
+      if (spiritDensity <= 0) {
+        events.push(createEvent(state, action, 'DRAIN_MANA_FAILED', {
+          reason: 'Location has no mana',
+          location: location.name
+        }));
+        break;
+      }
+
+      // Restore mana (20-40% of maxMp based on spiritDensity)
+      const maxMp = state.player.maxMp ?? 0;
+      const manaRestored = Math.floor(maxMp * (0.2 + spiritDensity * 0.2));
+      const previousMp = state.player.mp ?? 0;
+      const newMp = Math.min(maxMp, previousMp + manaRestored);
+
+      events.push(createEvent(state, action, 'MANA_DRAINED', {
+        location: location.name,
+        locationId,
+        spiritDensity,
+        previousMp,
+        newMp,
+        maxMp,
+        manaRestored,
+        message: `Drained ${manaRestored} mana from ${location.name}`
+      }));
+      break;
+    }
+
+    case 'REVEAL_TRUTH': {
+      const { entityType, entityId, entityName } = action.payload;
+
+      // Add to knowledge base
+      if (!state.player.knowledgeBase) {
+        state.player.knowledgeBase = new Set();
+      }
+      state.player.knowledgeBase.add(`${entityType}:${entityId}`);
+
+      events.push(createEvent(state, action, 'TRUTH_REVEALED', {
+        entityType,
+        entityId,
+        entityName,
+        message: `You have learned about ${entityName}!`
+      }));
+      break;
+    }
+
+    case 'IDENTIFY': {
+      const { targetId } = action.payload;
+
+      // Find the target NPC
+      const targetNpc = state.npcs.find(n => n.id === targetId);
+
+      if (!targetNpc) {
+        events.push(createEvent(state, action, 'IDENTIFY_FAILED', {
+          reason: 'Target not found',
+          targetId
+        }));
+        break;
+      }
+
+      // Reveal the target's true identity
+      if (!state.player.knowledgeBase) {
+        state.player.knowledgeBase = new Set();
+      }
+      state.player.knowledgeBase.add(`npc:${targetId}`);
+
+      events.push(createEvent(state, action, 'NPC_IDENTIFIED', {
+        npcId: targetId,
+        npcName: targetNpc.name,
+        npcStats: targetNpc.stats,
+        hp: targetNpc.hp,
+        maxHp: targetNpc.maxHp,
+        message: `You have identified ${targetNpc.name}! Name: ${targetNpc.name}, Health: ${targetNpc.hp}/${targetNpc.maxHp}`
+      }));
+      break;
+    }
+
+    case 'PERFORM_RITUAL': {
+      // Phase 13: Perform a morphing ritual at an Essence Altar
+      const { targetRace } = action.payload;
+      const currentRace = state.player.currentRace || 'human';
+
+      // Check if player is at an Essence Altar
+      const altar = findNearestAltar(state, state.player.location);
+      if (!altar) {
+        events.push(createEvent(state, action, 'RITUAL_FAILED', {
+          reason: 'No Essence Altar at this location',
+          location: state.player.location
+        }));
+        break;
+      }
+
+      // Check cooldown
+      const cooldown = checkMorphCooldown(state.player.lastMorphTick, state.tick || 0, state.player.recentMorphCount || 0);
+      if (!cooldown.canMorph) {
+        events.push(createEvent(state, action, 'RITUAL_FAILED', {
+          reason: `Cooldown active. Wait ${cooldown.cooldownRemaining} more ticks.`,
+          cooldownRemaining: cooldown.cooldownRemaining
+        }));
+        break;
+      }
+
+      // Calculate morph cost
+      const playerStats = state.player.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 };
+      const morphCost = calculateMorphCost(currentRace, targetRace, playerStats, state.player.soulStrain || 0);
+
+      if (!morphCost.isValid) {
+        events.push(createEvent(state, action, 'RITUAL_FAILED', {
+          reason: 'Morph cost would exceed maximum soul strain (100)',
+          currentSoulStrain: state.player.soulStrain || 0,
+          costRequired: morphCost.soulStrainCost
+        }));
+        break;
+      }
+
+      // Generate ritual challenge based on altar power and soul strain
+      const challenge = generateRitualChallenge(state, targetRace, altar.power);
+
+      // Player performs ritual check (INT + END based on stats)
+      const ritualResult = performRitualCheck(state, challenge);
+
+      if (ritualResult.success) {
+        // SUCCESS: Apply stat changes and soul strain
+        const morphResult = handleMorphSuccess(state, {
+          success: true,
+          statChanges: morphCost.statChanges,
+          soulStrainGain: morphCost.soulStrainCost,
+          eventType: 'MORPH_SUCCESS',
+          description: `Successful transformation to ${targetRace}!`,
+          essenceAltar: altar.id
+        });
+
+        events.push(createEvent(state, action, 'MORPH_SUCCESS', {
+          fromRace: currentRace,
+          toRace: targetRace,
+          statChanges: morphCost.statChanges,
+          soulStrainGain: morphCost.soulStrainCost,
+          newSoulStrain: Math.min(100, (state.player.soulStrain || 0) + morphCost.soulStrainCost),
+          altar: altar.name,
+          message: `You have successfully transformed into a ${targetRace}!`
+        }));
+      } else {
+        // FAILURE: Check for critical vs normal failure
+        const failureResult = handleMorphFailure(state, challenge, ritualResult.passMargin);
+
+        if (failureResult.eventType === 'VESSEL_SHATTER') {
+          // CRITICAL FAILURE: Reality warps, NPCs forget player
+          events.push(createEvent(state, action, 'VESSEL_SHATTER', {
+            severity: 'critical',
+            soulStrainGain: failureResult.soulStrainGain,
+            description: 'CATASTROPHIC MORPH FAILURE! Your essence shatters. Reality forgets you were here.',
+            effectsApplied: [
+              'NPC knowledge of you reduced',
+              'Location temporarily corrupted',
+              'Severe soul strain inflicted'
+            ]
+          }));
+        } else {
+          // Normal failure: ritual backlash
+          events.push(createEvent(state, action, 'MORPH_FAILURE', {
+            severity: 'moderate',
+            soulStrainGain: failureResult.soulStrainGain,
+            newSoulStrain: Math.min(100, (state.player.soulStrain || 0) + failureResult.soulStrainGain),
+            message: 'The ritual destabilizes! Your form flickers but holds.',
+            trickMargin: Math.abs(ritualResult.passMargin),
+            passMargin: ritualResult.passMargin
+          }));
+        }
+      }
+      break;
+    }
+
+    case 'CHECK_ESSENCE_DECAY': {
+      // Phase 13: Check if player suffers essence decay from high soul strain
+      const soulStrain = state.player.soulStrain || 0;
+      const decay = calculateEssenceDecay(soulStrain);
+
+      if (decay.hasPenalty) {
+        events.push(createEvent(state, action, 'ESSENCE_DECAY', {
+          currentSoulStrain: soulStrain,
+          penaltyAmount: decay.penaltyAmount,
+          message: `Your essence decays. All stats reduced by ${decay.penaltyAmount}.`,
+          affectedStats: ['str', 'agi', 'int', 'cha', 'end', 'luk']
+        }));
+      }
+      break;
+    }
+
+    case 'TRAVEL': {
+      // Phase 14: Begin travel to a new location
+      const { targetLocationId } = action.payload;
+
+      // Calculate travel distance
+      const travelTicks = calculateTravelDistance(state.player.location, targetLocationId);
+
+      // Create travel state
+      events.push(createEvent(state, action, 'TRAVEL_STARTED', {
+        fromLocation: state.player.location,
+        toLocation: targetLocationId,
+        estimatedTicks: travelTicks,
+        message: `You begin your journey to ${targetLocationId}. It will take approximately ${travelTicks} ticks to arrive.`
+      }));
+
+      break;
+    }
+
+    case 'TRAVEL_TICK': {
+      // Phase 14: Process one tick of travel
+      // Check for encounters during travel
+      if (!state.travelState || !state.travelState.isTraveling) {
+        events.push(createEvent(state, action, 'TRAVEL_NOT_ACTIVE', {
+          reason: 'No active travel in progress'
+        }));
+        break;
+      }
+
+      const travelState = state.travelState;
+      const biome = getLocationBiome(state.player.location);
+
+      // Get encounter table for current biome
+      const encounterTables = (encountersData as any).encounters;
+      const encounterTable = encounterTables[biome];
+
+      if (!encounterTable) {
+        events.push(createEvent(state, action, 'TRAVEL_TICK', {
+          remainingTicks: Math.max(0, travelState.remainingTicks - 1)
+        }));
+        break;
+      }
+
+      // Roll for encounter on this tick
+      if (!travelState.encounterRolled) {
+        const encounterChance = calculateEncounterChance(state, biome, encounterTable, 1);
+        const roll = random() * 100;
+
+        if (roll < encounterChance) {
+          // Encounter triggered!
+          const encounter = selectEncounterType(encounterTable, state.player.level || 1);
+
+          if (encounter) {
+            let encounterNpc = null;
+            let eventType = 'ENCOUNTER_TRIGGERED';
+
+            // Generate NPC or combatant based on encounter type
+            if (encounter.type === 'combat') {
+              encounterNpc = generateEncounterCombatant(encounter, state);
+            } else {
+              encounterNpc = generateEncounterNpc(encounter, state);
+            }
+
+            events.push(createEvent(state, action, eventType, {
+              encounterName: encounter.name,
+              encounterType: encounter.type,
+              encounterRarity: encounter.rarity,
+              npcId: encounterNpc.id,
+              description: encounter.description,
+              message: `An encounter begins! ${encounter.description}`
+            }));
+          }
+        } else {
+          // No encounter this tick, continue traveling
+          events.push(createEvent(state, action, 'TRAVEL_TICK', {
+            remainingTicks: Math.max(0, travelState.remainingTicks - 1),
+            message: 'You continue on your journey...'
+          }));
+        }
+      }
+      break;
+    }
+
+    case 'SEARCH_AREA': {
+      // Phase 14: Search current location for hidden areas
+      const currentLocation = state.player.location;
+
+      if (!hasHiddenAreas(currentLocation)) {
+        events.push(createEvent(state, action, 'SEARCH_NO_SECRETS', {
+          location: currentLocation,
+          message: 'You search thoroughly but find nothing hidden here.'
+        }));
+        break;
+      }
+
+      // Calculate search difficulty
+      const difficulty = calculateSearchDifficulty(currentLocation);
+      const playerInt = state.player.stats?.int || 10;
+      const playerLuk = state.player.stats?.luk || 10;
+
+      // Perform search check
+      const searchResult = performSearchCheck(playerInt, playerLuk, difficulty);
+
+      if (searchResult.success) {
+        // Success! Discover a random hidden area
+        const hiddenAreas = (encountersData as any).hiddenAreas[currentLocation] || [];
+        if (hiddenAreas.length > 0) {
+          const discoveredArea = hiddenAreas[Math.floor(random() * hiddenAreas.length)];
+
+          events.push(createEvent(state, action, 'LOCATION_DISCOVERED', {
+            areaId: discoveredArea.id,
+            areaName: discoveredArea.name,
+            areaDescription: discoveredArea.description,
+            location: currentLocation,
+            roll: searchResult.roll,
+            dc: searchResult.dc,
+            margin: searchResult.margin,
+            message: `You discover: ${discoveredArea.name}! ${discoveredArea.description}`
+          }));
+        }
+      } else {
+        // Failed search
+        events.push(createEvent(state, action, 'SEARCH_FAILED', {
+          location: currentLocation,
+          roll: searchResult.roll,
+          dc: searchResult.dc,
+          margin: searchResult.margin,
+          message: `Your search yields nothing. (Failed by ${Math.abs(searchResult.margin)})`
+        }));
+      }
+      break;
+    }
+
+    case 'INFUSE_ITEM': {
+      // Phase 15: Infuse a rune into a relic, granting it magical properties
+      const { relicId, runeId } = action.payload;
+
+      const relic = state.relics?.[relicId];
+      if (!relic) {
+        events.push(createEvent(state, action, 'INFUSION_FAILED', {
+          reason: 'Relic not found',
+          message: 'That relic does not exist.'
+        }));
+        break;
+      }
+
+      const rune = (runesData as any).runes?.find((r: any) => r.id === runeId);
+      if (!rune) {
+        events.push(createEvent(state, action, 'INFUSION_FAILED', {
+          reason: 'Rune not found',
+          message: 'That rune does not exist.'
+        }));
+        break;
+      }
+
+      // Check if player has the rune in inventory
+      const runeInventory = state.player.runicInventory || [];
+      const runeInInv = runeInventory.find((r) => r.runeId === runeId);
+      if (!runeInInv || runeInInv.quantity === 0) {
+        events.push(createEvent(state, action, 'INFUSION_FAILED', {
+          reason: 'Rune not in inventory',
+          message: 'You do not have that rune.'
+        }));
+        break;
+      }
+
+      // Check stability
+      const stability = checkInfusionStability(relic, rune, state.player, state.player.temporalDebt || 0);
+      if (!stability.stable && random() > 0.5) {
+        // High-risk infusion fails
+        events.push(createEvent(state, action, 'INFUSION_FAILED', {
+          reason: 'Instability cascade',
+          risk: stability.risk,
+          message: `Infusion failed! Rune and relic backlash. ${stability.message}`
+        }));
+        break;
+      }
+
+      // Find empty rune slot
+      const emptySlot = relic.runicSlots.find((s) => !s.runeId);
+      if (!emptySlot) {
+        events.push(createEvent(state, action, 'INFUSION_FAILED', {
+          reason: 'No empty slots',
+          message: 'This relic has no empty rune slots.'
+        }));
+        break;
+      }
+
+      // Success! Infuse the rune
+      emptySlot.runeId = runeId;
+      relic.totalComplexity = (relic.totalComplexity || 0) + rune.complexity;
+
+      // Deduct mana if required
+      if (rune.manaCost && state.player.mp) {
+        state.player.mp = Math.max(0, state.player.mp - rune.manaCost);
+      }
+
+      // Track infusion history for corruption calculation
+      const infusionHistory = state.player.infusionHistory || [];
+      infusionHistory.push({ relicId, runeId, timestamp: state.tick || 0 });
+
+      // Deduct rune from inventory
+      if (runeInInv.quantity > 0) {
+        runeInInv.quantity--;
+      }
+
+      events.push(createEvent(state, action, 'RUNE_INFUSED', {
+        relicId,
+        relicName: relic.name,
+        runeId,
+        runeName: rune.name,
+        message: `You successfully infuse ${rune.name} into ${relic.name}!`,
+        stability: stability.risk
+      }));
+      break;
+    }
+
+    case 'SOUL_BIND': {
+      // Phase 15: Permanently bind a relic to the player
+      // This grants massive bonuses but makes the relic impossible to unequip without high soul strain cost
+      const { relicId } = action.payload;
+
+      const relic = state.relics?.[relicId];
+      if (!relic) {
+        events.push(createEvent(state, action, 'BINDING_FAILED', {
+          reason: 'Relic not found',
+          message: 'That relic does not exist.'
+        }));
+        break;
+      }
+
+      if (state.player.boundRelicId) {
+        events.push(createEvent(state, action, 'BINDING_FAILED', {
+          reason: 'Already bound',
+          message: `You are already bound to ${state.relics?.[state.player.boundRelicId]?.name || 'another relic'}.`
+        }));
+        break;
+      }
+
+      // Binding ritual cost in mana
+      const bindingCost = (relic.sentienceLevel + 1) * 20;
+      if ((state.player.mp || 0) < bindingCost) {
+        events.push(createEvent(state, action, 'BINDING_FAILED', {
+          reason: 'Insufficient mana',
+          requiredMana: bindingCost,
+          currentMana: state.player.mp,
+          message: `You need ${bindingCost} mana to bind this relic. You only have ${state.player.mp || 0}.`
+        }));
+        break;
+      }
+
+      // Perform binding ritual (charisma check)
+      const playerCha = state.player.stats?.cha || 10;
+      const dc = 12 + relic.sentienceLevel; // Higher sentiency = harder to bind
+      const roll = Math.floor(random() * 20) + 1;
+      const totalRoll = roll + Math.floor(playerCha / 2);
+
+      if (totalRoll < dc) {
+        events.push(createEvent(state, action, 'BINDING_FAILED', {
+          reason: 'Ritual rejection',
+          roll,
+          dc,
+          message: `${relic.name} rejects your binding attempt! It resists your will.`
+        }));
+        break;
+      }
+
+      // Success! Bind the relic
+      state.player.boundRelicId = relicId;
+      relic.isBound = true;
+      relic.ownerId = state.player.id;
+      relic.boundSoulStrain = calculateUnbindCost(relic, state.player.temporalDebt || 0);
+
+      // Deduct mana
+      state.player.mp = (state.player.mp || 0) - bindingCost;
+
+      // Log relic dialogue
+      const dialogueMessage = generateRelicDialogue(relic, 'greeting');
+
+      events.push(createEvent(state, action, 'RELIC_BOUND', {
+        relicId,
+        relicName: relic.name,
+        soulStrain: relic.boundSoulStrain,
+        dialogue: dialogueMessage,
+        message: `You are now bound to ${relic.name}! Its power surges through you. "${dialogueMessage}"`
+      }));
+
+      // Log the dialogue in relic events
+      const relicEvents = state.relicEvents || [];
+      relicEvents.push({
+        type: 'dialogue',
+        relicId,
+        tick: state.tick || 0,
+        message: dialogueMessage
+      });
+      break;
+    }
+
+    case 'UNBIND_RELIC': {
+      // Phase 15: Break the soul bond with a relic
+      const boundRelicId = state.player.boundRelicId;
+      if (!boundRelicId) {
+        events.push(createEvent(state, action, 'UNBINDING_FAILED', {
+          reason: 'Not bound',
+          message: 'You are not bound to any relic.'
+        }));
+        break;
+      }
+
+      const relic = state.relics?.[boundRelicId];
+      if (!relic) {
+        events.push(createEvent(state, action, 'UNBINDING_FAILED', {
+          reason: 'Relic not found',
+          message: 'Your bound relic could not be found.'
+        }));
+        break;
+      }
+
+      const unbindCost = relic.boundSoulStrain || 0;
+      const currentSoulStrain = state.player.soulStrain || 0;
+
+      if (currentSoulStrain < unbindCost) {
+        events.push(createEvent(state, action, 'UNBINDING_FAILED', {
+          reason: 'Insufficient soul strain capacity',
+          requiredStrain: unbindCost,
+          currentStrain: currentSoulStrain,
+          message: `This relic is deeply bonded to your soul. Breaking the bond requires ${unbindCost} soul strain. You only have ${currentSoulStrain}.`
+        }));
+        break;
+      }
+
+      // Perform unbinding ritual (wisdom check - using INT as proxy)
+      const playerWis = state.player.stats?.int || 10;
+      const dc = 10 + relic.sentienceLevel;
+      const roll = Math.floor(random() * 20) + 1;
+      const totalRoll = roll + Math.floor(playerWis / 2);
+
+      if (totalRoll < dc) {
+        events.push(createEvent(state, action, 'UNBINDING_FAILED', {
+          reason: 'Ritual failure',
+          roll,
+          dc,
+          message: `${relic.name} fights back! The unbinding ritual fails.`
+        }));
+        break;
+      }
+
+      // Success! Unbind the relic
+      state.player.boundRelicId = undefined;
+      relic.isBound = false;
+      state.player.soulStrain = (state.player.soulStrain || 0) + unbindCost;
+
+      events.push(createEvent(state, action, 'RELIC_UNBOUND', {
+        relicId: boundRelicId,
+        relicName: relic.name,
+        soulStrainCost: unbindCost,
+        message: `You have severed your bond with ${relic.name}. Soul strain increases by ${unbindCost}.`
+      }));
+      break;
+    }
+
+  }
+
+  // Death detection: if player HP reaches 0, emit PLAYER_DEFEATED
+  if (state.player && state.player.hp !== undefined && state.player.hp <= 0 && !events.some(e => e.type === 'PLAYER_DEFEATED')) {
+    events.push(createEvent(state, action, 'PLAYER_DEFEATED', {
+      defeatLocation: state.player.location,
+      message: 'You have been defeated! You wake up back in Eldergrove Village with 50% HP restored.'
+    }));
   }
 
   return events;

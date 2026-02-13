@@ -5,6 +5,18 @@ interface DialogPanelProps {
   onChoose?: (npcId: string, choiceId: string) => void;
 }
 
+/**
+ * Get NPC display name - mask if not identified
+ */
+function getNpcName(npcId: string, state: any): string {
+  const knowledgeBase = state?.player?.knowledgeBase || [];
+  if (knowledgeBase?.includes(`npc:${npcId}`)) {
+    const npc = state?.npcs?.find((n: any) => n.id === npcId);
+    return npc?.name || npcId;
+  }
+  return '??? (Unknown)';
+}
+
 export default function DialogPanel({ state, onChoose }: DialogPanelProps) {
   const dialogueHistory = state?.player?.dialogueHistory ?? [];
   const latestEntry = dialogueHistory.length > 0 ? dialogueHistory[dialogueHistory.length - 1] : null;
@@ -19,7 +31,7 @@ export default function DialogPanel({ state, onChoose }: DialogPanelProps) {
           {dialogueHistory.map((entry: any, idx: number) => (
             <div key={idx} className="dialog-entry">
               <p>
-                <strong>[{entry.npcId}]:</strong> {entry.text}
+                <strong>[{getNpcName(entry.npcId, state)}]:</strong> {entry.text}
               </p>
             </div>
           ))}

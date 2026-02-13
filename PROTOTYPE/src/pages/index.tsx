@@ -6,22 +6,29 @@ import QuestPanel from "../client/components/QuestPanel";
 import DialogPanel from "../client/components/DialogPanel";
 import ParticleVisualizer from "../client/components/ParticleVisualizer";
 import AudioVisualizer from "../client/components/AudioVisualizer";
-import useAudioController from "../client/hooks/useAudioController";
 import { getEventsForWorld } from "../engine/public";
 import PlayerState from "../client/components/PlayerState";
 import CombatLog from "../client/components/CombatLog";
 import InventoryPanel from "../client/components/InventoryPanel";
 import LevelUpModal from "../client/components/LevelUpModal";
 import CraftingModal from "../client/components/CraftingModal";
+import CombatArena from "../client/components/CombatArena";
 import TemplatePanel from "../client/dev/TemplatePanel";
 import SchemaForm from "../client/dev/SchemaForm";
 import CharacterCreation from "../client/components/CharacterCreation";
 import * as localBackups from "../client/dev/localBackups";
 import sampleTpl from '../data/luxfier-world.json';
 import tplSchema from '../data/luxfier-world.schema.json';
+import FactionPanel from "../client/components/FactionPanel";
+import { ArtifactForge } from "../client/components/ArtifactForge";
+import MorphingStation from "../client/components/MorphingStation";
+import ParadoxIndicator from "../client/components/ParadoxIndicator";
+import TravelProgress from "../client/components/TravelProgress";
+import Codex from "../client/components/Codex";
+import GlobalHeader from "../client/components/GlobalHeader";
 
 export default function HomePage() {
-  const [devDockOpen, setDevDockOpen] = useState(true);
+  const [devDockOpen, setDevDockOpen] = useState(false);
   const [controller, setController] = useState<any | null>(null);
   const [state, setState] = useState<any | null>(null);
   const [events, setEvents] = useState<any[]>([]);
@@ -29,29 +36,30 @@ export default function HomePage() {
   const [showInventory, setShowInventory] = useState(false);
   const [showLevelUPModal, setShowLevelUpModal] = useState(false);
   const [showCraftingModal, setShowCraftingModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'world' | 'combat' | 'politics' | 'arcane' | 'codex'>('world');
 
-  useEffect(() => {
-    const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
-    const c = createWorldController(undefined, isDev);
-    setController(c);
-    let unsub: any = null;
-    let pollId: any = null;
-    if ((c as any).subscribe) {
-      unsub = (c as any).subscribe((s: any) => setState(s));
-    } else {
-      // Poll for state updates when subscribe is not available
-      pollId = setInterval(() => {
-        try { setState((c as any).getState()); } catch (e) {}
-      }, 200);
-    }
-    if ((c as any).start) (c as any).start();
-    setEvents([]);
-    return () => {
-      try { if (unsub) unsub(); } catch (e) {}
-      try { if (pollId) clearInterval(pollId); } catch (e) {}
-      try { if ((c as any).stop) (c as any).stop(); } catch (e) {}
-    };
-  }, []);
+  // useEffect(() => {
+  //   const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
+  //   const c = createWorldController(undefined, isDev);
+  //   setController(c);
+  //   let unsub: any = null;
+  //   let pollId: any = null;
+  //   if ((c as any).subscribe) {
+  //     unsub = (c as any).subscribe((s: any) => setState(s));
+  //   } else {
+  //     // Poll for state updates when subscribe is not available
+  //     pollId = setInterval(() => {
+  //       try { setState((c as any).getState()); } catch (e) {}
+  //     }, 200);
+  //   }
+  //   if ((c as any).start) (c as any).start();
+  //   setEvents([]);
+  //   return () => {
+  //     try { if (unsub) unsub(); } catch (e) {}
+  //     try { if (pollId) clearInterval(pollId); } catch (e) {}
+  //     try { if ((c as any).stop) (c as any).stop(); } catch (e) {}
+  //   };
+  // }, []);
 
   useEffect(() => {
     setIsDevMode(process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1'));
@@ -97,11 +105,11 @@ export default function HomePage() {
   }, [controller]);
 
   // Wire audio controller for soundscape transitions
-  useAudioController(
-    state?.player?.location,
-    state?.weather,
-    state?.metadata?.audioVolume ?? 0.8
-  );
+  // useAudioController(
+  //   state?.player?.location,
+  //   state?.weather,
+  //   state?.metadata?.audioVolume ?? 0.8
+  // );
 
   const doMove = (to: string) => {
     if (!controller) return;
@@ -138,12 +146,12 @@ export default function HomePage() {
 
   const doSubmitCharacter = (character: any) => {
     if (!controller) return;
-    const stats = character.stats;
+    // Pass full character object including ID for deterministic persistence
     controller.performAction({
       worldId: controller.getState().id,
-      playerId: controller.getState().player.id,
+      playerId: character.id || controller.getState().player.id,
       type: "SUBMIT_CHARACTER",
-      payload: { name: character.name, race: character.race, stats }
+      payload: { character }
     });
   };
 
@@ -184,6 +192,36 @@ export default function HomePage() {
       playerId: controller.getState().player.id,
       type: "HEAL",
       payload: {}
+    });
+  };
+
+  const doExitCombat = () => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "EXIT_COMBAT",
+      payload: {}
+    });
+  };
+
+  const doCastSpell = (spellId: string, targetId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "CAST_SPELL",
+      payload: { spellId, targetId }
+    });
+  };
+
+  const doDrainMana = (locationId: string) => {
+    if (!controller) return;
+    controller.performAction({
+      worldId: controller.getState().id,
+      playerId: controller.getState().player.id,
+      type: "DRAIN_MANA",
+      payload: { locationId }
     });
   };
 
@@ -264,110 +302,198 @@ export default function HomePage() {
   const npcsHere = (state?.npcs || []).filter((n: any) => n.locationId === state?.player?.location);
   const questStatus = state?.player?.quests?.["winter-festival"]?.status || "not_started";
 
+  // Action wrapper to update tab and perform action
+  const performActionWithFeedback = (actionRequest: any) => {
+    if (actionRequest.type === 'ATTACK' || actionRequest.type === 'DEFEND' || actionRequest.type === 'PARRY') {
+      setActiveTab('combat');
+    }
+    controller?.performAction(actionRequest);
+  };
+
   return (
-    <div className="app-root">
-      <div className="top-bar">
-        <div className="top-left">
-          <h1 style={{ margin: 0 }}>Luxfier Prototype</h1>
-        </div>
-        <div className="top-right">
-          <button onClick={() => setDevDockOpen(s => !s)} style={{ marginRight: 8 }}>{devDockOpen ? 'Hide Dev Dock' : 'Show Dev Dock'}</button>
-          <button onClick={() => setShowInventory(s => !s)} style={{ marginRight: 8 }}>📦 Inventory</button>
-          <button onClick={() => setShowCraftingModal(s => !s)} style={{ marginRight: 8 }}>🔨 Craft</button>
-          <button onClick={() => { /* placeholder for other controls */ }}>Enable Audio</button>
-        </div>
-      </div>
+    <div className="app-root omni-hud">
+      {/* Global Paradox Indicator Overlay */}
+      {state && <ParadoxIndicator state={state} />}
+
+      {/* Global Travel Progress Overlay */}
+      {state && <TravelProgress state={state} />}
+
+      {/* Global Persistent HUD Header */}
+      {state && !state.needsCharacterCreation && <GlobalHeader state={state} />}
 
       <div className="main-shell">
         {state?.needsCharacterCreation ? (
-          <div className="gameplay-area">
+          <div className="gameplay-area character-creation-overlay">
             <CharacterCreation onCharacterCreated={doSubmitCharacter} startingLocation={state?.player?.location} />
           </div>
         ) : (
-        <div className="gameplay-area">
-          <div className="gameplay-columns">
-            <div className="gameplay-left">
-              <SeasonPanel state={state} />
-              <WeatherPanel state={state} />
-              <div className="panel">
-                <div><strong>Location:</strong> {state?.player?.location}</div>
-                <div style={{ marginTop: 8 }}>
-                  <strong>NPCs here:</strong>
-                  <ul>
-                      {npcsHere.length === 0 && <li>None</li>}
-                      {npcsHere.map((n: any) => {
-                        const curHour = state?.time?.hour ?? state?.hour ?? 0;
-                        const avail = n.availability;
-                        let isAvailable = true;
-                        if (avail && (typeof avail.startHour === 'number' || typeof avail.endHour === 'number')) {
-                          const s = avail.startHour ?? 0;
-                          const e = avail.endHour ?? 24;
-                          if (s < e) isAvailable = curHour >= s && curHour < e;
-                          else isAvailable = curHour >= s || curHour < e;
-                        }
-                        const title = avail ? `Available ${String(avail.startHour).padStart(2,'0')}:00–${String(avail.endHour).padStart(2,'0')}:00` : undefined;
-                        return (
-                          <li key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 4, opacity: !isAvailable ? 0.4 : 1, flexWrap: 'wrap', gap: 4 }}>
-                            <span title={title}>{n.name}{!isAvailable && ' (closed)'}</span>
-                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                              <button onClick={() => doInteract(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4 }}>Talk</button>
-                              <button onClick={() => doAttack(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#d34' }}>Attack</button>
-                              <button onClick={() => doDefend(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#4CAF50' }}>Defend</button>
-                              <button onClick={() => doParry(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#2196F3' }}>Parry</button>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                </div>
-                <div style={{ marginTop: 8 }} className="controls">
-                  <div style={{ marginBottom: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <button onClick={() => doHeal()} style={{ fontSize: 12, padding: 6, backgroundColor: '#FF6B6B' }}>🔮 Heal Self</button>
-                    <button onClick={() => doRest()} style={{ fontSize: 12, padding: 6, backgroundColor: '#8956E7' }}>😴 Rest 1h</button>
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Navigate:</strong>
-                    {(state?.locations ?? []).map((loc: any) => (
-                      <button
-                        key={loc.id}
-                        onClick={() => doMove(loc.id)}
-                        disabled={state?.player?.location === loc.id}
-                        style={{ marginRight: 6, marginBottom: 4, fontSize: 11 }}
-                      >
-                        {loc.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+          <div className="gameplay-area tabbed-layout">
+            {/* Tab Navigation Bar */}
+            <div className="tab-navigation">
+              <button
+                className={`tab-btn ${activeTab === 'world' ? 'active' : ''}`}
+                onClick={() => setActiveTab('world')}
+              >
+                🌍 World
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'combat' ? 'active' : ''}`}
+                onClick={() => setActiveTab('combat')}
+              >
+                ⚔️ Combat
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'politics' ? 'active' : ''}`}
+                onClick={() => setActiveTab('politics')}
+              >
+                👑 Politics
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'arcane' ? 'active' : ''}`}
+                onClick={() => setActiveTab('arcane')}
+              >
+                ✨ Arcane
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'codex' ? 'active' : ''}`}
+                onClick={() => setActiveTab('codex')}
+              >
+                📖 Codex
+              </button>
             </div>
 
-            <div className="gameplay-right">
-              <div className="dialog-primary">
-                <DialogPanel state={state} onChoose={doDialogChoice} />
-              </div>
-              <div className="context-panels">
-                <QuestPanel state={state} />
-                <PlayerState state={state} />
-                {showInventory && (
-                  <div className="panel">
-                    <InventoryPanel
+            {/* Tab Content Area */}
+            <div className="tab-content-area">
+              {/* WORLD TAB */}
+              {activeTab === 'world' && (
+                <div className="tab-content world-tab">
+                  <div className="world-left-column">
+                    <SeasonPanel state={state} />
+                    <WeatherPanel state={state} />
+                    <div className="panel">
+                      <div><strong>Location:</strong> {state?.player?.location}</div>
+                      <div style={{ marginTop: 8 }}>
+                        <strong>NPCs here:</strong>
+                        <ul>
+                          {npcsHere.length === 0 && <li>None</li>}
+                          {npcsHere.map((n: any) => {
+                            const curHour = state?.time?.hour ?? state?.hour ?? 0;
+                            const avail = n.availability;
+                            let isAvailable = true;
+                            if (avail && (typeof avail.startHour === 'number' || typeof avail.endHour === 'number')) {
+                              const s = avail.startHour ?? 0;
+                              const e = avail.endHour ?? 24;
+                              if (s < e) isAvailable = curHour >= s && curHour < e;
+                              else isAvailable = curHour >= s || curHour < e;
+                            }
+                            const title = avail ? `Available ${String(avail.startHour).padStart(2, '0')}:00–${String(avail.endHour).padStart(2, '0')}:00` : undefined;
+                            return (
+                              <li key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 4, opacity: !isAvailable ? 0.4 : 1, flexWrap: 'wrap', gap: 4 }}>
+                                <span title={title}>{n.name}{!isAvailable && ' (closed)'}</span>
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                  <button onClick={() => doInteract(n.id)} disabled={!isAvailable} style={{ fontSize: 12, padding: 4 }}>Talk</button>
+                                  <button onClick={() => performActionWithFeedback({ worldId: controller.getState().id, playerId: controller.getState().player.id, type: 'ATTACK', payload: { targetId: n.id } })} disabled={!isAvailable} style={{ fontSize: 12, padding: 4, backgroundColor: '#e74c3c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Attack</button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                      <div style={{ marginTop: 8 }} className="controls">
+                        <div style={{ marginBottom: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          <button onClick={() => doHeal()} style={{ fontSize: 12, padding: 6, backgroundColor: '#2ecc71', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>🔮 Heal Self</button>
+                          <button onClick={() => doRest()} style={{ fontSize: 12, padding: 6, backgroundColor: '#8956E7', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>😴 Rest 1h</button>
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Navigate:</strong>
+                          {(state?.locations ?? []).map((loc: any) => (
+                            <button
+                              key={loc.id}
+                              onClick={() => doMove(loc.id)}
+                              disabled={state?.player?.location === loc.id}
+                              style={{ marginRight: 6, marginBottom: 4, fontSize: 11, backgroundColor: '#4a90e2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', opacity: state?.player?.location === loc.id ? 0.5 : 1 }}
+                            >
+                              {loc.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="world-right-column">
+                    <div className="dialog-primary">
+                      <DialogPanel state={state} onChoose={doDialogChoice} />
+                    </div>
+                    <div className="context-panels">
+                      <QuestPanel state={state} />
+                      <PlayerState state={state} />
+                      {showInventory && (
+                        <div className="panel">
+                          <InventoryPanel
+                            state={state}
+                            onPickupItem={doPickupItem}
+                            onDropItem={doDropItem}
+                            onEquipItem={doEquipItem}
+                            onUseItem={doUseItem}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* COMBAT TAB */}
+              {activeTab === 'combat' && (
+                <div className="tab-content combat-tab">
+                  <div className="combat-main">
+                    <CombatArena
                       state={state}
-                      onPickupItem={doPickupItem}
-                      onDropItem={doDropItem}
-                      onEquipItem={doEquipItem}
-                      onUseItem={doUseItem}
+                      onAttack={doAttack}
+                      onDefend={doDefend}
+                      onParry={doParry}
+                      onHeal={doHeal}
+                      onCastSpell={doCastSpell}
+                      onExitCombat={doExitCombat}
                     />
                   </div>
-                )}
-                <div className="panel" style={{ fontSize: 12 }}>
-                  <h4 style={{ marginTop: 0 }}>Combat Log</h4>
-                  <CombatLog events={events} maxEntries={8} />
+                  <div className="combat-log-panel">
+                    <h4>Combat Log</h4>
+                    <CombatLog events={events} maxEntries={15} />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* POLITICS TAB */}
+              {activeTab === 'politics' && (
+                <div className="tab-content politics-tab">
+                  <FactionPanel state={state} />
+                </div>
+              )}
+
+              {/* ARCANE TAB */}
+              {activeTab === 'arcane' && (
+                <div className="tab-content arcane-tab">
+                  <div className="arcane-split">
+                    <div className="arcane-left">
+                      <ArtifactForge state={state} onAction={performActionWithFeedback} />
+                    </div>
+                    <div className="arcane-right">
+                      <MorphingStation state={state} onInitiateRitual={(targetRace) => performActionWithFeedback({ worldId: state.id, playerId: state.player.id, type: 'INITIATE_MORPH', payload: { targetRace } })} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CODEX TAB */}
+              {activeTab === 'codex' && (
+                <div className="tab-content codex-tab">
+                  <Codex state={state} />
+                </div>
+              )}
             </div>
           </div>
-        </div>
         )}
 
         <div className={`dev-dock ${devDockOpen ? 'open' : 'collapsed'}`}>
@@ -447,6 +573,129 @@ export default function HomePage() {
                     <button onClick={() => controller.advanceTick(1)}>+1h</button>
                     <button onClick={() => controller.advanceTick(6)}>+6h</button>
                     <button onClick={() => controller.advanceTick(24)}>+24h</button>
+                  </div>
+                </div>
+              )}
+              
+              {isDevMode && controller && (
+                <div style={{ marginTop: 12, borderTop: '1px dashed #444', paddingTop: 8 }}>
+                  <h4>Dev Cheat Menu</h4>
+                  <div style={{ marginBottom: 8, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8 }}>
+                    {/* HP Cheat */}
+                    <label style={{ fontSize: 12 }}>Set HP:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="999"
+                      defaultValue={controller.getState().player?.hp ?? 100}
+                      onChange={(e) => {
+                        const newHp = Math.max(0, Math.min(999, parseInt(e.target.value) || 0));
+                        const s = controller.getState();
+                        s.player.hp = newHp;
+                        controller.publishOptimisticState(s);
+                      }}
+                      style={{ padding: 4, fontSize: 12 }}
+                    />
+                    
+                    {/* Mana Cheat */}
+                    <label style={{ fontSize: 12 }}>Set Mana:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="999"
+                      defaultValue={controller.getState().player?.mp ?? 100}
+                      onChange={(e) => {
+                        const newMp = Math.max(0, Math.min(999, parseInt(e.target.value) || 0));
+                        const s = controller.getState();
+                        s.player.mp = newMp;
+                        controller.publishOptimisticState(s);
+                      }}
+                      style={{ padding: 4, fontSize: 12 }}
+                    />
+                    
+                    {/* Soul Strain Cheat */}
+                    <label style={{ fontSize: 12 }}>Soul Strain:</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      defaultValue={controller.getState().player?.soulStrain ?? 0}
+                      onChange={(e) => {
+                        const strain = parseInt(e.target.value) || 0;
+                        const s = controller.getState();
+                        s.player.soulStrain = strain;
+                        controller.publishOptimisticState(s);
+                      }}
+                      style={{ padding: 0 }}
+                    />
+                    {controller.getState().player?.soulStrain ?? 0}%
+                    
+                    {/* Paradox Cheat */}
+                    <label style={{ fontSize: 12 }}>Paradox:</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="200"
+                      defaultValue={controller.getState().paradox ?? 0}
+                      onChange={(e) => {
+                        const paradox = parseInt(e.target.value) || 0;
+                        const s = controller.getState();
+                        s.paradox = paradox;
+                        controller.publishOptimisticState(s);
+                      }}
+                      style={{ padding: 0 }}
+                    />
+                    {controller.getState().paradox ?? 0}%
+                  </div>
+                  
+                  {/* Faction Reputation Controls */}
+                  <div style={{ marginTop: 8, fontSize: 11 }}>
+                    <strong>Faction Rep:</strong>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginTop: 6 }}>
+                      {(controller.getState().factions || []).map((faction: any) => (
+                        <div key={faction.id} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <span style={{ fontSize: 10, minWidth: 60 }}>{faction.name}:</span>
+                          <input
+                            type="range"
+                            min="-100"
+                            max="100"
+                            value={controller.getState().player?.factionReputation?.[faction.id] ?? 0}
+                            onChange={(e) => {
+                              const rep = parseInt(e.target.value) || 0;
+                              const s = controller.getState();
+                              if (!s.player) s.player = {};
+                              if (!s.player.factionReputation) s.player.factionReputation = {};
+                              s.player.factionReputation[faction.id] = rep;
+                              controller.publishOptimisticState(s);
+                            }}
+                            style={{ flex: 1, padding: 0 }}
+                          />
+                          <span style={{ fontSize: 10, minWidth: 30 }}>{controller.getState().player?.factionReputation?.[faction.id] ?? 0}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Teleport Cheat */}
+                  <div style={{ marginTop: 8 }}>
+                    <label style={{ fontSize: 12 }}>Teleport to Location:</label>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const s = controller.getState();
+                          s.player.locationId = e.target.value;
+                          s.player.travelState = 'resting';
+                          controller.publishOptimisticState(s);
+                          e.target.value = '';
+                        }
+                      }}
+                      style={{ padding: 4, fontSize: 12, marginTop: 4, width: '100%' }}
+                    >
+                      <option value="">-- Select Location --</option>
+                      {(controller.getState().locations || []).map((loc: any) => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}

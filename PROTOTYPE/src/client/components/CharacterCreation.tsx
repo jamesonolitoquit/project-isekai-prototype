@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createPlayerCharacter, getAvailableRaces, applyRacialModifiers, generateDefaultStats, STAT_POINTS_AVAILABLE } from '../../engine/characterCreation';
+import { createPlayerCharacter, getAvailableRaces, generateDefaultStats, STAT_POINTS_AVAILABLE } from '../../engine/characterCreation';
 
 interface CharacterCreationProps {
   onCharacterCreated?: (character: any) => void;
@@ -37,9 +37,7 @@ export default function CharacterCreation({ onCharacterCreated, startingLocation
       return;
     }
     try {
-      const baseStats = { ...stats };
-      const racialStats = applyRacialModifiers(baseStats, selectedRace);
-      const character = createPlayerCharacter(name, selectedRace, racialStats, startingLocation);
+      const character = createPlayerCharacter(name, selectedRace, stats, startingLocation);
       onCharacterCreated?.(character);
     } catch (error) {
       alert(`Failed to create character: ${error instanceof Error ? error.message : 'Unknown error'}`);

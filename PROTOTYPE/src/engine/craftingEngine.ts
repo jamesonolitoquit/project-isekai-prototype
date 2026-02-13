@@ -1,4 +1,6 @@
 import type { InventoryItem } from './worldEngine';
+import { createStackableItem } from './worldEngine';
+import { random } from './prng';
 
 /**
  * Crafting Engine - handles recipe validation and material management
@@ -40,16 +42,13 @@ export function resolveLootTable(
 
   tableEntries.forEach((entry) => {
     // Check if this item drops based on its chance
-    if (Math.random() <= entry.chance) {
+    if (random() <= entry.chance) {
       // Randomly select quantity within range
       const quantity =
-        Math.floor(Math.random() * (entry.maxQuantity - entry.minQuantity + 1)) +
+        Math.floor(random() * (entry.maxQuantity - entry.minQuantity + 1)) +
         entry.minQuantity;
 
-      loot.push({
-        itemId: entry.itemId,
-        quantity
-      });
+      loot.push(createStackableItem(entry.itemId, quantity));
     }
   });
 
@@ -70,7 +69,8 @@ export function validateRecipe(
       (item) => item.itemId === requiredMaterial.itemId
     );
 
-    if (!inventoryItem || inventoryItem.quantity < requiredMaterial.quantity) {
+    // For stackable items, check quantity
+    if (!inventoryItem || (inventoryItem as any).quantity < requiredMaterial.quantity) {
       missingMaterials.push(requiredMaterial);
     }
   });
@@ -90,7 +90,7 @@ export function rollCraftingCheck(
   recipedifficulty: number,
   modifier: number = 0
 ): { success: boolean; roll: number; difficulty: number } {
-  const roll = Math.floor(Math.random() * 20) + 1 + Math.floor(playerInt / 3) + modifier;
+  const roll = Math.floor(random() * 20) + 1 + Math.floor(playerInt / 3) + modifier;
   return {
     success: roll >= recipedifficulty,
     roll,

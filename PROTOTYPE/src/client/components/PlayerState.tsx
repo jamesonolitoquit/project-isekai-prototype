@@ -20,6 +20,8 @@ export default function PlayerState({ state }: PlayerStateProps) {
   const player = state?.player ?? {};
   const hp = player.hp ?? 100;
   const maxHp = player.maxHp ?? 100;
+  const mp = player.mp ?? 0;
+  const maxMp = player.maxMp ?? 0;
   const statusEffects = player.statusEffects ?? [];
 
   // Calculate health bar percentage and color
@@ -28,6 +30,12 @@ export default function PlayerState({ state }: PlayerStateProps) {
   if (healthPercent <= 25) healthBarColor = '#d32f2f'; // Red
   else if (healthPercent <= 50) healthBarColor = '#ff9800'; // Orange
   else if (healthPercent <= 75) healthBarColor = '#fbc02d'; // Yellow
+
+  // Calculate mana bar percentage and color
+  const manaPrecent = maxMp > 0 ? Math.max(0, Math.min(100, (mp / maxMp) * 100)) : 0;
+  let manaBarColor = '#2196f3'; // Blue
+  if (manaPrecent <= 33) manaBarColor = '#ff9800'; // Orange
+  else if (manaPrecent <= 66) manaBarColor = '#4caf50'; // Green
 
   return (
     <div className="player-state" style={{ padding: 12, fontSize: 14 }}>
@@ -70,6 +78,40 @@ export default function PlayerState({ state }: PlayerStateProps) {
           </div>
         </div>
       </div>
+
+      {/* Mana Bar */}
+      {maxMp > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <strong>Mana</strong>
+            <span style={{ fontSize: 12, opacity: 0.8 }}>{Math.ceil(mp)} / {maxMp}</span>
+          </div>
+          <div style={{
+            width: '100%',
+            height: 16,
+            backgroundColor: '#e0e0e0',
+            borderRadius: 4,
+            overflow: 'hidden',
+            border: '1px solid #999'
+          }}>
+            <div style={{
+              width: `${manaPrecent}%`,
+              height: '100%',
+              backgroundColor: manaBarColor,
+              transition: 'width 0.3s ease, background-color 0.3s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 10,
+              color: 'white',
+              fontWeight: 'bold',
+              textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
+            }}>
+              {manaPrecent > 10 && `${Math.round(manaPrecent)}%`}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status Effects */}
       {statusEffects.length > 0 && (

@@ -16,12 +16,17 @@ export interface PlayerCharacter {
   stats: CharacterStats;
   hp: number;
   maxHp: number;
+  mp: number;
+  maxMp: number;
   gold: number;
   location: string;
   quests: Record<string, any>;
   reputation: Record<string, number>;
   dialogueHistory: any[];
-  inventory?: Record<string, number>;
+  inventory?: any[];
+  knowledgeBase?: string[];
+  visitedLocations?: string[];
+  beliefLayer?: { npcLocations: Record<string, string>; npcStats: Record<string, any>; facts: Record<string, boolean>; suspicionLevel: number };
 }
 
 export const STAT_POINTS_AVAILABLE = 20;
@@ -65,28 +70,50 @@ export function validateStatAllocation(stats: CharacterStats): boolean {
 export function createPlayerCharacter(
   name: string,
   race: string,
-  stats: CharacterStats,
+  baseStats: CharacterStats,
   startingLocation: string = 'Eldergrove Village'
 ): PlayerCharacter {
-  if (!validateStatAllocation(stats)) {
+  if (!validateStatAllocation(baseStats)) {
     throw new Error('Invalid stat allocation');
   }
 
+  const stats = applyRacialModifiers(baseStats, race);
+
   const maxHp = 20 + Math.floor(stats.end / 2);
+  const maxMp = 50 + stats.int * 5;
+
+  // Initialize knowledge base with starting location (as array for JSON serialization)
+  const knowledgeBase: any = [`location:${startingLocation.toLowerCase().replace(/\s+/g, '-')}`];
+
+  // Initialize visited locations (as array for JSON serialization)
+  const visitedLocations: any = [startingLocation.toLowerCase().replace(/\s+/g, '-')];
+
+  // Initialize belief layer (empty state, no false beliefs)
+  const beliefLayer = {
+    npcLocations: {},
+    npcStats: {},
+    facts: {},
+    suspicionLevel: 0
+  };
 
   return {
-    id: `player_${Date.now()}`,
+    id: `player_${name.toLowerCase().replace(/\s+/g, '_')}_0`,
     name,
     race,
     stats,
     hp: maxHp,
     maxHp,
+    mp: maxMp,
+    maxMp,
     gold: 0,
     location: startingLocation,
     quests: {},
     reputation: {},
     dialogueHistory: [],
-    inventory: {}
+    inventory: [],
+    knowledgeBase,
+    visitedLocations,
+    beliefLayer
   };
 }
 
@@ -95,18 +122,19 @@ export function createPlayerCharacter(
  */
 export function createCharacterCreatedEvent(
   character: PlayerCharacter,
-  worldInstanceId: string
+  worldInstanceId: string,
+  tick: number = 0
 ): Event {
   return {
     type: 'CHARACTER_CREATED',
     payload: {
       character
     },
-    id: crypto.randomUUID(),
+    id: `character-created-t${tick}`,
     worldInstanceId,
     actorId: character.id,
     templateOrigin: 'character_creation',
-    timestamp: Date.now()
+    timestamp: tick * 1000
   };
 }
 

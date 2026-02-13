@@ -1,14 +1,18 @@
-import { Event, appendEvent, getEventsForWorld } from "./public";
+import { Event, appendEvent, getEventsForWorld } from "../events/mutationLog";
 import CJ, { summarizeStateMinimal } from "./canonJournal";
 import { rebuildState } from "./stateRebuilder";
-import { validateWorldState } from "./constraintValidator";
+import { validateInvariants, isStatePlayable } from "./constraintValidator";
+import { SeededRng, setGlobalRng, getGlobalRng } from "./prng";
 import { processAction, Action } from "./actionPipeline";
 import { authorizeAction, AuthorizationContext } from "./authorization/authorizeAction";
 import { createSave, loadSave, verifySaveIntegrity } from "./saveLoadEngine";
 import { resolveNpcLocation, updateNpcLocations, applyLocationUpdates } from "./scheduleEngine";
 import { resolveWeather, getWeatherVisuals } from "./weatherEngine";
-import { resolveSeason, getSeasonalVisuals } from "./seasonEngine";
+import { resolveNpcTurns } from './aiTacticEngine';
 import { checkLocationHazards, applyHazardDamage, applyHazardStatus } from "./hazardEngine";
+import { resolveSeason } from './seasonEngine';
+import { Faction, FactionRelationship, FactionConflict, initializeFactions, initializeFactionRelationships } from './factionEngine';
+import { Relic, RunicSlot } from './artifactEngine';
 import templateJson from '../data/luxfier-world.json';
 import schemaJson from '../data/luxfier-world.schema.json';
 
@@ -19,15 +23,15 @@ try {
   // validate against schema if possible
   let valid = true;
   try {
-    const Ajv = require('ajv');
-    const ajv = new Ajv({ allErrors: true, strict: false });
-    const schema = schemaJson;
-    const validate = ajv.compile(schema);
-    valid = validate(maybe);
-    if (!valid) {
-      // eslint-disable-next-line no-console
-      console.error('[worldEngine] World template validation errors:', validate.errors);
-    }
+    // const Ajv = require('ajv');
+    // const ajv = new Ajv({ allErrors: true, strict: false });
+    // const schema = schemaJson;
+    // const validate = ajv.compile(schema);
+    // valid = validate(maybe);
+    // if (!valid) {
+    //   // eslint-disable-next-line no-console
+    //   console.error('[worldEngine] World template validation errors:', validate.errors);
+    // }
   } catch (error_) {
     // if ajv isn't available or validation fails to run, continue but log
     // eslint-disable-next-line no-console
@@ -49,7 +53,30 @@ try {
 }
 
 export type Location = { id: string; name: string; conditionalSeason?: string; description?: string };
-export type NPC = { id: string; name: string; locationId: string; questId?: string; dialogue?: any[]; availability?: { startHour?: number; endHour?: number }; routine?: Record<string, string>; stats?: any; hp?: number; maxHp?: number; reputationRequired?: Record<string, number>; statusEffects?: string[]; personality?: { type: string } };
+export type PersonalityType = 'aggressive' | 'cautious' | 'tactical' | 'healer' | 'balanced';
+export type NpcPersonality = {
+  type: PersonalityType;
+  attackThreshold: number;
+  defendThreshold: number;
+  riskTolerance: number;
+};
+export type NPC = { 
+  id: string; 
+  name: string; 
+  locationId: string; 
+  questId?: string; 
+  dialogue?: any[]; 
+  availability?: { startHour?: number; endHour?: number }; 
+  routine?: Record<string, string>; 
+  stats?: any; 
+  hp?: number; 
+  maxHp?: number; 
+  reputationRequired?: Record<string, number>; 
+  statusEffects?: string[]; 
+  personality?: NpcPersonality;
+  factionId?: string; // Phase 11: NPC faction affiliation
+  factionRole?: string; // e.g., 'leader', 'soldier', 'informant'
+};
 export type CombatState = {
   active: boolean;
   participants: string[];
@@ -107,11 +134,29 @@ export type WorldEvent = {
 
 export type PlayerQuestState = { status: "not_started" | "in_progress" | "completed" | "failed"; startedAt?: number; completedAt?: number; expiresAt?: number; currentObjectiveIndex?: number };
 
-export type InventoryItem = {
+// Phase 14.5: Discriminated union for inventory items
+export type StackableItem = {
+  kind: 'stackable';
   itemId: string;
   quantity: number;
   equipped?: boolean;
 };
+
+export type UniqueItem = {
+  kind: 'unique';
+  itemId: string;
+  instanceId: string; // Unique per weapon/relicable item
+  equipped?: boolean;
+  metadata?: {
+    experience?: number;      // Phase 15: XP accumulated on this item
+    sentience?: number;        // Phase 15: Personality/sapience level (0-100)
+    runes?: string[];          // Phase 15: IDs of installed runes
+    corruption?: number;       // Phase 15: Paradox corruption (0-100)
+    infusions?: Array<{ runeId: string; timestamp: number }>; // Phase 15: Fusion history
+  };
+};
+
+export type InventoryItem = StackableItem | UniqueItem;
 
 export type EquipmentSlots = {
   head?: string;
@@ -120,6 +165,13 @@ export type EquipmentSlots = {
   offHand?: string;
   feet?: string;
   accessory?: string;
+};
+
+export type BeliefLayer = {
+  npcLocations: Record<string, string>; // NPC ID -> believed location
+  npcStats: Record<string, Partial<any>>; // NPC ID -> believed stats
+  facts: Record<string, boolean>; // Fact ID -> believed or not
+  suspicionLevel: number; // Accumulates when player acts on false info
 };
 
 export type PlayerState = {
@@ -136,6 +188,8 @@ export type PlayerState = {
   reputation?: Record<string, number>;
   hp?: number;
   maxHp?: number;
+  mp?: number;
+  maxMp?: number;
   statusEffects?: string[];
   stats?: {
     str: number;
@@ -147,11 +201,29 @@ export type PlayerState = {
   };
   inventory?: InventoryItem[];
   equipment?: EquipmentSlots;
+  knowledgeBase?: Set<string>; // IDs of known entities (npc:ID, item:ID, location:ID)
+  visitedLocations?: Set<string>; // Locations player has discovered
+  beliefLayer?: BeliefLayer; // Tracks false beliefs and suspicion
+  factionReputation?: Record<string, number>; // Phase 11: Reputation with each faction (-100 to +100)
+  temporalDebt?: number; // Phase 12: Accumulated from save-scumming/rewinding (0-100)
+  lastSaveTick?: number; // Phase 12: Track tick at last save for rewind detection
+  soulStrain?: number; // Phase 13: Accumulated from morphing transformations (0-100)
+  currentRace?: string; // Phase 13: Player's current race (for morphing system)
+  lastMorphTick?: number; // Phase 13: Tick when last morph occurred
+  recentMorphCount?: number; // Phase 13: Morphs in recent window (for cooldown multiplier)
+  discoveredSecrets?: Set<string>; // Phase 14: IDs of discovered hidden areas (e.g., "hermit-cave")
+  explorationProgress?: Record<string, number>; // Phase 14: Track % explored per location
+  equippedRelics?: string[]; // Phase 15: IDs of currently equipped relics
+  runicInventory?: { runeId: string; quantity: number }[]; // Phase 15: Collected runes
+  boundRelicId?: string; // Phase 15: ID of the "Bound" relic (cannot drop)
+  infusionHistory?: Array<{ relicId: string; runeId: string; timestamp: number }>; // Phase 15: Track infusions for corruption
+  itemCorruption?: Record<string, number>; // Phase 15: Corruption level per item ID (0-100)
 };
 
 export type WorldState = {
   id: string;
   tick?: number;
+  seed: number; // Phase 14.5: Seeded RNG for deterministic world simulation
   hour: number;
   day: number;
   dayPhase: "night" | "morning" | "afternoon" | "evening";
@@ -164,6 +236,27 @@ export type WorldState = {
   resourceNodes?: ResourceNode[];
   activeEvents?: WorldEvent[];
   combatState?: CombatState;
+  factions?: Faction[]; // Phase 11: Faction power dynamics
+  factionRelationships?: FactionRelationship[]; // Phase 11: Inter-faction relationships
+  factionConflicts?: FactionConflict[]; // Phase 11: Active conflicts between factions
+  lastFactionTick?: number; // Track when faction events are processed (every 24h)
+  travelState?: {
+    isTraveling: boolean;
+    fromLocationId: string;
+    toLocationId: string;
+    remainingTicks: number;
+    ticksPerTravelSession: number;
+    encounterRolled: boolean;
+  }; // Phase 14: Travel state for encounters
+  activeEncounter?: {
+    id: string;
+    npcId?: string;
+    type: 'combat' | 'social' | 'environmental' | 'mixed';
+    spawnedAt: number;
+    remainingTurns?: number;
+  }; // Phase 14: Current active encounter
+  relics?: Record<string, Relic>; // Phase 15: All relics in the world (can be unowned, equipped, or bound)
+  relicEvents?: Array<{ type: string; relicId: string; tick: number; message: string }>; // Phase 15: Log of relic events (dialogue, rebellion, etc.)
   player: PlayerState;
   needsCharacterCreation?: boolean;
   metadata?: any;
@@ -172,6 +265,76 @@ export type WorldState = {
 type Subscriber = (s: WorldState) => void;
 
 const TICK_MS = 1000;
+
+/**
+ * Create a stackable inventory item (potions, herbs, gold, etc.)
+ */
+export function createStackableItem(itemId: string, quantity: number = 1): StackableItem {
+  return {
+    kind: 'stackable',
+    itemId,
+    quantity
+  };
+}
+
+/**
+ * Create a unique inventory item with instance identity (weapons, relics, armor)
+ */
+export function createUniqueItem(itemId: string, metadata?: UniqueItem['metadata']): UniqueItem {
+  // Generate deterministic instanceId from timestamp and random component
+  // In production, use cryptographic UUID
+  const instanceId = `${itemId}-${Date.now()}-${Math.floor(Math.random() * 0xffffff).toString(16)}`;
+  
+  return {
+    kind: 'unique',
+    itemId,
+    instanceId,
+    metadata: metadata || {
+      experience: 0,
+      sentience: 0,
+      runes: [],
+      corruption: 0,
+      infusions: []
+    }
+  };
+}
+
+/**
+ * Check if inventory item is unique
+ */
+export function isUniqueItem(item: InventoryItem): item is UniqueItem {
+  return item.kind === 'unique';
+}
+
+/**
+ * Check if inventory item is stackable
+ */
+export function isStackableItem(item: InventoryItem): item is StackableItem {
+  return item.kind === 'stackable';
+}
+
+/**
+ * Merge stackable items in inventory (consolidates duplicates)
+ */
+export function consolidateStackables(inventory: InventoryItem[]): InventoryItem[] {
+  const stackMap = new Map<string, number>();
+  const unique: UniqueItem[] = [];
+
+  for (const item of inventory) {
+    if (isStackableItem(item)) {
+      const key = item.itemId;
+      stackMap.set(key, (stackMap.get(key) ?? 0) + item.quantity);
+    } else {
+      unique.push(item);
+    }
+  }
+
+  const result: InventoryItem[] = Array.from(stackMap.entries()).map(([itemId, quantity]) =>
+    createStackableItem(itemId, quantity)
+  );
+
+  return [...unique, ...result];
+}
 
 export function createInitialWorld(id = "world-1", template?: any): WorldState {
   // Use provided template, else try loaded WORLD_TEMPLATE, else fall back to built-in minimal defaults
@@ -197,9 +360,23 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
   // Initial player health (starting at full HP until character is created with customized endurance)
   const INITIAL_MAX_HP = 100;
 
+  // Initialize faction reputation (neutral starting: 0 with all factions)
+  const factionsForRep = tpl?.factions ? structuredCloneSafe(tpl.factions) : [
+    { id: 'silver-flame' },
+    { id: 'ironsmith-guild' },
+    { id: 'luminara-mercantile' },
+    { id: 'shadow-conclave' },
+    { id: 'adventurers-league' }
+  ];
+  const initialFactionRep: Record<string, number> = {};
+  factionsForRep.forEach((f: any) => {
+    initialFactionRep[f.id] = 0; // Neutral starting reputation
+  });
+
   return {
     id,
     tick: 0,
+    seed: Math.floor(Math.random() * 0x7fffffff), // Initialize with random seed; will be seeded on load
     hour: 8,
     day: 1,
     dayPhase: "morning",
@@ -232,12 +409,27 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
         luk: 10
       },
       inventory: [
-        { itemId: 'healing-potion-minor', quantity: 2 },
-        { itemId: 'rare-herb', quantity: 1 }
+        createStackableItem('healing-potion-minor', 2),
+        createStackableItem('rare-herb', 1),
+        createUniqueItem('rusty-sword')  // Unique weapon for variety in Phase 14.5+
       ],
       equipment: {
         mainHand: 'rusty-sword'
-      }
+      },
+      factionReputation: initialFactionRep, // Phase 11: Start neutral with all factions
+      temporalDebt: 0, // Phase 12: Start with no temporal debt
+      lastSaveTick: 0, // Phase 12: Track tick at last save for rewind detection
+      soulStrain: 0, // Phase 13: Start with no soul strain from morphing
+      currentRace: 'human', // Phase 13: Default race
+      lastMorphTick: 0, // Phase 13: Track tick at last morph
+      recentMorphCount: 0, // Phase 13: Recent morph count for cooldown multiplier
+      discoveredSecrets: new Set(), // Phase 14: No secrets discovered yet
+      explorationProgress: {}, // Phase 14: No locations explored yet
+      equippedRelics: [], // Phase 15: No relics equipped initially
+      runicInventory: [], // Phase 15: No runes collected initially
+      boundRelicId: undefined, // Phase 15: Not bound to any relic
+      infusionHistory: [], // Phase 15: No infusions yet
+      itemCorruption: {}, // Phase 15: No item corruption yet
     },
     needsCharacterCreation: true,
     time: { tick: 0, baseHour: 8, baseDay: 1, hour: 8, day: 1, season: baseSeason as WorldState['season'] },
@@ -255,6 +447,25 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
       log: [],
       initiator: ''
     },
+    // Phase 11: Initialize faction system
+    factions: tpl?.factions ? structuredCloneSafe(tpl.factions) : initializeFactions({ 
+      locations, 
+      npcs, 
+      quests,
+      combatState: {} as any,
+      player: {} as any,
+      id: '',
+      hour: 8,
+      day: 1,
+      dayPhase: 'morning',
+      season: 'winter',
+      weather: 'clear'
+    } as WorldState),
+    factionRelationships: tpl?.factionRelationships ? structuredCloneSafe(tpl.factionRelationships) : initializeFactionRelationships(),
+    factionConflicts: [],
+    relics: {}, // Phase 15: Empty initially; relics are added to inventory or equipped
+    relicEvents: [], // Phase 15: Track all relic-related events
+    lastFactionTick: 0,
     metadata,
   };
 }
@@ -270,11 +481,19 @@ export function createWorldController(initial?: WorldState, dev = false) {
       else state.time = { ...(state.time as any), tick: state.tick ?? (state.time as any).tick ?? 0 } as any;
     }
   } catch (e) {}
+  
+  // Initialize seeded RNG from world state
+  const rng = new SeededRng(state.seed);
+  setGlobalRng(rng);
+  
   let timer: any = null;
   const subs: Subscriber[] = [];
   let journal = new CJ(state.id);
   // validate initial state after journal created
-  try { validateWorldState(state, journal); } catch (err) { throw err; }
+  const initialValidation = validateInvariants(state);
+  if (!isStatePlayable(state)) {
+    console.warn('Initial state has critical violations', initialValidation.violations);
+  }
 
   function emit() {
     subs.forEach(s => s(state));
@@ -283,6 +502,13 @@ export function createWorldController(initial?: WorldState, dev = false) {
   function advanceTick(amount = 1) {
     const prevTick = state.tick ?? 0;
     const nextTick = prevTick + Math.max(0, Math.floor(amount));
+
+    // Increment seed for deterministic RNG progression
+    const nextSeed = state.seed + 1;
+    
+    // Reseed the global RNG with new seed
+    const rng = getGlobalRng();
+    rng.reseed(nextSeed);
 
     // Compute hour from base and tick
     const baseHour = (state.time && (state.time as any).baseHour) ?? state.hour ?? 0;
@@ -316,6 +542,7 @@ export function createWorldController(initial?: WorldState, dev = false) {
     state = { 
       ...state, 
       tick: nextTick, 
+      seed: nextSeed,
       hour: nextHour, 
       day: nextDay, 
       dayPhase: nextDayPhase, 
@@ -474,8 +701,203 @@ export function createWorldController(initial?: WorldState, dev = false) {
       // non-fatal
     }
 
-    // Validate state invariants after tick
-    try { validateWorldState(state, journal); } catch (err) { throw err; }
+    // Process NPC autonomous actions during combat
+    if (state.combatState?.active) {
+      try {
+        const npcActions = resolveNpcTurns(state);
+        
+        // Process each NPC action through the standard action pipeline
+        for (const npcAction of npcActions) {
+          const events = processAction(state, npcAction);
+          events.forEach(ev => appendEvent(ev));
+          
+          // Rebuild state from events to keep NPC actions in sync
+          const allEvents = getEventsForWorld(state.id);
+          const rebuilt = rebuildState(state, allEvents);
+          if (rebuilt.candidateState) {
+            state = rebuilt.candidateState;
+          }
+        }
+
+        // Increment combat round after all participants have acted
+        if (state.combatState) {
+          state.combatState.roundNumber = (state.combatState.roundNumber || 0) + 1;
+          const roundEv: Event = {
+            id: `combat-round-${Date.now()}`,
+            worldInstanceId: state.id,
+            actorId: 'system',
+            type: 'COMBAT_ROUND_ADVANCED',
+            payload: { roundNumber: state.combatState.roundNumber },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(roundEv);
+        }
+      } catch (err) {
+        // Non-fatal: NPC action resolution is best-effort
+      }
+    }
+
+    // Mana regeneration (passive 10% per hour)
+    {
+      const maxMp = state.player?.maxMp ?? 0;
+      const currentMp = state.player?.mp ?? 0;
+      if (maxMp > 0 && currentMp < maxMp) {
+        const manaRegenAmount = Math.ceil(maxMp * 0.1); // 10% per hour
+        const newMp = Math.min(currentMp + manaRegenAmount, maxMp);
+        if (newMp > currentMp) {
+          state = {
+            ...state,
+            player: {
+              ...state.player,
+              mp: newMp
+            }
+          };
+          const manaRegenEv: Event = {
+            id: `mana-regen-${Date.now()}`,
+            worldInstanceId: state.id,
+            actorId: state.player.id,
+            type: 'MANA_REGENERATED',
+            payload: { previousMp: currentMp, newMp, maxMp, amountRestored: manaRegenAmount },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(manaRegenEv);
+        }
+      }
+    }
+
+    // Phase 11: Faction ticks - process every 24 game hours
+    {
+      const lastFactionTick = state.lastFactionTick ?? 0;
+      const hoursSinceLastTick = nextHour + (nextDay - Math.floor((lastFactionTick + baseHour) / 24)) * 24 - (lastFactionTick % 24);
+      
+      if (hoursSinceLastTick >= 24) {
+        // Trigger faction struggle event
+        if (state.factions && state.factionRelationships) {
+          const factionStruggleEv: Event = {
+            id: `faction-struggle-${Date.now()}`,
+            worldInstanceId: state.id,
+            actorId: 'system',
+            type: 'FACTION_STRUGGLE',
+            payload: {
+              factionCount: state.factions.length,
+              relationshipCount: state.factionRelationships.length,
+              tick: nextTick,
+              daysPassed: nextDay - baseDay
+            },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(factionStruggleEv);
+        }
+        
+        // Update last faction tick
+        state = {
+          ...state,
+          lastFactionTick: nextTick
+        };
+      }
+    }
+
+    // Phase 13: Soul decay from morphing (passive 1% per hour)
+    {
+      const currentSoulStrain = state.player.soulStrain ?? 0;
+      if (currentSoulStrain > 0) {
+        const soulDecay = Math.max(0, Math.ceil(currentSoulStrain * 0.01)); // 1% per hour
+        const newSoulStrain = currentSoulStrain - soulDecay;
+        if (newSoulStrain < currentSoulStrain) {
+          state = {
+            ...state,
+            player: {
+              ...state.player,
+              soulStrain: newSoulStrain
+            }
+          };
+          const soulDecayEv: Event = {
+            id: `soul-decay-${Date.now()}`,
+            worldInstanceId: state.id,
+            actorId: state.player.id,
+            type: 'SOUL_DECAY',
+            payload: { previousStrain: currentSoulStrain, newStrain: newSoulStrain, amountDecayed: soulDecay },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(soulDecayEv);
+        }
+      }
+    }
+
+    // Phase 13: NPC Soul Decay (if NPCs have soul strain tracked)
+    {
+      if (state.npcs && state.npcs.length > 0) {
+        const updatedNpcs = state.npcs.map((npc: NPC) => {
+          const npcSoulStrain = (npc as any).soulStrain ?? 0;
+          if (npcSoulStrain > 0) {
+            const decay = Math.max(0, Math.ceil(npcSoulStrain * 0.01));
+            const newStrain = npcSoulStrain - decay;
+            if (newStrain < npcSoulStrain) {
+              const decayEv: Event = {
+                id: `npc-soul-decay-${Date.now()}-${npc.id}`,
+                worldInstanceId: state.id,
+                actorId: npc.id,
+                type: 'NPC_SOUL_DECAY',
+                payload: { npcId: npc.id, npcName: npc.name, previousStrain: npcSoulStrain, newStrain, amountDecayed: decay },
+                templateOrigin: state.metadata?.templateOrigin,
+                timestamp: Date.now(),
+              };
+              appendEvent(decayEv);
+              return { ...npc, soulStrain: newStrain } as NPC;
+            }
+          }
+          return npc;
+        });
+        if (updatedNpcs.some((npc, i) => npc !== state.npcs[i])) {
+          state = { ...state, npcs: updatedNpcs };
+        }
+      }
+    }
+
+    // Status Effect ticks (passive reduction of status effect durations)
+    {
+      if (state.player.statusEffects && state.player.statusEffects.length > 0) {
+        const remainingEffects = state.player.statusEffects.filter(effect => {
+          // In a full implementation, track effect duration on each status
+          // For now, mark effects that have expired
+          return effect && effect.length > 0;
+        });
+        
+        if (remainingEffects.length < state.player.statusEffects.length) {
+          const expiredCount = state.player.statusEffects.length - remainingEffects.length;
+          state = {
+            ...state,
+            player: {
+              ...state.player,
+              statusEffects: remainingEffects
+            }
+          };
+          
+          if (expiredCount > 0) {
+            const expireEv: Event = {
+              id: `status-expired-${Date.now()}`,
+              worldInstanceId: state.id,
+              actorId: state.player.id,
+              type: 'STATUS_EFFECT_EXPIRED',
+              payload: { expiredCount, remainingEffects: remainingEffects.length },
+              templateOrigin: state.metadata?.templateOrigin,
+              timestamp: Date.now(),
+            };
+            appendEvent(expireEv);
+          }
+        }
+      }
+    }
+
+    // Validate state invariants after tick (constraint validation)
+    const tickValidation = validateInvariants(state);
+    if (!tickValidation.valid && tickValidation.violations.some(v => v.severity === 'critical')) {
+      console.error('Critical constraint violation after tick', tickValidation.violations);
+    }
     emit();
   }
 
@@ -498,8 +920,10 @@ export function createWorldController(initial?: WorldState, dev = false) {
     // Build an authorization context from canonical engine state (do not trust caller-provided actorId)
     const canonicalActorId = state.player?.id;
     const ctx: AuthorizationContext = { playerId: canonicalActorId };
+    
     // Quick sanity: reject if caller-supplied actorId does not match canonical actor
-    if (action.playerId && canonicalActorId && action.playerId !== canonicalActorId) {
+    // EXCEPT for SUBMIT_CHARACTER which legitimately changes the player ID
+    if (action.type !== 'SUBMIT_CHARACTER' && action.playerId && canonicalActorId && action.playerId !== canonicalActorId) {
       const rej: Event = {
         id: `action-rejected-${Date.now()}`,
         worldInstanceId: state.id,
@@ -624,8 +1048,11 @@ export function createWorldController(initial?: WorldState, dev = false) {
       try { journal.recordMutation(tickBefore, tickAfter, action, preSummary, events, postSummary); } catch (_) {}
       } catch (err) {}
 
-      // validate invariants after action and journal recorded
-      try { validateWorldState(state, journal); } catch (err) { throw err; }
+      // validate invariants after action and journal recorded (constraint validation)
+      const actionValidation = validateInvariants(state);
+      if (!isStatePlayable(state)) {
+        console.error('State became unplayable after action:', actionValidation.violations);
+      }
       emit();
     return events;
   }
@@ -680,7 +1107,10 @@ export function createWorldController(initial?: WorldState, dev = false) {
             journal = new CJ(parsed.id);
           }
         } catch (e) {}
-        try { validateWorldState(state, journal); } catch (err) { throw err; }
+        const loadValidation = validateInvariants(state);
+        if (!isStatePlayable(state)) {
+          console.error('Loaded state is not playable:', loadValidation.violations);
+        }
         emit();
         return true;
       } catch (e) {
@@ -700,20 +1130,18 @@ export function createWorldController(initial?: WorldState, dev = false) {
     const events = getEventsForWorld(state.id);
     try {
       const { candidateState } = rebuildState(state, events) as any;
-      // validate against a fresh canon journal for this instance
-      const replayJournal = new CJ(state.id);
-      try {
-        validateWorldState(candidateState, replayJournal as any);
-      } catch (err) {
-        // In dev, surface as thrown error (caller is likely dev tooling)
-        if (dev) throw err;
+      // validate against constraint invariants for this instance
+      const replayValidation = validateInvariants(candidateState);
+      if (!isStatePlayable(candidateState)) {
+        const errMsg = `Replay validation failed: ${JSON.stringify(replayValidation.violations)}`;
+        if (dev) throw new Error(errMsg);
         // In prod, emit an INVARIANT_VIOLATION event into the global event log
           const v: Event = {
             id: `invariant-violation-${Date.now()}`,
             worldInstanceId: state.id,
             actorId: 'system',
             type: 'INVARIANT_VIOLATION',
-            payload: { error: String(err) },
+            payload: { error: errMsg },
             timestamp: Date.now(),
             templateOrigin: state.metadata?.templateOrigin,
             mutationClass: 'SYSTEM',

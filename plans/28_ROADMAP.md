@@ -1,8 +1,11 @@
 # 28 — Development Roadmap
 
-> Project Isekai — Luxfier Alpha
+> Project Isekai — Luxfier Alpha (Phase 2 Active)
 > Master Reference: `plans/00_MASTER_REFERENCE.md`
 > Dependencies: ALL plan files (00–27)
+> 
+> **Phase 1 Status:** ✅ COMPLETE (Prototype hardened with 0 TypeScript errors, 44 tests passing)
+> **Phase 2 Status:** 🚀 ACTIVE (Alpha sandbox initialized, independent build verified)
 
 Single source of truth for **what ships when**. Design layers (01–27) describe *what* each system is;
 this file describes *when* each system gets built and the acceptance criteria for each phase gate.

@@ -5,29 +5,35 @@
   "locations": [
     {
       "id": "eldergrove-village",
-      "name": "Eldergrove Village"
+      "name": "Eldergrove Village",
+      "spiritDensity": 0.3
     },
     {
       "id": "luminara-grand-market",
-      "name": "Luminara Grand Market"
+      "name": "Luminara Grand Market",
+      "spiritDensity": 0.2
     },
     {
       "id": "thornwood-depths",
-      "name": "Thornwood Depths"
+      "name": "Thornwood Depths",
+      "spiritDensity": 0.6
     },
     {
       "id": "moonwell-shrine",
-      "name": "Moonwell Shrine"
+      "name": "Moonwell Shrine",
+      "spiritDensity": 0.9
     },
     {
       "id": "forge-summit",
-      "name": "Forge Summit"
+      "name": "Forge Summit",
+      "spiritDensity": 0.1
     },
     {
       "id": "frozen-lake",
       "name": "Frozen Lake",
       "conditionalSeason": "winter",
-      "description": "A pristine frozen expanse, revealed only in the depths of winter"
+      "description": "A pristine frozen expanse, revealed only in the depths of winter",
+      "spiritDensity": 0.4
     }
   ],
   "npcs": [
@@ -81,7 +87,9 @@
         "luk": 10
       },
       "hp": 45,
-      "maxHp": 45
+      "maxHp": 45,
+      "factionId": "silver-flame",
+      "factionRole": "leader"
     },
     {
       "id": "smitty-ironhammer",
@@ -111,7 +119,9 @@
         "luk": 9
       },
       "hp": 55,
-      "maxHp": 55
+      "maxHp": 55,
+      "factionId": "ironsmith-guild",
+      "factionRole": "leader"
     },
     {
       "id": "sergeant-brynn",
@@ -138,7 +148,9 @@
         "luk": 10
       },
       "hp": 60,
-      "maxHp": 60
+      "maxHp": 60,
+      "factionId": "luminara-mercantile",
+      "factionRole": "soldier"
     }
   ],
   "quests": [
@@ -253,6 +265,44 @@
         "severity": "minor",
         "chance": 0.05,
         "damagePerTick": 1
+      }
+    }
+  ],
+  "essenceAltars": [
+    {
+      "id": "moonwell-altar",
+      "locationId": "moonwell-shrine",
+      "name": "Moonwell Sacred Altar",
+      "description": "A mystical altar thrumming with ancient power. The dual moons are reflected in the crystal waters below. Here, essence can be reshaped.",
+      "power": 0.9,
+      "ritualType": "essence-transformation",
+      "requirements": {
+        "minIntelligence": 10,
+        "minEndurance": 8
+      }
+    },
+    {
+      "id": "thornwood-altar",
+      "locationId": "thornwood-depths",
+      "name": "Thornwood Essence Stone",
+      "description": "A weathered stone covered in twisted thorns and glowing runes. Wild magic crackles around it. Morphing here is more dangerous but addictive.",
+      "power": 0.7,
+      "ritualType": "primal-morph",
+      "requirements": {
+        "minIntelligence": 9,
+        "minEndurance": 9
+      }
+    },
+    {
+      "id": "forge-altar",
+      "locationId": "forge-summit",
+      "name": "Forge Resonance Anvil",
+      "description": "An ancient anvil glowing with forge-fire. It pulses with rhythmic resonance. Dwarven craftsmanship at its finest. Morphing is methodical and controlled here.",
+      "power": 0.6,
+      "ritualType": "tempered-morph",
+      "requirements": {
+        "minIntelligence": 8,
+        "minEndurance": 10
       }
     }
   ],

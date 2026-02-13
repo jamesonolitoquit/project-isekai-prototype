@@ -1,4 +1,5 @@
-import type { WorldState } from './worldEngine';
+import type { WorldState, NPC } from './worldEngine';
+import { random } from './prng';
 
 export interface DialogueContext {
   weather: 'clear' | 'snow' | 'rain';
@@ -26,37 +27,31 @@ export interface DialogueNode {
 }
 
 /**
- * Check if an NPC is available at the current game hour
- * NPC availability is defined as hour intervals [start, end)
+ * Check if an NPC is available based on faction reputation
+ * Uses player's faction reputation (not per-NPC reputation) for access gating
  */
 export function checkReputationGate(npc: any, player: any): { available: boolean; requiredReputation?: number; currentReputation?: number; message?: string } {
-  if (!npc.reputationRequired) {
+  // If NPC has no faction, allow access
+  if (!npc.factionId) {
     return { available: true };
   }
 
-  const npcRepReq = npc.reputationRequired;
-  const currentRep = player.reputation?.[npc.id] ?? 0;
+  // Get faction reputation (0 = neutral)
+  const factionReputation = player.factionReputation?.[npc.factionId] ?? 0;
 
-  // Check if any reputation gate applies to this NPC
-  if (npcRepReq.minFriendly !== undefined && currentRep < npcRepReq.minFriendly) {
+  // Threshold logic: <-50 hostile, -50 to +50 neutral/unrestricted, >50 friendly
+  if (factionReputation < -50) {
+    // Hostile: NPC refuses dialogue
     return {
       available: false,
-      requiredReputation: npcRepReq.minFriendly,
-      currentReputation: currentRep,
-      message: `You need more reputation with ${npc.name} (${currentRep}/${npcRepReq.minFriendly})`
+      requiredReputation: -50,
+      currentReputation: factionReputation,
+      message: `The ${npc.factionId} faction rejects you. ${npc.name} will not speak with you.`
     };
   }
 
-  if (npcRepReq.maxHostile !== undefined && currentRep < npcRepReq.maxHostile) {
-    return {
-      available: false,
-      requiredReputation: npcRepReq.maxHostile,
-      currentReputation: currentRep,
-      message: `${npc.name} will not interact with you (${currentRep} hostility)`
-    };
-  }
-
-  return { available: true, currentReputation: currentRep };
+  // Neutral or friendly - dialogue available
+  return { available: true, currentReputation: factionReputation };
 }
 
 /**
@@ -103,14 +98,19 @@ export function isNpcAvailable(npc: any, hour: number): boolean {
 }
 
 /**
- * Get NPC disposition towards player based on reputation
+ * Get NPC disposition towards player based on faction reputation
  */
 export function getNpcDisposition(npc: any, player: any): 'friendly' | 'neutral' | 'hostile' {
-  const reputation = player.reputation?.[npc.id] ?? 0;
+  // If NPC has no faction, default to neutral
+  if (!npc.factionId) {
+    return 'neutral';
+  }
 
-  if (reputation >= 50) {
+  const factionReputation = player.factionReputation?.[npc.factionId] ?? 0;
+
+  if (factionReputation > 50) {
     return 'friendly';
-  } else if (reputation <= -50) {
+  } else if (factionReputation < -50) {
     return 'hostile';
   }
   return 'neutral';
@@ -133,26 +133,26 @@ function selectContextualDialogue(npc: any, context: DialogueContext): string {
     const key = `quest_completed_${questId}`;
     if (variations[key]) {
       const options = Array.isArray(variations[key]) ? variations[key] : [variations[key]];
-      return options[Math.floor(Math.random() * options.length)];
+      return options[Math.floor(random() * options.length)];
     }
   }
 
   // Check weather variations
   if (variations[context.weather]) {
     const options = Array.isArray(variations[context.weather]) ? variations[context.weather] : [variations[context.weather]];
-    return options[Math.floor(Math.random() * options.length)];
+    return options[Math.floor(random() * options.length)];
   }
 
   // Check season variations
   if (variations[context.season]) {
     const options = Array.isArray(variations[context.season]) ? variations[context.season] : [variations[context.season]];
-    return options[Math.floor(Math.random() * options.length)];
+    return options[Math.floor(random() * options.length)];
   }
 
   // Default variations
   if (variations.default) {
     const options = Array.isArray(variations.default) ? variations.default : [variations.default];
-    return options[Math.floor(Math.random() * options.length)];
+    return options[Math.floor(random() * options.length)];
   }
 
   // Ultimate fallback to legacy dialogue
@@ -200,12 +200,14 @@ export function resolveDialogue(
         status: questState.status || 'not_started'
       }));
 
+    const factionRep = npc.factionId ? (player.factionReputation?.[npc.factionId] ?? 0) : 0;
+
     context = {
       weather: state.weather as any,
       season: state.season as any,
       hour: state.hour,
       dayPhase: state.dayPhase as any,
-      reputation: player.reputation?.[npc.id] ?? 0,
+      reputation: factionRep,  // Now uses faction reputation
       questHistory
     };
   }
@@ -235,17 +237,37 @@ export function resolveDialogue(
 }
 
 /**
- * Get NPC greeting text based on disposition
+ * Get NPC greeting text based on disposition and faction
  */
 export function getNpcGreeting(npc: any, disposition: 'friendly' | 'neutral' | 'hostile'): string {
   const baseGreeting = npc.dialogue?.[0] || `Greetings, traveler.`;
   
   if (disposition === 'friendly') {
-    return `${npc.name} smiles warmly.`;
+    return `${npc.name} smiles warmly. "Welcome, ally."`;
   } else if (disposition === 'hostile') {
-    return `${npc.name} eyes you with suspicion.`;
+    return `${npc.name} narrows their eyes. "We have nothing to discuss."`;
   }
   return baseGreeting;
+}
+
+/**
+ * Get faction-based dialogue state (for hostile interactions)
+ */
+export function getFactionBlockedDialogue(npc: any, player: any): { blocked: boolean; replacementText?: string } {
+  if (!npc.factionId) {
+    return { blocked: false };
+  }
+
+  const factionReputation = player.factionReputation?.[npc.factionId] ?? 0;
+
+  if (factionReputation < -50) {
+    return {
+      blocked: true,
+      replacementText: `${npc.name} will not speak with you. The ${npc.factionId} faction views you as an enemy.`
+    };
+  }
+
+  return { blocked: false };
 }
 
 /**

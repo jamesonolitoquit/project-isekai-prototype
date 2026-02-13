@@ -1,4 +1,5 @@
 import type { Event } from '../events/mutationLog';
+import { random } from './prng';
 
 export interface CombatantStats {
   str: number;
@@ -51,6 +52,57 @@ export function applyEquipmentBonuses(baseStats: CombatantStats, bonuses: Partia
   };
 }
 
+/**
+ * Calculate stat scaling based on level progression
+ * Prevents exponential growth while maintaining progression feel
+ */
+export function calculateStatCurve(baseStat: number, level: number): number {
+  // Logarithmic progression: slower growth at higher levels
+  // Formula: base + (level - 1) * (1 + log(level) * 0.15)
+  if (level <= 1) return baseStat;
+  const growth = Math.log(level) * 0.15;
+  return Math.floor(baseStat + (level - 1) * (1 + growth));
+}
+
+/**
+ * Check for critical strike
+ * Based on LUK and AGI, with diminishing returns
+ */
+export function rollCriticalStrike(attackerStats: CombatantStats): { critical: boolean; multiplier: number } {
+  const baseCritChance = 0.05; // 5% base
+  const lukBonus = Math.min(0.2, attackerStats.luk * 0.01); // LUK adds up to 20%
+  const agiBonus = Math.min(0.1, attackerStats.agi * 0.005); // AGI adds up to 10%
+  const totalCritChance = baseCritChance + lukBonus + agiBonus;
+
+  if (random() < totalCritChance) {
+    // Critical multiplier: 1.5x to 2.0x based on LUK
+    const multiplier = 1.5 + (attackerStats.luk / 100) * 0.5;
+    return {
+      critical: true,
+      multiplier: Math.min(2.0, multiplier)
+    };
+  }
+
+  return { critical: false, multiplier: 1.0 };
+}
+
+/**
+ * Check for armor piercing
+ * High armor penetration bypasses END-based defense
+ */
+export function rollArmorPiercing(attackerStats: CombatantStats, armor: number = 0): { pierces: boolean; penetration: number } {
+  const baseArmorPiercing = 0.1; // 10% base penetration
+  const strPenetration = Math.min(0.3, attackerStats.str * 0.015); // STR adds up to 30%
+  const totalPenetration = baseArmorPiercing + strPenetration;
+
+  const rolls = random();
+  if (rolls < totalPenetration) {
+    return { pierces: true, penetration: totalPenetration };
+  }
+
+  return { pierces: false, penetration: 0 };
+}
+
 export interface CombatResult {
   attacker: string;
   defenders: string[];
@@ -64,7 +116,7 @@ export interface CombatResult {
  * Roll a check against a difficulty with optional stat modifier
  */
 export function rollCheck(stat: number, difficulty: number, modifier: number = 0): { success: boolean; roll: number } {
-  const roll = Math.floor(Math.random() * 20) + 1 + Math.floor(stat / 3) + modifier;
+  const roll = Math.floor(random() * 20) + 1 + Math.floor(stat / 3) + modifier;
   return {
     success: roll >= difficulty,
     roll
@@ -73,15 +125,32 @@ export function rollCheck(stat: number, difficulty: number, modifier: number = 0
 
 /**
  * Calculate damage based on attacker and defender stats
+ * Incorporates critical strikes, armor piercing, and scaling
  */
 export function calculateDamage(attackerStats: CombatantStats, defenderStats: CombatantStats): number {
   const attackerMultiplier = 1 + attackerStats.str / 100;
-  const defenseMultiplier = 1 + Math.max(0, defenderStats.end / 150);
+  
+  // Base defense calculation with armor piercing
+  const armorPiercing = rollArmorPiercing(attackerStats);
+  let defenseMultiplier: number;
+  
+  if (armorPiercing.pierces) {
+    // Armor piercing bypasses some defense
+    defenseMultiplier = 1 + Math.max(0, (defenderStats.end / 150) * (1 - armorPiercing.penetration));
+  } else {
+    defenseMultiplier = 1 + Math.max(0, defenderStats.end / 150);
+  }
   
   const baseDamage = 8 + attackerStats.str / 10;
   const luckBonus = attackerStats.luk > 10 ? 2 : attackerStats.luk < 5 ? -2 : 0;
   
-  const finalDamage = Math.max(1, Math.floor((baseDamage + luckBonus) * attackerMultiplier / defenseMultiplier));
+  let finalDamage = Math.max(1, Math.floor((baseDamage + luckBonus) * attackerMultiplier / defenseMultiplier));
+  
+  // Check for critical strike
+  const critRoll = rollCriticalStrike(attackerStats);
+  if (critRoll.critical) {
+    finalDamage = Math.floor(finalDamage * critRoll.multiplier);
+  }
   
   return finalDamage;
 }
@@ -241,11 +310,11 @@ export function resolveCombat(
         defenderIds,
         logs
       },
-      id: crypto.randomUUID(),
+      id: `combat-miss-${attackerId}-${Math.floor(random() * 0xffffff).toString(16)}`,
       worldInstanceId,
       actorId: attackerId,
       templateOrigin: 'combat',
-      timestamp: Date.now()
+      timestamp: Math.floor(Date.now() / 1000) * 1000
     });
     return events;
   }
@@ -298,4 +367,61 @@ export function resolveCombat(
  */
 export function statCheck(stat: number, difficulty: number): boolean {
   return rollCheck(stat, difficulty).success;
+}
+/**
+ * Calculate magic defense based on INT, AGI, and END
+ * Higher INT provides better magical defense vs magical attacks
+ */
+export function calculateMagicDefense(defenderStats: CombatantStats): number {
+  // Base magic defense: 20% of INT
+  const baseMagicDefense = defenderStats.int * 0.2;
+
+  // AGI provides some evasion (5% per point)
+  const agiDefense = defenderStats.agi * 0.05;
+
+  // END provides resilience (3% per point)
+  const endDefense = defenderStats.end * 0.03;
+
+  return baseMagicDefense + agiDefense + endDefense;
+}
+
+/**
+ * Mitigate magic damage using magic defense
+ * Magic damage ignores physical armor but is reduced by INT-based defenses
+ */
+export function resistMagicDamage(
+  defenderStats: CombatantStats,
+  incomingMagicDamage: number
+): { blocked: boolean; damageReduced: number; finalDamage: number; logs: string[] } {
+  const logs: string[] = [];
+
+  // Calculate magic resistance roll based on INT
+  const magicResistRoll = rollCheck(defenderStats.int, 10);
+  logs.push(
+    `Magic resistance check: ${magicResistRoll.roll} vs DC 10. ${magicResistRoll.success ? 'Resisted!' : 'No resistance.'}`
+  );
+
+  if (!magicResistRoll.success) {
+    return {
+      blocked: false,
+      damageReduced: 0,
+      finalDamage: incomingMagicDamage,
+      logs
+    };
+  }
+
+  // On successful magic resistance, reduce damage by 20-40% based on INT
+  const magicDefense = calculateMagicDefense(defenderStats);
+  const reductionPercent = Math.min(0.4, magicDefense / 100);
+  const damageReduced = Math.floor(incomingMagicDamage * reductionPercent);
+  const finalDamage = Math.max(1, incomingMagicDamage - damageReduced);
+
+  logs.push(`Magic damage reduced by ${damageReduced} (${Math.round(reductionPercent * 100)}%)`);
+
+  return {
+    blocked: true,
+    damageReduced,
+    finalDamage,
+    logs
+  };
 }
