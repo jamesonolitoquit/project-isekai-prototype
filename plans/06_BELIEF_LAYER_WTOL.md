@@ -66,12 +66,16 @@ Each belief has:
 
 ---
 
-## 6.6 AI DM Enforcement
+## 6.6 AI DM Enforcement & Synthesis
 
-- Tracks all CB, FB, PB, WT, WTOL in database
-- Evaluates conflicts and applies canon mutation rules
-- Uses WTOL to maintain: mystery-first gameplay, emergent secrets, suspenseful revelations
-- Prevents metagaming by filtering player knowledge from character decisions
+The AI DM acts as the "Gatekeeper of Truth." When formulating NPC replies, it performs a **WTOL Filter Pass**:
+
+1.  **Context Check**: What does the NPC *believe* to be true (CB)?
+2.  **Obfuscation Logic**: If the Player asks about a "World Truth" (WT) that is masked by WTOL, the AI DM must decide:
+    *   **Denial**: The NPC genuinely doesn't know.
+    *   **Misdirection**: The NPC provides a Faction-sanctioned lie (FB).
+    *   **Corruption**: The NPC speaks in tongues or triggers a "Chaos Bleed" (see MNL authority).
+3.  **Metagame Filtering**: The AI DM strips out any Player Beliefs (PB) from the NPC's context window. The NPC will not react to things the player knows but the character has no way of seeing.
 
 ---
 

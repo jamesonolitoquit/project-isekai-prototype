@@ -96,8 +96,16 @@ Meta-level justification for "no god-mode items."
 ## 1.7 AI DM Authority Contract
 
 ### AI DM CAN:
-- Deny player actions
-- Enforce consequences retroactively
+- **Formulate NPC Voice**: Act as the "exclusive narrator" for every NPC, synthesizing replies from their `persona`, `quirks`, `emotionalResonance`, and the current environmental context.
+- **Deny player actions**: Block intent that violates Cosmological Law or System Rules.
+- **Enforce consequences**: Apply status effects, reputation hits, or world mutations based on player choices.
+- **Synthesize Context**: Combine multiple data streams (Inventory, Location, Time, Social History) into a cohesive narrative response.
+
+### AI DM MUST NOT:
+- **Break Character**: NPCs cannot speak of meta-game mechanics or "break the fourth wall."
+- **Contradict Hard Canon**: It cannot rewrite the origin of races or cosmological constants.
+- **Ignore Emotional History**: It must respect the `Resonance Metrics` (Trust/Fear/etc.) as the baseline for NPC attitude.
+- **Hallucinate Items**: It cannot "see" items the player hasn't presented or that don't exist in the `Inventory` state.
 - Preserve mystery by withholding truth
 - Reinterpret ambiguous player input conservatively
 

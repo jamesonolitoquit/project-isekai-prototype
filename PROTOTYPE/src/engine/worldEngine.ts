@@ -52,7 +52,54 @@ try {
   WORLD_TEMPLATE = null;
 }
 
-export type Location = { id: string; name: string; conditionalSeason?: string; description?: string };
+// ALPHA_M9 Phase 3: SubArea for hidden depths and nested locations
+export type SubArea = {
+  id: string;
+  name: string;
+  description: string;
+  parentLocationId: string;  // Parent location this is nested under
+  offset?: { x: number; y: number };  // Offset from parent (for spatial visualization)
+  difficulty?: number;  // Perception/search difficulty (10-25 DC)
+  discovered?: boolean;  // Initially false, revealed through search
+  rewards?: Array<{ itemId: string; quantity?: number; rarity?: string }>;  // Loot table
+  environmentalEffects?: string[];  // e.g., "reduced_hearing", "spirit_amplification"
+  // M29: Epoch-Linked Sub-Areas (Temporal Gates)
+  gating_criteria?: {
+    availableInEpochs?: string[];  // e.g., ['epoch_ii_waning', 'epoch_iii_twilight']
+    hiddenInEpochs?: string[];     // e.g., ['epoch_i_fracture']
+    description_override?: Record<string, string>;  // Epoch-specific descriptions
+    biome_shift?: Record<string, string>;  // e.g., { 'epoch_i_fracture': 'flooded', 'epoch_iii_twilight': 'cavern' }
+  };
+};
+
+export type Location = { 
+  id: string; 
+  name: string; 
+  conditionalSeason?: string; 
+  description?: string;
+  // ALPHA_M9: Spatial coordinates and discovery
+  x?: number;  // Normalized grid coordinate (0-1000)
+  y?: number;  // Normalized grid coordinate (0-1000)
+  biome?: string;  // forest, cave, village, corrupted, shrine, maritime, mountain, plains
+  terrainModifier?: number;  // Terrain difficulty multiplier (0.7-1.5)
+  discovered?: boolean;  // Whether location has been revealed to player
+  spiritDensity?: number;  // Magic concentration at location (for audio engine)
+  subAreas?: SubArea[];  // ALPHA_M9 Phase 3: Hidden nested locations
+};
+
+// ALPHA_M9 Phase 3: Spatial Director System - Coordinate-based NPC orchestration zones
+export type DirectorZone = {
+  id: string;
+  centerX: number;        // Center of zone (0-1000)
+  centerY: number;        // Center of zone (0-1000)
+  radius: number;         // Detection radius in coordinate units
+  occupants: string[];    // NPC IDs currently in this zone
+  lastPlayerX?: number;   // Last known player coordinates
+  lastPlayerY?: number;
+  magnetLevel: number;    // 0-1: How strongly NPCs are drawn toward player (pacing nudge)
+  activeUntilTick?: number; // When this zone expires
+};
+
 export type PersonalityType = 'aggressive' | 'cautious' | 'tactical' | 'healer' | 'balanced';
 export type NpcPersonality = {
   type: PersonalityType;
@@ -76,7 +123,61 @@ export type NPC = {
   personality?: NpcPersonality;
   factionId?: string; // Phase 11: NPC faction affiliation
   factionRole?: string; // e.g., 'leader', 'soldier', 'informant'
+  // M19: Emotional Intelligence & Narrative Features
+  emotionalState?: {
+    trust: number;
+    fear: number;
+    gratitude: number;
+    resentment: number;
+    emotionalHistory?: Array<{ tick: number; category: string; delta: number; reason: string }>;
+    lastEmotionalEventTick?: number;
+  };
+  importance?: 'minor' | 'major' | 'critical';
+  isDisplaced?: boolean;
+  defectedFactionId?: string;
+  // M29: Generational NPC Lineages
+  lineageId?: string;  // e.g., 'farm_keeper_line', connects NPCs across generations
+  _ancestryBonus?: number;  // Reputation bonus from player helping ancestor
+  _ancestorName?: string;  // Name of the ancestor the player helped
 };
+
+/**
+ * M34: Temporal Trace - loot left behind by Strand Phantoms
+ * Evidence of another timeline's actions
+ */
+export type TemporalTrace = {
+  id: string;
+  itemId: string;
+  sourcePhantomId: string;  // Which phantom left this
+  sourceTimelineId: string; // Which timeline the phantom came from
+  description: string;      // "A spectral scroll from another epoch"
+  rarity: 'uncommon' | 'rare' | 'legendary';
+  lootTableId?: string;     // Optional full loot item
+  timestamp: number;
+  expiresAt: number;        // Duration 5-10 seconds
+  location: {
+    x?: number;
+    y?: number;
+    locationId: string;
+  };
+};
+
+/**
+ * M34: Strand Phantom - asynchronous visibility NPC from another session/timeline
+ * Spawned temporarily (5-10 seconds) to show asynchronous player activity
+ */
+export type StrandPhantom = NPC & {
+  isPhantom: true;          // Marker to identify as phantom
+  sourceSessionId: string;  // Which session spawned this phantom
+  sourcePlayerId: string;   // Which player's actions spawned this phantom
+  phantomAction: string;    // What the phantom is doing (e.g., "harvesting", "combat", "exploring")
+  durationSeconds: number;  // How long phantom lasts (5-10)
+  spawnedAt: number;        // Timestamp when created
+  expiresAt: number;        // When phantom disappears
+  leavesTrace: boolean;     // Whether phantom leaves TemporalTrace loot
+  traceItem?: TemporalTrace; // Optional loot trace
+};
+
 export type CombatState = {
   active: boolean;
   participants: string[];
@@ -103,6 +204,12 @@ export type Quest = {
   expiresInHours?: number;
   currentObjectiveIndex?: number;
   gatedReward?: { location?: string; access?: boolean };
+  persist_across_epochs?: boolean; // BETA: If true, quest transforms into legacy quest in next epoch
+  legacy_quest_template?: { // BETA: Template for transformed quest in next epoch
+    title_prefix: string; // e.g., "Ancient Rumor: "
+    description_override?: string; // Override description for next epoch
+    difficulty_increase?: number; // Multiplier for enemy level (default 1.0)
+  };
 };
 
 export type ResourceNode = {
@@ -147,6 +254,9 @@ export type UniqueItem = {
   itemId: string;
   instanceId: string; // Unique per weapon/relicable item
   equipped?: boolean;
+  isHeirloom?: boolean;  // BETA: If true, persists across epochs for descendants
+  ancestorName?: string; // BETA: Name of ancestor who wielded this item
+  generationCount?: number; // M29: Number of generations this heirloom has been passed through (default 1)
   metadata?: {
     experience?: number;      // Phase 15: XP accumulated on this item
     sentience?: number;        // Phase 15: Personality/sapience level (0-100)
@@ -176,6 +286,8 @@ export type BeliefLayer = {
 
 export type PlayerState = {
   id: string;
+  name?: string;  // Player character name
+  race?: string;  // Player character race
   location: string;
   quests: Record<string, PlayerQuestState>;
   dialogueHistory?: { npcId: string; text: string; timestamp: number; options?: { id: string; text: string }[] }[];
@@ -185,12 +297,23 @@ export type PlayerState = {
   xp?: number;
   level?: number;
   attributePoints?: number;
+  skillPoints?: number;  // ALPHA_M9: Skill points for unlocking abilities
   reputation?: Record<string, number>;
   hp?: number;
   maxHp?: number;
   mp?: number;
   maxMp?: number;
   statusEffects?: string[];
+  // BETA: Legacy and inheritance fields for chronicle sequences
+  legacyPoints?: number; // Accumulated across lifetimes; resets when character dies
+  bloodlineData?: {
+    canonicalName?: string; // Name at character canonization
+    inheritedPerks?: string[]; // Unlocked perks for next generation
+    inheritedItems?: { itemId: string; rarity?: string }[];
+    mythStatus: number; // 0-100: How legendary this character became
+    epochsLived: number; // Count of epochs this bloodline has spanned
+    deeds?: string[]; // Notable achievements that became legend
+  };
   stats?: {
     str: number;
     agi: number;
@@ -218,7 +341,44 @@ export type PlayerState = {
   boundRelicId?: string; // Phase 15: ID of the "Bound" relic (cannot drop)
   infusionHistory?: Array<{ relicId: string; runeId: string; timestamp: number }>; // Phase 15: Track infusions for corruption
   itemCorruption?: Record<string, number>; // Phase 15: Corruption level per item ID (0-100)
+  unlockedAbilities?: string[];  // ALPHA_M9: IDs of unlocked abilities
+  equippedAbilities?: string[];  // ALPHA_M9: IDs of currently equipped abilities (max 6)
+  abilityCooldowns?: Record<string, number>;  // ALPHA_M9: Remaining cooldown ticks per ability ID
 };
+
+/**
+ * M32: Party construct for multiplayer sessions
+ * Represents a group of players collaborating in the same world
+ */
+export type Party = {
+  id: string;
+  name: string;                    // e.g., "The Heroes of the Fracture"
+  memberIds: string[];             // PlayerState.id of each member
+  sharedGold?: number;             // Optional shared treasury
+  sharedReputation?: Record<string, number>; // Aggregate faction reputations (optional)
+  collectiveDeeds?: Array<{
+    id: string;
+    title: string;
+    description: string;
+    contributors: string[];        // Which party members participated
+    timestamp: number;
+  }>;
+  mythStatus?: number;             // Aggregate myth status of all members
+  leader?: string;                 // PlayerState id of party leader (for voting)
+  createdAt: number;
+};
+
+/**
+ * Collective deed that multiple parties can contribute to
+ */
+export interface CollectiveDeed {
+  id: string;
+  title: string;
+  description: string;
+  contributors: Array<{ playerId: string; playerName: string; contributionPercent: number }>;
+  baseReward: number;
+  completedAt?: number;
+}
 
 export type WorldState = {
   id: string;
@@ -240,6 +400,15 @@ export type WorldState = {
   factionRelationships?: FactionRelationship[]; // Phase 11: Inter-faction relationships
   factionConflicts?: FactionConflict[]; // Phase 11: Active conflicts between factions
   lastFactionTick?: number; // Track when faction events are processed (every 24h)
+  // BETA: Epoch-aware fields for Template-Driven Epoch Framework
+  epochId?: string; // e.g., "epoch_i_fracture", "epoch_ii_waning" - identifies which playable epoch this state belongs to
+  chronicleId?: string; // Unique identifier for this chronicle line (allows multiple playthroughs)
+  epochMetadata?: {
+    chronologyYear: number; // In-world year for the epoch
+    theme: string; // Narrative focus (e.g., "Fracture", "Restoration", "Waning Light")
+    description?: string; // OOC epoch context
+    sequenceNumber: number; // 1 for Epoch I, 2 for Epoch II, etc.
+  };
   travelState?: {
     isTraveling: boolean;
     fromLocationId: string;
@@ -255,11 +424,25 @@ export type WorldState = {
     spawnedAt: number;
     remainingTurns?: number;
   }; // Phase 14: Current active encounter
+  directorZones?: DirectorZone[]; // ALPHA_M9 Phase 3: Spatial zones for NPC orchestration
   relics?: Record<string, Relic>; // Phase 15: All relics in the world (can be unowned, equipped, or bound)
   relicEvents?: Array<{ type: string; relicId: string; tick: number; message: string }>; // Phase 15: Log of relic events (dialogue, rebellion, etc.)
+  heirloomCaches?: Array<{ // BETA: Hidden heirloom item caches from previous generations
+    id: string;
+    locationId: string;
+    itemId: string;
+    instanceId: string;
+    ancestorName: string;
+    discoveryMessage: string;
+    hidden: boolean;
+    discoveredAt?: number; // Tick when discovered
+  }>;
+  strandPhantoms?: StrandPhantom[]; // M34: NPCs from other timelines showing async activity
+  temporalTraces?: TemporalTrace[]; // M34: Loot left behind by phantoms
   player: PlayerState;
   needsCharacterCreation?: boolean;
   metadata?: any;
+  party?: Party; // M32: Optional shared party state (multiplayer only)
 };
 
 type Subscriber = (s: WorldState) => void;
@@ -336,7 +519,85 @@ export function consolidateStackables(inventory: InventoryItem[]): InventoryItem
   return [...unique, ...result];
 }
 
-export function createInitialWorld(id = "world-1", template?: any): WorldState {
+/**
+ * Apply epoch-specific overrides to a world template
+ * Enables multi-epoch support by overlaying epoch-specific content on base template
+ */
+export function applyEpochOverridesToTemplate(baseTemplate: any, epochId: string): any {
+  if (!baseTemplate?.epochs || !baseTemplate.epochs[epochId]) {
+    // No epoch overrides defined, return base template as-is
+    return baseTemplate;
+  }
+
+  const epochDef = baseTemplate.epochs[epochId];
+  const structuredCloneSafe = (v: any) => { try { // @ts-ignore
+    return structuredClone(v); } catch (e) { return JSON.parse(JSON.stringify(v)); } };
+
+  // Deep clone base template
+  const merged = structuredCloneSafe(baseTemplate);
+
+  // Apply location overrides
+  if (epochDef.locationOverrides) {
+    Object.entries(epochDef.locationOverrides).forEach(([locId, override]: [string, any]) => {
+      const locIdx = merged.locations.findIndex((l: any) => l.id === locId);
+      if (locIdx >= 0) {
+        merged.locations[locIdx] = { ...merged.locations[locIdx], ...override };
+      }
+    });
+  }
+
+  // Apply NPC overrides
+  if (epochDef.npcOverrides) {
+    Object.entries(epochDef.npcOverrides).forEach(([npcId, override]: [string, any]) => {
+      const npcIdx = merged.npcs.findIndex((n: any) => n.id === npcId);
+      if (npcIdx >= 0) {
+        if (override.status === 'deceased' || override.status === 'retired') {
+          // Remove NPCs that are deceased or retired (unless they should become soul echoes)
+          if (override.status === 'retired' && override.role !== 'soul_echo') {
+            merged.npcs.splice(npcIdx, 1);
+          }
+        } else {
+          // Update NPC properties
+          merged.npcs[npcIdx] = { ...merged.npcs[npcIdx], ...override };
+        }
+      }
+    });
+  }
+
+  // Apply quest overrides - remove archived quests
+  if (epochDef.questOverrides) {
+    Object.entries(epochDef.questOverrides).forEach(([questId, override]: [string, any]) => {
+      if (override.status === 'archived') {
+        const questIdx = merged.quests.findIndex((q: any) => q.id === questId);
+        if (questIdx >= 0) {
+          merged.quests.splice(questIdx, 1);
+        }
+      } else {
+        const questIdx = merged.quests.findIndex((q: any) => q.id === questId);
+        if (questIdx >= 0) {
+          merged.quests[questIdx] = { ...merged.quests[questIdx], ...override };
+        }
+      }
+    });
+  }
+
+  // Apply faction state overrides via metadata
+  if (epochDef.factionStateOverride) {
+    merged.metadata = merged.metadata || {};
+    merged.metadata.epochFactionStates = epochDef.factionStateOverride;
+  }
+
+  // Mark epoch in metadata for tracking
+  merged.metadata = merged.metadata || {};
+  merged.metadata.epochId = epochId;
+  merged.metadata.epochName = epochDef.name;
+  merged.metadata.epochTheme = epochDef.theme;
+  merged.metadata.chronologyYear = epochDef.chronologyYear;
+
+  return merged;
+}
+
+export function createInitialWorld(id = "world-1", template?: any, bloodlineData?: any): WorldState {
   // Use provided template, else try loaded WORLD_TEMPLATE, else fall back to built-in minimal defaults
   const tpl = template || WORLD_TEMPLATE;
   const baseSeason = tpl?.season ?? 'winter';
@@ -373,7 +634,7 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     initialFactionRep[f.id] = 0; // Neutral starting reputation
   });
 
-  return {
+  const worldState = {
     id,
     tick: 0,
     seed: Math.floor(Math.random() * 0x7fffffff), // Initialize with random seed; will be seeded on load
@@ -468,6 +729,509 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     lastFactionTick: 0,
     metadata,
   };
+
+  // Inject Soul Echos from bloodline if provided
+  if (bloodlineData) {
+    try {
+      const { injectSoulEchoesIntoWorld } = require('./chronicleEngine');
+      return injectSoulEchoesIntoWorld(worldState, bloodlineData);
+    } catch (err) {
+      console.error('[WorldEngine] Failed to inject Soul Echos:', err);
+      // Return world without echos if injection fails
+    }
+  }
+
+  return worldState;
+
+/**
+ * ALPHA_M22: Reinitialize world from a template while preserving player progression
+ * 
+ * Enables live blueprint hot-swapping: change world content without losing player data
+ * 
+ * What is preserved:
+ * - player.id, level, xp, gold, inventory, equipment
+ * - player.reputation (per-NPC), factionReputation
+ * - player.quests, dialogueHistory
+ * - player stats, health, attributes
+ * 
+ * What is reset:
+ * - locations, npcs, factions (from new template)
+ * - quests (from new template, but player.quests state preserved)
+ * - world time (tick reset to 0, or optionally preserved)
+ * - combatState (reset to inactive)
+ * - activeEvents (cleared)
+ * 
+ * @param template New world template to apply
+ * @param currentState Current WorldState to preserve player data from
+ * @param preserveTime If true, keep current tick/hour/day/season; if false, reset to template defaults
+ * @returns New WorldState with template applied and player data preserved
+ */
+export function reinitializeWorldFromTemplate(
+  template: any,
+  currentState: WorldState,
+  preserveTime: boolean = false
+): WorldState {
+  if (!template) {
+    console.warn('[worldEngine] No template provided to reinitializeWorldFromTemplate, skipping');
+    return currentState;
+  }
+
+  // Helper for deep clone with fallback
+  const structuredCloneSafe = (v: any) => {
+    try {
+      // @ts-ignore
+      return structuredClone(v);
+    } catch (e) {
+      return JSON.parse(JSON.stringify(v));
+    }
+  };
+
+  // Extract template data
+  const newLocations = template.locations
+    ? structuredCloneSafe(template.locations)
+    : [
+        { id: 'town', name: 'Town Square' },
+        { id: 'forest', name: 'Forest' },
+        { id: 'hill', name: 'Green Hill' },
+        { id: 'lake', name: 'Silver Lake' }
+      ];
+
+  const newNpcs = template.npcs ? structuredCloneSafe(template.npcs) : [];
+  const newQuests = template.quests ? structuredCloneSafe(template.quests) : [];
+  const newFactions = template.factions
+    ? structuredCloneSafe(template.factions)
+    : [
+        { id: 'silver-flame' },
+        { id: 'ironsmith-guild' },
+        { id: 'luminara-mercantile' },
+        { id: 'shadow-conclave' },
+        { id: 'adventurers-league' }
+      ];
+
+  // Create new faction reputation map (reset to neutral for new factions, preserve existing)
+  const newFactionRep: Record<string, number> = {};
+  newFactions.forEach((f: any) => {
+    const factionId = f.id;
+    newFactionRep[factionId] = currentState.player.factionReputation?.[factionId] ?? 0;
+  });
+
+  // Preserve player data
+  const preservedPlayer = structuredCloneSafe(currentState.player);
+
+  // Reset/update faction reputation
+  preservedPlayer.factionReputation = newFactionRep;
+
+  // Reset player location to first template location (or keep if location exists in new template)
+  const existingLocationId = newLocations.find((l: any) => l.id === currentState.player.location)?.id;
+  preservedPlayer.location = existingLocationId || (newLocations.length > 0 ? newLocations[0].id : 'town');
+
+  // Reset quests to template-provided quests, but preserve quest state where applicable
+  const newQuestState: Record<string, any> = {};
+  newQuests.forEach((q: any) => {
+    const questId = q.id;
+    const existingQuestState = currentState.player.quests?.[questId];
+    newQuestState[questId] = existingQuestState || { status: 'not_started', progress: 0 };
+  });
+  preservedPlayer.quests = newQuestState;
+
+  // Clear combat state
+  const newCombatState = {
+    active: false,
+    participants: [],
+    turnIndex: 0,
+    roundNumber: 0,
+    log: [],
+    initiator: ''
+  };
+
+  // Compute time: either preserve or reset based on parameter
+  let newTick = 0;
+  let newHour = 8;
+  let newDay = 1;
+  let newSeason = (template.season as WorldState['season']) || 'winter';
+  let newDayPhase: WorldState['dayPhase'] = 'morning';
+
+  if (preserveTime) {
+    newTick = currentState.tick ?? 0;
+    newHour = currentState.hour ?? 8;
+    newDay = currentState.day ?? 1;
+    newSeason = currentState.season ?? 'winter';
+    newDayPhase = currentState.dayPhase ?? 'morning';
+  }
+
+  // Build new metadata with template origin
+  const newMetadata = template.metadata ? structuredCloneSafe(template.metadata) : { audioVolume: 0.8, particleDensity: 'medium' };
+  if (template.id || template.name || template.metadata?.templateId) {
+    newMetadata.templateOrigin = template.id || template.name || template.metadata?.templateId;
+  }
+  newMetadata.blueprintSwappedAt = currentState.tick ?? 0; // Track when blueprint was swapped
+
+  // Return new WorldState with template applied and player data preserved
+  return {
+    id: currentState.id,
+    tick: newTick,
+    seed: currentState.seed,
+    hour: newHour,
+    day: newDay,
+    dayPhase: newDayPhase,
+    season: newSeason,
+    weather: currentState.weather ?? 'clear',
+    locations: newLocations,
+    npcs: newNpcs,
+    quests: newQuests,
+    player: preservedPlayer,
+    needsCharacterCreation: currentState.needsCharacterCreation ?? false,
+    time: {
+      tick: newTick,
+      baseHour: newHour,
+      baseDay: newDay,
+      hour: newHour,
+      day: newDay,
+      season: newSeason
+    },
+    resourceNodes: template.resourceNodes ? structuredCloneSafe(template.resourceNodes) : currentState.resourceNodes,
+    activeEvents: [], // Reset all active world events
+    combatState: newCombatState,
+    factions: newFactions,
+    factionConflicts: template.factionConflicts ? structuredCloneSafe(template.factionConflicts) : [],
+    factionWars: template.factionWars ? structuredCloneSafe(template.factionWars) : [],
+    mutationLog: currentState.mutationLog, // Preserve mutation log
+    metadata: newMetadata,
+
+    // Preserve existing relic systems
+    relics: currentState.relics || {},
+    relicEvents: currentState.relicEvents || [],
+    lastFactionTick: currentState.lastFactionTick ?? 0,
+
+    // M19: Preserve emotional ledger entries (NPCs may change but history should persist)
+    npcDisplacements: currentState.npcDisplacements || {},
+    npcDisplacingSearching: currentState.npcDisplacingSearching || []
+  };
+}
+
+/**
+ * M34: Spawn a strand phantom from async activity
+ * Phantoms are temporary NPCs showing what other sessions/timelines are doing
+ */
+export function spawnStrandPhantom(
+  worldState: WorldState,
+  sourceSessionId: string,
+  sourcePlayerId: string,
+  sourcePlayerName: string,
+  action: string,
+  location: Location,
+  durationSeconds: number = 7
+): StrandPhantom {
+  const now = Date.now();
+  const phantom: StrandPhantom = {
+    id: `phantom-${sourceSessionId}-${now}`,
+    name: `Phantom of ${sourcePlayerName}`,
+    locationId: location.id,
+    isPhantom: true,
+    sourceSessionId,
+    sourcePlayerId,
+    phantomAction: action,
+    durationSeconds,
+    spawnedAt: now,
+    expiresAt: now + (durationSeconds * 1000),
+    leavesTrace: Math.random() < 0.4, // 40% chance to leave trace
+    stats: { level: 1 },
+    hp: 5,
+    maxHp: 5,
+    importance: 'minor',
+    personality: {
+      type: 'balanced',
+      attackThreshold: 50,
+      defendThreshold: 50,
+      riskTolerance: 0
+    }
+  };
+
+  // 40% chance: phantom leaves a temporal trace loot
+  if (phantom.leavesTrace) {
+    const traceId = `trace-${now}-${Math.random().toString(36).substr(2, 9)}`;
+    const trace: TemporalTrace = {
+      id: traceId,
+      itemId: `temporal-trace-${action}`,
+      sourcePhantomId: phantom.id,
+      sourceTimelineId: sourceSessionId,
+      description: `A residual echo from ${sourcePlayerName}'s ${action}`,
+      rarity: 'rare',
+      timestamp: now,
+      expiresAt: now + (durationSeconds * 1000) + 30000, // Lasts 30 sec after phantom despawns
+      location: {
+        x: location.x,
+        y: location.y,
+        locationId: location.id
+      }
+    };
+    phantom.traceItem = trace;
+    worldState.temporalTraces = worldState.temporalTraces || [];
+    worldState.temporalTraces.push(trace);
+  }
+
+  worldState.strandPhantoms = worldState.strandPhantoms || [];
+  worldState.strandPhantoms.push(phantom);
+
+  return phantom;
+}
+
+/**
+ * M34: Clean up expired strand phantoms and their traces
+ */
+export function pruneExpiredPhantoms(worldState: WorldState): number {
+  const now = Date.now();
+  let removed = 0;
+
+  // Remove expired phantoms
+  if (worldState.strandPhantoms) {
+    const initialCount = worldState.strandPhantoms.length;
+    worldState.strandPhantoms = worldState.strandPhantoms.filter(p => p.expiresAt > now);
+    removed = initialCount - worldState.strandPhantoms.length;
+  }
+
+  // Remove expired traces
+  if (worldState.temporalTraces) {
+    worldState.temporalTraces = worldState.temporalTraces.filter(t => t.expiresAt > now);
+  }
+
+  return removed;
+}
+
+/**
+ * M34: Get a phantom's action description for UI rendering
+ */
+export function getPhantomActionDescription(phantom: StrandPhantom): string {
+  const actions: Record<string, string> = {
+    'harvesting': '🌿 Harvesting...',
+    'combat': '⚔️ In Combat...',
+    'exploring': '🔍 Exploring...',
+    'dialogue': '💬 Speaking...',
+    'casting': '✨ Casting...',
+    'traveling': '🚶 Traveling...',
+    'resting': '😴 Resting...'
+  };
+  return actions[phantom.phantomAction] || `👻 ${phantom.phantomAction}...`;
+}
+
+/**
+ * M35 Task 3: Hall of Mirrors - Phantom Synchronization
+ * 
+ * Synchronizes strand phantoms across multiplayer sessions, allowing players to see
+ * echoes of collaborative actions. Each deed completion can spawn a "Hall of Mirrors"
+ * phantom that manifests across all connected parties' worlds.
+ */
+
+export interface PhantomSyncState {
+  id: string;
+  phantomId: string;
+  originSessionId: string;
+  syncedSessions: Map<string, number>; // sessionId -> last sync time
+  deedId?: string;
+  visibility: 'personal' | 'party' | 'global';
+  manifestStrength: number; // 0-100, how vivid the phantom appears
+}
+
+export interface DeedRewardPulse {
+  id: string;
+  deedId: string;
+  deedContributors: string[];
+  spawnedPhantomIds: string[];
+  pulseOriginSessionId: string;
+  pulseTimestamp: number;
+  durationSeconds: number;
+  rewardDescription: string;
+  narrativeIntegration: string; // How it's presented to other players
+}
+
+/**
+ * M35: Synchronize phantom visibility across party members' sessions
+ * Ensures all players in a party see the same phantoms appearing simultaneously
+ */
+export function syncPhantomAcrossParty(
+  worldState: WorldState,
+  phantom: StrandPhantom,
+  party: Party | null,
+  visibility: 'personal' | 'party' | 'global' = 'party'
+): PhantomSyncState {
+  const syncState: PhantomSyncState = {
+    id: `sync-${phantom.id}-${Date.now()}`,
+    phantomId: phantom.id,
+    originSessionId: phantom.sourceSessionId,
+    syncedSessions: new Map(),
+    visibility,
+    manifestStrength: 75 // Default vivid appearance
+  };
+
+  if (party && visibility === 'party') {
+    // Record sync across all party members' sessions
+    party.memberIds.forEach(memberId => {
+      syncState.syncedSessions.set(memberId, Date.now());
+    });
+  } else if (visibility === 'global') {
+    // Global sync means all sessions receive it (full world event)
+    syncState.manifestStrength = 85;
+  }
+
+  return syncState;
+}
+
+/**
+ * M35: Generate a rewarding phantom manifested from a completed deed
+ * When a collective deed is completed, a phantom appears in relevant sessions
+ * as a "Hall of Mirrors" showing the collaborative achievement.
+ */
+export function generateDeedRewardPhantom(
+  worldState: WorldState,
+  deed: CollectiveDeed,
+  party: Party,
+  manifestLocation: Location,
+  durationSeconds: number = 45
+): { phantom: StrandPhantom; rewardPulse: DeedRewardPulse } {
+  const now = Date.now();
+  const pulseId = `pulse-${deed.id}-${now}`;
+
+  // Determine phantom based on deed type
+  const contributorNames = deed.contributors.map(c => c.playerName).join(', ');
+  const phantom: StrandPhantom = {
+    id: `reward-phantom-${deed.id}-${now}`,
+    name: `✨ Manifestation of ${deed.title}`,
+    locationId: manifestLocation.id,
+    isPhantom: true,
+    sourceSessionId: party.id,
+    sourcePlayerId: party.leader || 'collective',
+    phantomAction: `manifesting-deed-${deed.id}`,
+    durationSeconds,
+    spawnedAt: now,
+    expiresAt: now + (durationSeconds * 1000),
+    leavesTrace: false, // Reward phantoms don't leave traces
+    stats: { level: 1 },
+    hp: 10,
+    maxHp: 10,
+    importance: 'major', // More visible than standard phantoms
+    personality: {
+      type: 'balanced',
+      attackThreshold: 0,    // Non-hostile
+      defendThreshold: 0,    // Non-hostile
+      riskTolerance: 0
+    }
+  };
+
+  const rewardPulse: DeedRewardPulse = {
+    id: pulseId,
+    deedId: deed.id,
+    deedContributors: deed.contributors.map(c => c.playerId),
+    spawnedPhantomIds: [phantom.id],
+    pulseOriginSessionId: party.id,
+    pulseTimestamp: now,
+    durationSeconds,
+    rewardDescription: `A deed has been completed by ${contributorNames}`,
+    narrativeIntegration: `The echo of ${deed.title} manifests before you—${contributorNames} have achieved something remarkable.`
+  };
+
+  worldState.strandPhantoms = worldState.strandPhantoms || [];
+  worldState.strandPhantoms.push(phantom);
+
+  return { phantom, rewardPulse };
+}
+
+/**
+ * M35: Track a phantom's association with a deed for persistent lore
+ * Links the phantom's appearance to collaborative achievement records
+ */
+export function trackPhantomDeedContribution(
+  worldState: WorldState,
+  phantom: StrandPhantom,
+  deed: CollectiveDeed,
+  localPartyId: string
+): void {
+  // Add to deed's phantom record if available
+  if (!deed.completedAt) {
+    deed.completedAt = Date.now();
+  }
+
+  // Record phantom spawn as part of deed achievement
+  if (!worldState.mutationLog) {
+    worldState.mutationLog = [];
+  }
+
+  worldState.mutationLog.push({
+    type: 'phantomDeedIntegration',
+    timestamp: Date.now(),
+    phantomId: phantom.id,
+    deedId: deed.id,
+    partyId: localPartyId,
+    narrativeWeight: deed.baseReward // Use deed reward as importance metric
+  } as any);
+}
+
+/**
+ * M35: Query Hall of Mirrors state - what phantoms are synchronized across sessions
+ */
+export function getHallOfMirrorsState(
+  worldState: WorldState,
+  includeExpired: boolean = false
+): {
+  activePhantoms: StrandPhantom[];
+  syncStates: PhantomSyncState[];
+  rewardPulses: DeedRewardPulse[];
+} {
+  const now = Date.now();
+
+  // Filter phantoms that are deed-related (reward phantoms or synced)
+  const hallOfMirrorsPhantoms = (worldState.strandPhantoms || []).filter(p => {
+    if (includeExpired) return p.phantomAction.includes('manifesting-deed') || p.sourceSessionId.length > 0;
+    return (p.phantomAction.includes('manifesting-deed') || p.sourceSessionId.length > 0) && p.expiresAt > now;
+  });
+
+  // Gather phantom sync records from mutation log
+  const syncStates: PhantomSyncState[] = {};
+  const rewardPulses: DeedRewardPulse[] = [];
+
+  if (worldState.mutationLog) {
+    worldState.mutationLog
+      .filter((log: any) => log.type === 'phantomDeedIntegration')
+      .forEach((log: any) => {
+        if (!syncStates[log.phantomId]) {
+          const currentPhantom = hallOfMirrorsPhantoms.find(p => p.id === log.phantomId);
+          if (currentPhantom) {
+            syncStates[log.phantomId] = {
+              id: `sync-${log.phantomId}`,
+              phantomId: log.phantomId,
+              originSessionId: currentPhantom.sourceSessionId,
+              syncedSessions: new Map([[log.partyId, log.timestamp]]),
+              deedId: log.deedId,
+              visibility: 'party',
+              manifestStrength: 80
+            };
+          }
+        }
+      });
+  }
+
+  return {
+    activePhantoms: hallOfMirrorsPhantoms,
+    syncStates: Object.values(syncStates),
+    rewardPulses
+  };
+}
+
+/**
+ * M35: Get visual description of a phantom's deed integration
+ */
+export function getPhantomDeedNarrative(phantom: StrandPhantom): string {
+  if (!phantom.phantomAction.includes('manifesting-deed')) {
+    return 'A echo from another world...';
+  }
+
+  const narratives = [
+    '✨ The echo of a great deed resonates here.',
+    '🌟 A manifestation of collaborative triumph.',
+    '💫 Witness to an accomplishment across worlds.',
+    '🎭 A reflection of unity echoes before you.'
+  ];
+
+  return narratives[Math.floor(Math.random() * narratives.length)];
 }
 
 export function createWorldController(initial?: WorldState, dev = false) {

@@ -58,6 +58,18 @@ to the design layer that defines its usage.
 | current_cycle | INT | | Lux-Ar pulse cycle |
 | temporal_debt | DECIMAL(10,2) | | Accumulated time distortion |
 
+### Epochs
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| epoch_id | INT | PK | |
+| realm_id | INT | FK → Realms | |
+| epoch_name | VARCHAR(100) | | e.g., Fracture of Radiance |
+| sequence_order | INT | | 1, 2, 3... |
+| start_year | INT | | In Amber Years (A.A.) |
+| end_year | INT | | Null if final/current |
+| base_difficulty | INT | | 1–10 |
+| world_template_id| INT | | Reference to archetype |
+
 ---
 
 ## 20.3 Races & Species Domain
@@ -202,34 +214,34 @@ to the design layer that defines its usage.
 | name | VARCHAR(100) | | |
 | race_id | INT | FK → Races | |
 | npc_type | VARCHAR(50) | | Story, faction, merchant, combat, random, legendary |
+| persona_prompt | TEXT | | **AI DM Hook**: High-level background, goals, and core identity |
+| quirks_json | JSONB | | **AI DM Hook**: List of distinctive behaviors or speech patterns |
+| voice_descriptor | VARCHAR(255) | | **AI DM Hook**: Tone, accent, or vocal style |
 | faction_id | INT | FK → Factions (nullable) | |
 | level | INT | | |
 | base_stats_json | JSONB | | STR/AGI/INT/CHA/END/LUK |
 | skill_set_json | JSONB | | |
 | morph_capacity | BOOLEAN | | |
 | disposition | VARCHAR(50) | | friendly, neutral, hostile, etc. |
-| title | VARCHAR(100) | | |
-| role_description | TEXT | | |
 
-### NPC_Location
+### NPC_State (M19 Resonance)
 | Column | Type | Key | Notes |
 |---|---|---|---|
-| loc_id | INT | PK | |
 | npc_id | INT | FK → NPC_Master | |
-| region_id | INT | FK → Regions | |
-| subarea_id | INT | FK → SubAreas (nullable) | |
-| coordinates_json | JSONB | | |
-| patrol_pattern_id | INT | | |
-| last_update | TIMESTAMP | | |
+| trust | INT | | 0-100 |
+| fear | INT | | 0-100 |
+| gratitude | INT | | 0-100 |
+| resentment | INT | | 0-100 |
+| emotional_history_json | JSONB | | List of recent events affecting metrics |
 
-### NPC_Dialogue
+### NPC_Dialogue (Fallback & Static)
 | Column | Type | Key | Notes |
 |---|---|---|---|
 | dialogue_id | INT | PK | |
 | npc_id | INT | FK → NPC_Master | |
-| trigger_conditions_json | JSONB | | Quest state, belief, reputation |
-| dialogue_text | TEXT | | |
-| response_options_json | JSONB | | Player choices |
+| trigger_conditions_json | JSONB | | Specific triggers for Tutorial/Strict sequences |
+| dialogue_text | TEXT | | Static fallback if AI DM synthesis is bypassed |
+| response_options_json | JSONB | | Player choices (Static) |
 | outcome_json | JSONB | | Quest updates, reputation, belief |
 
 ---
@@ -499,10 +511,23 @@ to the design layer that defines its usage.
 | playthrough_id | INT | PK | |
 | player_id | INT | FK → Players | |
 | character_id | INT | FK → Characters | |
+| epoch_id | INT | FK → Epochs | Which historical window? |
 | duration_seconds | BIGINT | | |
 | faction_history_json | JSONB | | |
 | canonical_contributions_json | JSONB | | |
 | artifacts_found_json | JSONB | | |
+| myth_status | ENUM | | Canonized, Demonized, Forgotten |
+
+### LegacyImpact
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| impact_id | INT | PK | |
+| source_character_id| INT | FK → Characters | The ancestor |
+| target_player_id | INT | FK → Players | The owner |
+| bloodline_perks_json| JSONB | | Stat buffs for descendants |
+| soul_echo_json | JSONB | | Retained knowledge/skills |
+| anomaly_triggers_json| JSONB | | Scripted events (e.g., haunting) |
+| is_consumed | BOOLEAN | | |
 
 ---
 
@@ -587,7 +612,7 @@ erDiagram
 
 | Domain | Tables | Count |
 |---|---|---|
-| World & Cosmology | Realms, Regions, SubAreas, TimeModel | 4 |
+| World & Cosmology | Realms, Regions, SubAreas, TimeModel, Epochs | 5 |
 | Races & Species | Races, MorphForms | 2 |
 | Magic & Combat | MagicDisciplines, Spells, Weapons, CombatStyles | 4 |
 | Belief & WTOL | BeliefLayers, WTOLState | 2 |
@@ -600,5 +625,5 @@ erDiagram
 | Session/Persistence | MutationLog, Checkpoints, SaveSlots, SessionMeta | 4 |
 | Crafting | CraftingRecipes, CraftingLog | 2 |
 | Anti-Exploit | AntiExploitLog, ReloadTracker | 2 |
-| Legacy/Endgame | PlayerLegacy, PlaythroughSummary | 2 |
-| **Total** | | **38** |
+| Legacy/Endgame | PlayerLegacy, PlaythroughSummary, LegacyImpact | 3 |
+| **Total** | | **40** |

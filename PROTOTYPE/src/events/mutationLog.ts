@@ -15,6 +15,9 @@ export type Event = {
   timestamp: number;
   templateOrigin?: string; // optional origin/template id that produced this event
   mutationClass?: MutationClass;
+  // M32: Multi-client authorship fields
+  clientId?: string;        // Which client emitted this action
+  sequenceNumber?: number;  // Monotonic sequence per client for ordering
   // ledger fields
   eventIndex?: number;
   prevHash?: string;

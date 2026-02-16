@@ -1,5 +1,6 @@
 import type { WorldState, NPC } from './worldEngine';
 import { random } from './prng';
+import { generateNpcPrompt, parseNpcResponse, callLlmApi, type DialogueContext as AiDialogueContext, type NpcKnowledgeScope, type LlmConfig } from './aiDmEngine';
 
 export interface DialogueContext {
   weather: 'clear' | 'snow' | 'rain';
@@ -24,6 +25,114 @@ export interface DialogueNode {
   options: DialogueOption[];
   requiresReputation?: number;
   requiresQuestStatus?: string;
+}
+
+/**
+ * ====== AI SYNTHESIS INTEGRATION LAYER ======
+ * ALPHA_M21: Bridge between static dialogue and LLM-synthesized responses
+ */
+
+/**
+ * Global flag to enable/disable AI synthesis (can be toggled by developer)
+ */
+export let SYNTHESIS_MODE_ENABLED = false;
+
+/**
+ * Set synthesis mode globally (called by game initialization or developer commands)
+ */
+export function setSynthesisModeEnabled(enabled: boolean): void {
+  SYNTHESIS_MODE_ENABLED = enabled;
+}
+
+/**
+ * Synthesize NPC dialogue using LLM if synthesis mode is enabled
+ * Falls back to static dialogue if synthesis fails or is disabled
+ * 
+ * @param npcId NPC ID
+ * @param state Current WorldState
+ * @param playerMessage The player's input text
+ * @param previousMessages Conversation history in this session
+ * @returns Synthesized dialogue with optional stage direction
+ */
+export async function synthesizeNpcDialogue(
+  npcId: string,
+  state: WorldState,
+  playerMessage: string,
+  previousMessages?: Array<{ role: 'npc' | 'player'; text: string }>
+): Promise<{ text: string; stageDirection?: string; synthesized: boolean }> {
+  // Return static dialogue if synthesis disabled
+  if (!SYNTHESIS_MODE_ENABLED) {
+    return { text: 'Static dialogue fallback.', synthesized: false };
+  }
+
+  const npc = state.npcs?.find(n => n.id === npcId);
+  if (!npc) {
+    return { text: 'I... I cannot remember who you are.', synthesized: false };
+  }
+
+  try {
+    // Build the AI dialogue context
+    const aiContext: AiDialogueContext = {
+      dialogue: playerMessage,
+      previousMessages: previousMessages || [],
+      playerAction: 'spoke',
+      questState: 'conversation', // Could be more specific
+      reputationDelta: 0 // Could calculate recent changes
+    };
+
+    // Build knowledge scope (WTOL)
+    const knowledgeScope: NpcKnowledgeScope = {
+      seenLocations: [npc.locationId],
+      knownNpcs: state.npcs?.map(n => n.id).slice(0, 5) || [],
+      heardQuests: [],
+      playerReputation: true,
+      playerClass: false
+    };
+
+    // Generate LLM prompt
+    const prompt = generateNpcPrompt(npcId, state, aiContext, knowledgeScope);
+
+    // Call LLM API with configuration (provider defaults to 'openai', can be overridden)
+    const llmConfig: LlmConfig = {
+      provider: (process.env.LLM_PROVIDER as any) || 'openai',
+      apiKey: process.env.LLM_API_KEY || process.env.OPENAI_API_KEY,
+      model: process.env.LLM_MODEL || 'gpt-4-turbo-preview',
+      temperature: 0.8,
+      maxTokens: 150
+    };
+
+    const response = await callLlmApi(prompt, llmConfig);
+
+    // Parse it
+    const parsed = parseNpcResponse(response);
+
+    return {
+      text: parsed.dialogue,
+      stageDirection: parsed.stageDirection,
+      synthesized: true
+    };
+  } catch (error) {
+    console.error(`Failed to synthesize dialogue for NPC ${npcId}:`, error);
+    return { text: getStaticFallbackResponse(npc), synthesized: false };
+  }
+}
+
+/**
+ * Get static fallback response when synthesis is unavailable
+ */
+function getStaticFallbackResponse(npc: NPC): string {
+  const emotion = (npc as any).emotionalState;
+  if (!emotion) return `${npc.name} looks at you curiously.`;
+
+  if (emotion.trust > 70) {
+    return `*smiles warmly* Hello, friend. What do you need?`;
+  } else if (emotion.fear > 70) {
+    return `*steps back nervously* What... what do you want?`;
+  } else if (emotion.resentment > 70) {
+    return `*crosses arms* I have nothing for you.`;
+  }
+
+  return `${npc.name} nods politely.`;
 }
 
 /**
@@ -161,6 +270,9 @@ function selectContextualDialogue(npc: any, context: DialogueContext): string {
 
 /**
  * Select the appropriate dialogue node for an NPC based on context
+ * NOTE: This is the Legacy Rule-Based engine. 
+ * The PRIMARY dialogue engine is the AI DM context-injection layer.
+ * Use this as a fallback or for deterministic tutorial prompts.
  */
 export function resolveDialogue(
   npc: any,
@@ -306,4 +418,309 @@ export function processDialogueChoice(
   }
 
   return consequence;
+}
+
+/**
+ * ALPHA_M19: Update NPC emotional state based on player interactions
+ * Emotions (trust, fear, gratitude, resentment) each range 0-100
+ */
+export function updateNpcEmotion(
+  npc: any,
+  category: 'trust' | 'fear' | 'gratitude' | 'resentment',
+  delta: number,
+  reason: string,
+  tick: number
+): void {
+  // Initialize emotional state if missing
+  if (!npc.emotionalState) {
+    npc.emotionalState = {
+      trust: 50,
+      fear: 50,
+      gratitude: 50,
+      resentment: 50,
+      emotionalHistory: []
+    };
+  }
+
+  // Apply delta and clamp to 0-100
+  npc.emotionalState[category] = Math.max(0, Math.min(100, npc.emotionalState[category] + delta));
+  npc.emotionalState.lastEmotionalEventTick = tick;
+
+  // Record in history
+  if (!npc.emotionalState.emotionalHistory) {
+    npc.emotionalState.emotionalHistory = [];
+  }
+
+  npc.emotionalState.emotionalHistory.push({
+    tick,
+    category,
+    delta,
+    reason
+  });
+
+  // Keep only last 20 emotional events
+  if (npc.emotionalState.emotionalHistory.length > 20) {
+    npc.emotionalState.emotionalHistory = npc.emotionalState.emotionalHistory.slice(-20);
+  }
+}
+
+/**
+ * ALPHA_M19: Decay emotional states toward neutral (50) at 2 points per 24h cycle
+ * Prevents permanent emotional lock-in, allows relationship recovery
+ */
+export function decayNpcEmotions(npc: any, ticksDelta: number): void {
+  if (!npc.emotionalState) {
+    return;
+  }
+
+  // 1 tick ≈ 1 minute, 24h = 1440 minutes = 1440 ticks
+  // Decay: 2 points per 24h = 2/1440 = 0.00139 per tick
+  const decayPerTick = 2 / 1440;
+  const totalDecay = decayPerTick * ticksDelta;
+
+  const emotions = ['trust', 'fear', 'gratitude', 'resentment'] as const;
+  for (const emotion of emotions) {
+    const current = npc.emotionalState[emotion];
+    const target = 50; // Neutral baseline
+    const distance = current - target;
+
+    if (Math.abs(distance) > 0.01) {
+      // Move toward neutral by decay amount (up to totalDecay)
+      const direction = distance > 0 ? -1 : 1;
+      const decay = Math.min(Math.abs(distance), totalDecay);
+      npc.emotionalState[emotion] = current + (decay * direction);
+    }
+  }
+}
+
+/**
+ * ALPHA_M19: Get emotional dialogue prefix based on NPC's dominant emotional state
+ */
+export function getEmotionalDialogueTone(npc: any): 'warm' | 'neutral' | 'cold' | 'snide' {
+  if (!npc.emotionalState) {
+    return 'neutral';
+  }
+
+  const { resentment, gratitude, trust, fear } = npc.emotionalState;
+
+  // Snide: high resentment + low gratitude
+  if (resentment > 70 && gratitude < 40) {
+    return 'snide';
+  }
+
+  // Cold: high fear or resentment
+  if (fear > 70 || resentment > 60) {
+    return 'cold';
+  }
+
+  // Warm: high gratitude + high trust
+  if (gratitude > 70 && trust > 60) {
+    return 'warm';
+  }
+
+  return 'neutral';
+}
+
+/**
+ * ALPHA_M19: Calculate NPC defection probability during faction warfare
+ * Non-critical NPCs with high fear + low trust may switch sides
+ * FIXED: Better weighting so fear=90, trust=20 gives >50 risk
+ */
+export function calculateDefectionRisk(npc: any): number {
+  if (!npc.emotionalState || npc.importance === 'critical') {
+    return 0; // Critical NPCs never defect
+  }
+
+  const { fear, trust } = npc.emotionalState;
+  // Weighting: fear is primary factor (0.6), low trust amplifies (0.4)
+  // High fear (90) + low trust (20) = 54 + 16 = 70%
+  const riskFactor = (fear * 0.6) + ((60 - trust) * 0.4);
+  return Math.min(100, riskFactor);
+}
+
+/**
+ * ALPHA_M19: Process NPC defection and displacement during faction warfare
+ * Non-critical NPCs may switch factions or go missing temporarily
+ * FIXED: Corrected return type from 'deplaced' to 'displaced'
+ */
+export function processNpcAttrition(
+  npcs: any[],
+  conflict: any,
+  state: any
+): { displaced: any[]; defected: any[]; events: any[] } {
+  const displaced: any[] = [];
+  const defected: any[] = [];
+  const events: any[] = [];
+
+  for (const npc of npcs) {
+    // Skip critical NPCs
+    if (npc.importance === 'critical') continue;
+
+    // Skip if not in a conflict zone
+    if (!conflict.factionIds.includes(npc.factionId)) continue;
+
+    // Calculate defection risk
+    const defectionRisk = calculateDefectionRisk(npc);
+
+    // Defection chance
+    if (random() * 100 < defectionRisk && !npc.defectedFactionId) {
+      const rivalFactions = conflict.factionIds.filter((fId: string) => fId !== npc.factionId);
+      if (rivalFactions.length > 0) {
+        const newFaction = rivalFactions[Math.floor(random() * rivalFactions.length)];
+        npc.defectedFactionId = newFaction;
+
+        defected.push(npc);
+        events.push({
+          type: 'NPC_DEFECTED',
+          npcId: npc.id,
+          npcName: npc.name,
+          fromFaction: npc.factionId,
+          toFaction: newFaction,
+          reason: npc.emotionalState?.resentment > 70 ? 'resentment' : 'fear',
+          tick: state.tick
+        });
+      }
+    }
+
+    // Displacement chance (high fear makes NPC flee conflict)
+    if (npc.emotionalState?.fear > 75 && !npc.isDisplaced && random() < 0.4) {
+      npc.isDisplaced = true;
+      displaced.push(npc);
+
+      // Initialize npcDisplacements tracking if needed
+      if (!state.npcDisplacements) {
+        state.npcDisplacements = {};
+      }
+      const expectedReturnTick = (state.tick ?? 0) + (1440 + Math.floor(random() * 1440));
+      state.npcDisplacements[npc.id] = {
+        displacedAt: state.tick,
+        originalLocation: npc.locationId,
+        expectedReturnTick: expectedReturnTick
+      };
+
+      events.push({
+        type: 'NPC_DISPLACED',
+        npcId: npc.id,
+        npcName: npc.name,
+        previousLocation: npc.locationId,
+        reason: 'fled_conflict',
+        expectedReturnTick: expectedReturnTick,
+        tick: state.tick
+      });
+    }
+  }
+
+  return { displaced, defected, events };
+}
+
+/**
+ * ALPHA_M19: Return displaced NPCs to their original locations after conflict passes
+ * Returns NPCs when expectedReturnTick is reached
+ */
+export function restoreDisplacedNpcs(npcs: any[], state: any): Array<{ npcId: string; npcName: string; reason: string }> {
+  const returned: Array<{ npcId: string; npcName: string; reason: string }> = [];
+  
+  for (const npc of npcs) {
+    if (!npc.isDisplaced) continue;
+
+    const displacement = (state as any).npcDisplacements?.[npc.id];
+    if (!displacement) continue;
+
+    // Check if enough time has passed for NPC to return
+    if ((state.tick ?? 0) >= displacement.expectedReturnTick) {
+      npc.isDisplaced = false;
+      npc.locationId = displacement.originalLocation;
+      returned.push({
+        npcId: npc.id,
+        npcName: npc.name,
+        reason: 'returned_from_displacement'
+      });
+      delete (state as any).npcDisplacements[npc.id];
+    }
+  }
+  
+  return returned;
+}
+
+/**
+ * ALPHA_M19: Filter dialogue options based on NPC emotional state
+ * NPCs with resentment >70 may refuse dialogue or offer only hostile options
+ * NPCs with gratitude >70 may offer unique "Ally Gift" options
+ */
+export function filterDialogueByEmotion(
+  dialogueOptions: DialogueOption[],
+  npc: any
+): DialogueOption[] {
+  if (!npc.emotionalState) {
+    return dialogueOptions;
+  }
+
+  const { resentment, gratitude, fear } = npc.emotionalState;
+  const filteredOptions = [...dialogueOptions];
+
+  // High resentment: Remove friendly/gift options
+  if (resentment > 70) {
+    return filteredOptions.filter(opt => !opt.text?.toLowerCase().includes('gift'));
+  }
+
+  // High fear: Remove aggressive dialogue options
+  if (fear > 75) {
+    return filteredOptions.filter(opt => !opt.text?.toLowerCase().includes('threaten'));
+  }
+
+  return filteredOptions;
+}
+
+/**
+ * ALPHA_M19: Generate emotion-based dialogue prefix or special greetings
+ */
+export function getEmotionalGreeting(npc: any): string {
+  if (!npc.emotionalState) {
+    return `${npc.name} greets you.`;
+  }
+
+  const tone = getEmotionalDialogueTone(npc);
+  const { resentment, gratitude, fear, trust } = npc.emotionalState;
+
+  if (tone === 'snide' && resentment > 70) {
+    return `${npc.name} looks at you with thinly veiled contempt. "Well, well... if it isn't you."`;
+  }
+
+  if (tone === 'cold' && fear > 70) {
+    return `${npc.name} takes a step back, eyes wary. "I... I didn't expect to see you here."`;
+  }
+
+  if (tone === 'warm' && gratitude > 70 && trust > 60) {
+    return `${npc.name}'s face lights up with genuine warmth. "Friend! It's so good to see you again!"`;
+  }
+
+  if (gratitude > 70) {
+    return `${npc.name} smiles genuinely. "It's good to see you. I haven't forgotten your kindness."`;
+  }
+
+  return `${npc.name} regards you carefully.`;
+}
+
+/**
+ * ALPHA_M19: Special "Ally Gift" option for NPCs with very high gratitude
+ * Can only appear if gratitude >70 and no active quest requirement
+ */
+export function maybeAddAllyGiftOption(npc: any): DialogueOption | null {
+  if (!npc.emotionalState) {
+    return null;
+  }
+
+  const { gratitude } = npc.emotionalState;
+
+  if (gratitude > 70 && random() < 0.3) {
+    return {
+      id: 'ally_gift',
+      text: 'Accept Ally Gift',
+      consequence: 'item_give',
+      itemId: `gift_from_${npc.id}`,
+      requiresQuestStatus: 'none' // No quest requirement for ally gifts
+    };
+  }
+
+  return null;
 }

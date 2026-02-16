@@ -80,20 +80,19 @@ this file describes *when* each system gets built and the acceptance criteria fo
 
 | Feature | Description | Plan Files | New/Extended Engine Files |
 |---|---|---|---|
-| Enhanced AI Dungeon Master | Adaptive storylines, NPC behavior, and world events | 01, 06, 14, 18 | npcEngine.ts, ruleEngine.ts, new: aiDmEngine.ts |
-| Player-Created Content | Custom characters, loot, minor rulesets, and basic templates | 10, 13, 08 | new: templateEditor.ts, worldEngine.ts |
-| Visual Enhancements | AI-generated maps, images, and assets for immersion | — | new: assetGenerator.ts, client components |
-| Procedural Events & Challenges | Auto-generated side quests, encounters, environmental hazards | 12, 15, 16 | new: proceduralEngine.ts, weatherEngine.ts, seasonEngine.ts |
-| Persistent & Replayable Worlds | Snapshots, rollbacks, and evolving game state tested at scale | 17, 19 | saveLoadEngine.ts, stateRebuilder.ts |
-| Analytics & Feedback Loops | Track decisions for smarter AI adaptation | 18, 19 | new: analyticsEngine.ts |
-| Expanded Lore Templates | Flexible story modules for longer campaigns | 02, 09 | worldEngine.ts |
+| Enhanced AI Dungeon Master | Adaptive storylines, NPC behavior, and world events | 01, 06, 14, 18 | npcEngine.ts, ruleEngine.ts, aiDmEngine.ts |
+| The Architect's Forge | UI for modifying world blueprints, starting factions, and location logic | 20, 27 | TemplateEditor.tsx, templateStorage.ts |
+| The Dice Altar | Ritualistic resolution UI for all player actions (center-bottom anchor) | 05 | DiceAltar.tsx, actionPipeline.ts |
+| Visual Enhancements | AI-generated scene illustrations and dynamic NPC portraits | 15 | OracleView.tsx, assetGenerator.ts |
+| Procedural & Relic Quests | Dynamic side quests and sentient relic issuance | 12, 16 | proceduralEngine.ts, artifactEngine.ts |
+| Analytics & Feedback | Track playstyle vectors (Combatant, Explorer) for AI pacing | 18, 19 | analyticsEngine.ts |
 
 ### Acceptance Criteria
 
 - [ ] AI DM adapts narrative pacing based on player behavior
-- [ ] Players can create and save custom character templates
-- [ ] At least 1 AI-generated visual per session (map or NPC portrait)
-- [ ] Procedural side quests generate from world state (not hard-coded)
+- [ ] Players can create/edit world templates via The Architect's Forge
+- [ ] All action resolutions flow through The Dice Altar with transparent math
+- [ ] At least 1 AI-generated visual (portrait or scene) per session
 - [ ] Weather and season systems affect gameplay (encounters, NPC schedules)
 - [ ] Particle engine renders environmental effects
 - [ ] Analytics dashboard shows decision patterns (dev-only)

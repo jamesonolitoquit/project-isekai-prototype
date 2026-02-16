@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Luxfier World Template",
+  "description": "JSON Schema for validating Luxfier world templates",
+  "type": "object",
+  "required": ["name", "description", "season", "locations", "npcs", "quests"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the world"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the world"
+    },
+    "season": {
+      "type": "string",
+      "enum": ["winter", "spring", "summer", "autumn"],
+      "description": "Current season in the world"
+    },
+    "locations": {
+      "type": "array",
+      "description": "List of locations in the world",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the location"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the location"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "npcs": {
+      "type": "array",
+      "description": "List of NPCs in the world",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "locationId"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the NPC"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the NPC"
+          },
+          "locationId": {
+            "type": "string",
+            "description": "Location where the NPC is found"
+          },
+          "questId": {
+            "type": "string",
+            "description": "Associated quest ID (optional)"
+          },
+          "dialogue": {
+            "type": "array",
+            "description": "Dialogue lines for the NPC",
+            "items": {}
+          },
+          "availability": {
+            "type": "object",
+            "description": "Availability window for the NPC",
+            "properties": {
+              "startHour": {
+                "type": "number"
+              },
+              "endHour": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "quests": {
+      "type": "array",
+      "description": "List of quests in the world",
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the quest"
+          },
+          "title": {
+            "type": "string",
+            "description": "Title of the quest"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the quest"
+          },
+          "objective": {
+            "type": "object",
+            "description": "Quest objective",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "dependencies": {
+            "type": "array",
+            "description": "IDs of quests that must be completed first",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rewards": {
+            "type": "object",
+            "description": "Quest rewards"
+          },
+          "expiresInHours": {
+            "type": "number",
+            "description": "Quest expiration time in hours"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Metadata about the world template",
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "description": "Identifier for this template"
+        },
+        "audioVolume": {
+          "type": "number",
+          "description": "Default audio volume (0-1)"
+        },
+        "particleDensity": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "description": "Particle effect density"
+        },
+        "initialReputation": {
+          "type": "object",
+          "description": "Initial reputation values by NPC ID"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

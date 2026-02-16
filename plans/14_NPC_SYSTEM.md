@@ -47,35 +47,41 @@ Provides dynamic, reactive, and replayable NPC behavior.
 
 ---
 
-## 14.4 AI Behavior Framework
+## 14.4 AI DM Dialogue & Interaction System
 
-### 14.4.1 Social Interaction
-- Dialogue responses vary based on: CHA vs INT comparison, faction alignment/reputation, emergent history
-- Persuasion, intimidation, bribery, deception dynamically calculated
-- NPCs can react to morphing, magic display, or player notoriety
+The AI DM (Large Language Model) acts as the "Ghost in the Machine" for every NPC. Instead of static scripts, it synthesizes a response based on the **Resonance Context**.
 
-### 14.4.2 Combat Behavior
-- **Aggression Levels:** Passive → Defensive → Aggressive → Legendary / Boss
-- **Tactical Awareness:** terrain use, morphing/magic adaptation, ally support, enemy prioritization
-- **Scaling:** level and stats adjust relative to player or emergent world progression
+### 14.4.1 Dialogue Synthesis (The "Character Prompt")
+The AI DM generates replies by injecting the following data into its context window:
+- **Character Blueprint**: `persona`, `quirks`, `voiceDescriptor` (from World Template).
+- **Physical Context**: Current `location`, `season`, `weather`, and `time` (e.g., "It's midnight in a frozen forest").
+- **Social Resonance**: Current `trust`, `fear`, `gratitude`, and `resentment` levels.
+- **Narrative Hooks**: Active `quests`, `inventory items` shown to the NPC, and `past decisions`.
+- **WTOL (Belief Layer)**: What the NPC knows (or thinks they know) about the player.
 
-### 14.4.3 Patrol & Movement
+### 14.4.2 Social Interaction Mechanics
+- **Dynamic Persuasion/Intimidation**: Not just a dice roll, but based on the AI's interpretation of the player's written "argument" vs the NPC's `persona` and `fear` levels.
+- **Bribes & Items**: NPCs react dynamically to items offered. A merchant might recognize a "Silver-War Relic" and drop their `resentment` immediately.
+- **Reactivity**: NPCs can react to morphing, magic display, or player notoriety in real-time.
+
+### 14.4.3 Interaction flow
+1.  **Input**: Player sends a message or performs an action (e.g., "Show them the cursed idol").
+2.  **Context Assembly**: Engine pulls NPC stats, world state, and history.
+3.  **AI Generation**: DM generates the character's reaction and speech.
+4.  **Mutation**: The result of the interaction may trigger changes in the `Resonance Metrics` or `Mutation Log`.
+
+---
+
+## 14.5 NPC Movement & Patrol
+
+### 14.5.1 Patrol & Movement
 - Town NPCs: daily routines, faction-based patrols
 - Guards: enforce laws, respond to crimes
 - Merchants: move between settlements, affect trade networks
 - Random NPCs: roam, interact, trigger emergent events
 
-### 14.4.4 Emergent Behavior
-NPCs respond to: player actions (theft, faction betrayal, quest completion), faction dominance shifts, Belief Layer changes, environmental events (Maxi Fluctus, monster incursions)
-
----
-
-## 14.5 Dialogue & Interaction System
-
-- NPCs can spawn emergent quests based on world state and faction alignment
-- React differently to players who complete canonical vs emergent quests
-- Faction allegiance changes influence future quests and power graphs
-- Rare NPCs may unlock hidden lore, artifacts, or emergent events
+### 14.5.2 Transition logic
+NPCs transition between locations based on the 24h clock defined in `routine`. The AI DM can override these moves if a "World Event" (e.g., a monster attack) is triggered.
 
 ---
 

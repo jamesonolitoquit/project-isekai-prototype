@@ -72,7 +72,27 @@ sustained player interest beyond initial playthrough.
 
 ---
 
-## 19.6 Player Legacy Profile
+## 19.6 The Chronicle Sequence (Epoch Transition)
+
+The world does not end when a character dies or the main quest is completed. Instead, the world state is processed through **The Chronicle Sequence** to prepare for the next Playable Epoch.
+
+### 19.6.1 Impact Resolution
+The AI DM evaluates the player's lifetime across three meta-metrics:
+1. **Myth Status:** 
+    - *Canonized:* Your name is in the history books of the next age.
+    - *Demonized:* You are the villain of legends.
+    - *Forgotten:* Your impact was erased by time or enemies.
+2. **World Delta:** Physical changes to map regions, faction power, and technological availability in the next epoch.
+3. **Legacy Budget:** Points earned to spend on "Echoes" or "Bloodline Perks" for the next character.
+
+### 19.6.2 Dynamic Epoch Looping
+- Playable worlds can have **N epochs**.
+- If a player completes the final epoch, they can trigger a **Planetary Reset** or enter **New Game+** with all legacy perks active from the start of Epoch I.
+- Cross-epoch anomalies (e.g., meeting a ghost of your previous character) are handled via the `LegacyImpact` table.
+
+---
+
+## 19.7 Player Legacy Profile
 
 | Field | Description |
 |---|---|

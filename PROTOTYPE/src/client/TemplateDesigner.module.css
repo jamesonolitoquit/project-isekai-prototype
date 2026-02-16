@@ -1,0 +1,493 @@
+/**
+ * TemplateDesigner.module.css
+ * Styles for ALPHA_M6 template designer interface
+ */
+
+.designer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  background: #f5f5f5;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  margin: 0 0 0.5rem;
+  color: #2c3e50;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.header p {
+  font-size: 1.1rem;
+  color: #666;
+  margin: 0;
+}
+
+.metadataPanel {
+  display: flex;
+  gap: 1.5rem;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.formGroup label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.formGroup input,
+.formGroup select,
+.formGroup textarea {
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.formGroup input:focus,
+.formGroup select:focus,
+.formGroup textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.modeSelector {
+  display: flex;
+  gap: 1rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.modeSelector button {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #e0e0e0;
+  background: #f9f9f9;
+  color: #2c3e50;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.modeSelector button:hover {
+  background: #f0f0f0;
+  border-color: #3498db;
+}
+
+.modeSelector button.active {
+  background: #3498db;
+  color: white;
+  border-color: #3498db;
+}
+
+.mainContainer {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  flex: 1;
+}
+
+.modeContent {
+  display: flex;
+  gap: 1.5rem;
+  padding: 2rem;
+  height: 100%;
+}
+
+.gridContainer {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 2px dashed #ddd;
+}
+
+.grid {
+  position: relative;
+  background: white;
+  border: 1px solid #ccc;
+}
+
+.gridLines {
+  pointer-events: none;
+}
+
+.locationPin {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+  font-weight: bold;
+  font-size: 1.2rem;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.locationPin:hover {
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
+}
+
+.locationPin.selected {
+  border: 3px solid #f39c12;
+  box-shadow: 0 0 16px rgba(243, 156, 18, 0.8);
+}
+
+.pinLabel {
+  font-size: 1rem;
+}
+
+.npcBadge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #e74c3c;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.editorPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: #fafafa;
+  padding: 1.5rem;
+  border-radius: 8px;
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+.editorPanel h3 {
+  margin: 0 0 1rem;
+  color: #2c3e50;
+  font-size: 1.2rem;
+}
+
+.editPanel,
+.locationContext {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+}
+
+.locationContext {
+  margin-bottom: 1rem;
+  border-left: 4px solid #27ae60;
+}
+
+.createButton,
+.primaryButton,
+.secondaryButton,
+.testButton,
+.deleteButton {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.createButton {
+  background: #27ae60;
+  color: white;
+  width: 100%;
+  text-align: left;
+}
+
+.createButton:hover {
+  background: #229954;
+}
+
+.primaryButton {
+  background: #2980b9;
+  color: white;
+  flex: 1;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #2471a3;
+}
+
+.primaryButton:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.secondaryButton {
+  background: #3498db;
+  color: white;
+  flex: 1;
+}
+
+.secondaryButton:hover {
+  background: #2980b9;
+}
+
+.testButton {
+  background: #f39c12;
+  color: white;
+  flex: 1;
+}
+
+.testButton:hover {
+  background: #d68910;
+}
+
+.deleteButton {
+  background: #e74c3c;
+  color: white;
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.deleteButton:hover {
+  background: #c0392b;
+}
+
+.npcList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.npcItem {
+  background: white;
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 4px solid #9b59b6;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.npcItem:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateX(4px);
+}
+
+.npcItem.selected {
+  background: #ecf0f1;
+  border-left-color: #f39c12;
+}
+
+.npcItem strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #2c3e50;
+}
+
+.npcItem p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7f8c8d;
+}
+
+.npcEditPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #bdc3c7;
+}
+
+.npcEditPanel input,
+.npcEditPanel select {
+  padding: 0.5rem;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.lootGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.lootCard {
+  background: white;
+  border: 3px solid #bdc3c7;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: all 0.2s;
+}
+
+.lootCard:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.lootRarity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  border-radius: 4px;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.lootName,
+.lootType,
+.lootValue {
+  padding: 0.5rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.validationPanel {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+
+.errorSection,
+.warningSection {
+  margin-bottom: 1rem;
+}
+
+.errorSection:last-child,
+.warningSection:last-child {
+  margin-bottom: 0;
+}
+
+.errorSection h4 {
+  color: #d32f2f;
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.warningSection h4 {
+  color: #f57c00;
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.errorSection ul,
+.warningSection ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.errorSection li {
+  color: #d32f2f;
+  margin-bottom: 0.25rem;
+}
+
+.warningSection li {
+  color: #f57c00;
+  margin-bottom: 0.25rem;
+}
+
+.actionBar {
+  display: flex;
+  gap: 1rem;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  justify-content: flex-end;
+}
+
+@media (max-width: 1200px) {
+  .modeContent {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .gridContainer {
+    min-height: 400px;
+  }
+
+  .editorPanel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .designer {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .metadataPanel {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .modeSelector {
+    flex-wrap: wrap;
+  }
+
+  .modeSelector button {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .lootGrid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .actionBar {
+    flex-direction: column;
+  }
+
+  .actionBar button {
+    width: 100%;
+  }
+}

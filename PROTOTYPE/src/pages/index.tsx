@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { createWorldController, createInitialWorld } from "../engine/public";
+import BetaApplication from "../client/components/BetaApplication";
 import SeasonPanel from "../client/components/SeasonPanel";
 import WeatherPanel from "../client/components/WeatherPanel";
 import QuestPanel from "../client/components/QuestPanel";
@@ -26,8 +27,13 @@ import ParadoxIndicator from "../client/components/ParadoxIndicator";
 import TravelProgress from "../client/components/TravelProgress";
 import Codex from "../client/components/Codex";
 import GlobalHeader from "../client/components/GlobalHeader";
+import DiceAltar from "../client/components/DiceAltar";
+import LegacyOracle from "../client/dev/LegacyOracle";
+import ChronicleArchive from "../client/components/ChronicleArchive";
+import ChronicleScroll from "../client/components/ChronicleScroll";
 
 export default function HomePage() {
+  const [useBetaUI, setUseBetaUI] = useState(false);
   const [devDockOpen, setDevDockOpen] = useState(false);
   const [controller, setController] = useState<any | null>(null);
   const [state, setState] = useState<any | null>(null);
@@ -36,7 +42,13 @@ export default function HomePage() {
   const [showInventory, setShowInventory] = useState(false);
   const [showLevelUPModal, setShowLevelUpModal] = useState(false);
   const [showCraftingModal, setShowCraftingModal] = useState(false);
+  const [showChronicleArchive, setShowChronicleArchive] = useState(false);
   const [activeTab, setActiveTab] = useState<'world' | 'combat' | 'politics' | 'arcane' | 'codex'>('world');
+  
+  // BETA: DiceAltar state management
+  const [showDiceAltar, setShowDiceAltar] = useState(false);
+  const [diceRollContext, setDiceRollContext] = useState<any | null>(null);
+  const [pendingAction, setPendingAction] = useState<any | null>(null);
 
   // useEffect(() => {
   //   const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
@@ -103,6 +115,26 @@ export default function HomePage() {
     }, 500);
     return () => clearInterval(id);
   }, [controller]);
+
+  // BETA: Listen for DICE_ROLL_REQUEST events to trigger DiceAltar modal
+  useEffect(() => {
+    if (!controller) return;
+    const checkForDiceRollRequest = () => {
+      const allEvents = getEventsForWorld(controller.getState().id);
+      const diceRollEvent = allEvents.find((e: any) => e.type === 'DICE_ROLL_REQUEST');
+      
+      if (diceRollEvent && !showDiceAltar) {
+        const { diceContext, actionType, actionPayload } = diceRollEvent.payload || {};
+        setDiceRollContext(diceContext);
+        setPendingAction({ type: actionType, payload: actionPayload });
+        setShowDiceAltar(true);
+        setActiveTab('combat'); // Switch to combat tab when dice is shown
+      }
+    };
+    
+    const pollId = setInterval(checkForDiceRollRequest, 200);
+    return () => clearInterval(pollId);
+  }, [controller, showDiceAltar]);
 
   // Wire audio controller for soundscape transitions
   // useAudioController(
@@ -299,6 +331,33 @@ export default function HomePage() {
   const doSave = () => controller?.save();
   const doLoad = () => controller?.load();
 
+  // BETA: Handle DiceAltar resolution
+  const handleDiceRollResolved = (success: boolean, roll: number, totalValue: number) => {
+    if (!controller || !pendingAction) return;
+    
+    // Replay action with diceRollConfirmed flag and roll results
+    const confirmedAction = {
+      ...pendingAction,
+      payload: {
+        ...pendingAction.payload,
+        diceRollConfirmed: true,
+        diceRollResult: { success, roll, totalValue }
+      }
+    };
+    
+    // Insert action context
+    confirmedAction.worldId = controller.getState().id;
+    confirmedAction.playerId = controller.getState().player.id;
+    
+    // Perform the confirmed action
+    controller.performAction(confirmedAction);
+    
+    // Clean up DiceAltar UI
+    setShowDiceAltar(false);
+    setDiceRollContext(null);
+    setPendingAction(null);
+  };
+
   const npcsHere = (state?.npcs || []).filter((n: any) => n.locationId === state?.player?.location);
   const questStatus = state?.player?.quests?.["winter-festival"]?.status || "not_started";
 
@@ -310,18 +369,103 @@ export default function HomePage() {
     controller?.performAction(actionRequest);
   };
 
+  // BETA: Generate epoch-based visual filters (GPU-optimized)
+  const getEpochFilters = (): string => {
+    const theme = state?.epochMetadata?.theme;
+    if (!theme) return '';
+    
+    // Use only GPU-efficient filters to maintain 60fps
+    if (theme === 'Waning') {
+      // Desaturated, warm sepia tones for decline era
+      // Optimized: sepia is more efficient than separate saturation+hue
+      return 'saturate(0.7) sepia(0.2) brightness(1.0)';
+    } else if (theme === 'Twilight') {
+      // High contrast monochrome with blue tint
+      // Optimized: reduced invert amount for better performance
+      return 'saturate(0.35) brightness(0.92) contrast(1.08)';
+    }
+    // Fracture: vibrant, normal colors
+    return 'saturate(1.1) brightness(1.0)';
+  };
+
   return (
-    <div className="app-root omni-hud">
+    <div 
+      className="app-root omni-hud"
+      style={{
+        filter: getEpochFilters(),
+        transition: 'filter 0.8s ease-in-out',
+        willChange: 'filter',
+        backfaceVisibility: 'hidden',
+        WebkitBackfaceVisibility: 'hidden',
+        WebkitPerspective: 1000,
+        perspective: 1000
+      }}
+    >
       {/* Global Paradox Indicator Overlay */}
       {state && <ParadoxIndicator state={state} />}
 
       {/* Global Travel Progress Overlay */}
       {state && <TravelProgress state={state} />}
 
-      {/* Global Persistent HUD Header */}
-      {state && !state.needsCharacterCreation && <GlobalHeader state={state} />}
+      {/* M38 TASK 1: BETA UI TOGGLE */}
+      {!state?.needsCharacterCreation && (
+        <button
+          onClick={() => setUseBetaUI(!useBetaUI)}
+          style={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            zIndex: 999,
+            padding: '8px 16px',
+            backgroundColor: useBetaUI ? '#00cc00' : '#4f2783',
+            color: useBetaUI ? '#000' : '#c084fc',
+            border: `2px solid ${useBetaUI ? '#00ff00' : '#c084fc'}`,
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          }}
+        >
+          {useBetaUI ? '✓ BETA UI' : 'BETA UI'}
+        </button>
+      )}
 
-      <div className="main-shell">
+      {/* M38 TASK 1: BETA APPLICATION - Unified UI for M35-M37 Integration */}
+      {useBetaUI && state && controller && !state?.needsCharacterCreation && (
+        <BetaApplication
+          initialState={state}
+          controller={controller}
+          isMultiplayer={false}
+          clientId="client_0"
+          showDevTools={isDevMode}
+        />
+      )}
+
+      {/* BETA: DiceAltar Modal for action resolution */}
+      {!useBetaUI && showDiceAltar && diceRollContext && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <DiceAltar
+            context={diceRollContext}
+            onResolved={handleDiceRollResolved}
+          />
+        </div>
+      )}
+
+      {/* Global Persistent HUD Header */}
+      {!useBetaUI && state && !state.needsCharacterCreation && <GlobalHeader state={state} />}
+
+      <div className="main-shell" style={{ display: useBetaUI ? 'none' : 'block' }}>
         {state?.needsCharacterCreation ? (
           <div className="gameplay-area character-creation-overlay">
             <CharacterCreation onCharacterCreated={doSubmitCharacter} startingLocation={state?.player?.location} />
@@ -359,6 +503,21 @@ export default function HomePage() {
                 onClick={() => setActiveTab('codex')}
               >
                 📖 Codex
+              </button>
+              <button
+                style={{
+                  marginLeft: 'auto',
+                  background: showChronicleArchive ? '#d4af37' : '#74b9ff',
+                  color: showChronicleArchive ? '#000' : '#fff',
+                  border: 'none',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+                onClick={() => setShowChronicleArchive(!showChronicleArchive)}
+              >
+                📜 Hall of Legends
               </button>
             </div>
 
@@ -699,6 +858,13 @@ export default function HomePage() {
                   </div>
                 </div>
               )}
+              
+              {isDevMode && controller && (
+                <div style={{ marginTop: 12, borderTop: '1px dashed #444', paddingTop: 8 }}>
+                  <h4>Legacy Oracle - Epoch Framework Control</h4>
+                  <LegacyOracle state={state} controller={controller} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -719,6 +885,33 @@ export default function HomePage() {
         onCraft={doCraft}
         onClose={() => setShowCraftingModal(false)}
       />
+
+      {/* BETA: Hall of Legends */}
+      {showChronicleArchive && state && (
+        <ChronicleArchive 
+          isOpen={showChronicleArchive}
+          onClose={() => setShowChronicleArchive(false)}
+          state={state}
+        />
+      )}
+
+      {/* M29 Task 5: Chronicle Scroll - Deed Timeline Visualization */}
+      {state && state.player && (
+        <div style={{
+          position: 'fixed',
+          bottom: 16,
+          left: 16,
+          width: '800px',
+          maxHeight: '280px',
+          zIndex: 500,
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)'
+        }}>
+          <ChronicleScroll
+            legacyImpacts={state.player.legacyImpacts || []}
+            currentCharacterName={state.player.name}
+          />
+        </div>
+      )}
 
       <ParticleVisualizer state={state} />
       <AudioVisualizer state={state} />

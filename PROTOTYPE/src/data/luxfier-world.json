@@ -2,6 +2,9 @@
   "name": "Luxfier Alpha Prototype",
   "description": "A nascent world where magic stirs and ancient powers awaken. Five factions vie for control while corruption spreads from the Abyss edge.",
   "season": "spring",
+  "version": "2.0",
+  "multiEpochEnabled": true,
+  "baseEpoch": "epoch_i_fracture",
   "locations": [
     {
       "id": "eldergrove-village",
@@ -306,14 +309,283 @@
       }
     }
   ],
+  "epochs": {
+    "epoch_i_fracture": {
+      "id": "epoch_i_fracture",
+      "sequenceNumber": 1,
+      "name": "Epoch I: Fracture",
+      "theme": "Recovery",
+      "chronologyYear": 1000,
+      "description": "The Cataclysm has just ended. Civilization struggles to rebuild. Five factions rise to prominence, competing for influence.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 25, "trend": "ascending" },
+        "ironsmith-guild": { "power": 20, "trend": "stable" },
+        "luminara-mercantile": { "power": 20, "trend": "ascending" },
+        "shadow-conclave": { "power": 15, "trend": "hidden" },
+        "adventurers-league": { "power": 20, "trend": "forming" }
+      }
+    },
+    "epoch_ii_waning": {
+      "id": "epoch_ii_waning",
+      "sequenceNumber": 2,
+      "name": "Epoch II: Waning Light",
+      "theme": "Decline",
+      "chronologyYear": 1200,
+      "description": "200 years have passed. The brief recovery fades. Ancient evils stir. One faction dominates politics as others fragment.",
+      "locationOverrides": {
+        "thornwood-depths": {
+          "name": "Thornwood Depths - Corrupted",
+          "description": "The woods are now twisted by dark magic. Many adventurers never return.",
+          "spiritDensity": 0.95,
+          "hazardMultiplier": 1.5
+        },
+        "frozen-lake": {
+          "name": "Frozen Lake - Cursed",
+          "description": "The ice never melts. Whispers echo across its surface.",
+          "spiritDensity": 0.8,
+          "hazardMultiplier": 1.3
+        }
+      },
+      "npcOverrides": {
+        "brother-theron": {
+          "status": "retired",
+          "role": "soul_echo",
+          "description": "The spirit of the legendary Brother Theron, long since passed"
+        },
+        "smitty-ironhammer": {
+          "name": "Smitty Ironhammer (Aged)",
+          "dialogue": [
+            "Ah, another seeks the old forge... times have been darker of late.",
+            "Few come to the summit anymore. The world has gone to shadow."
+          ],
+          "stats": {
+            "str": 12,
+            "agi": 6,
+            "int": 10,
+            "cha": 10,
+            "end": 11,
+            "luk": 8
+          },
+          "hp": 45,
+          "maxHp": 45
+        }
+      },
+      "questOverrides": {
+        "herbs-for-the-healer": {
+          "status": "archived",
+          "note": "Brother Theron no longer needs herbs; he walks between worlds"
+        }
+      },
+      "factionStateOverride": {
+        "silver-flame": { "power": 60, "trend": "dominant" },
+        "ironsmith-guild": { "power": 10, "trend": "declining" },
+        "luminara-mercantile": { "power": 15, "trend": "unstable" },
+        "shadow-conclave": { "power": 30, "trend": "ascendant" },
+        "adventurers-league": { "power": 5, "trend": "dissolved" }
+      }
+    },
+    "epoch_iii_twilight": {
+      "id": "epoch_iii_twilight",
+      "sequenceNumber": 3,
+      "name": "Epoch III: Twilight's End",
+      "theme": "Desperation",
+      "chronologyYear": 1500,
+      "description": "The final age dawns. Only the Shadow Conclave stands strong. Reality itself fractures. This is the last hope for salvation.",
+      "locationOverrides": {
+        "eldergrove-village": {
+          "name": "Eldergrove Village - Ruins",
+          "description": "Once vibrant, now only ruins remain. Spirits of the fallen drift through empty streets.",
+          "spiritDensity": 0.7
+        },
+        "luminara-grand-market": {
+          "name": "Luminara - Occupied",
+          "description": "The Shadow Conclave has seized control. Markets now deal in forbidden artifacts.",
+          "spiritDensity": 0.5
+        },
+        "forge-summit": {
+          "name": "Forge Summit - Overrun",
+          "description": "The forge fires have been extinguished. Dark magic now permeates the stone.",
+          "spiritDensity": 0.85,
+          "hazardMultiplier": 2.0
+        },
+        "moonwell-shrine": {
+          "name": "Moonwell Shrine - Desecrated",
+          "description": "The sacred waters run black. Something ancient has awakened within.",
+          "spiritDensity": 1.0,
+          "hazardMultiplier": 2.5
+        }
+      },
+      "npcOverrides": {
+        "brother-theron": {
+          "status": "soul_echo",
+          "name": "Spirit of Brother Theron",
+          "dialogue": [
+            "I have watched across the ages. The time has come."
+          ]
+        },
+        "smitty-ironhammer": {
+          "status": "deceased",
+          "note": "Passed away in Epoch II. Only memories remain."
+        },
+        "sergeant-brynn": {
+          "name": "Commander Brynn - Shadow Enforcer",
+          "factionId": "shadow-conclave",
+          "factionRole": "commander",
+          "dialogue": [
+            "The Shadow Conclave rules now. Resistance is futile.",
+            "Power flows to those wise enough to accept it."
+          ]
+        }
+      },
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 5, "trend": "extinct" },
+        "ironsmith-guild": { "power": 0, "trend": "extinct" },
+        "luminara-mercantile": { "power": 0, "trend": "extinct" },
+        "shadow-conclave": { "power": 100, "trend": "absolute" },
+        "adventurers-league": { "power": 0, "trend": "extinct" }
+      }
+    }
+  },
   "metadata": {
-    "templateId": "luxfier-alpha-prototype",
+    "templateId": "luxfier-alpha-prototype-multi-epoch",
     "audioVolume": 0.8,
     "particleDensity": "medium",
     "initialReputation": {
       "brother-theron": 10,
       "smitty-ironhammer": 5,
       "sergeant-brynn": 0
+    }
+  },
+  "epochOverrides": {
+    "epoch_ii_waning": {
+      "npcTransformations": [
+        {
+          "originalNpcId": "brother-theron",
+          "epochTransform": {
+            "name": "Ancient Brother Theron",
+            "title": "Keeper of Sacred Relics",
+            "description": "Theron must be well over a hundred years old now. He moves slowly, but his eyes are still sharp with ancient wisdom.",
+            "stats_delta": {
+              "str": -3,
+              "agi": -2,
+              "int": 2,
+              "cha": 1,
+              "end": -2,
+              "luk": 1
+            }
+          }
+        },
+        {
+          "originalNpcId": "smitty-ironhammer",
+          "epochTransform": {
+            "name": "Master Smithe Ironhammer",
+            "title": "Legendary Craftsman",
+            "description": "The blacksmith has become a master of his craft, known across the realm for weapons that never break.",
+            "stats_delta": {
+              "str": 2,
+              "agi": -1,
+              "int": 1,
+              "cha": 2,
+              "end": 1,
+              "luk": 2
+            },
+            "dialogue_suffix": [
+              "Aye, I'm still here. My forge has seen generations pass.",
+              "Quality never goes out of style, young one."
+            ]
+          }
+        },
+        {
+          "originalNpcId": "sergeant-brynn",
+          "epochTransform": {
+            "name": "Captain Brynn",
+            "title": "Commander of the Luminara Guard",
+            "description": "Once a mere sergeant, Brynn has risen through the ranks to command the entire guard force of Luminara.",
+            "stats_delta": {
+              "str": 1,
+              "agi": -1,
+              "int": 2,
+              "cha": 3,
+              "end": 2,
+              "luk": 1
+            },
+            "dialogue_suffix": [
+              "I've been promoted. Responsibility weighs heavier than armor.",
+              "The city survives because of my leadership. I won't let it fall."
+            ]
+          }
+        }
+      ]
+    },
+    "epoch_iii_twilight": {
+      "npcTransformations": [
+        {
+          "originalNpcId": "brother-theron",
+          "epochTransform": {
+            "name": "Spirit of Brother Theron",
+            "title": "Eternal Guardian",
+            "description": "Brother Theron has transcended mortality, becoming a protector spirit bound to the sacred grounds. He appears as a shimmering phantom.",
+            "stats_delta": {
+              "str": -5,
+              "agi": 0,
+              "int": 5,
+              "cha": 3,
+              "end": -5,
+              "luk": 5
+            },
+            "isSpectral": true,
+            "dialogue_suffix": [
+              "I am no longer of flesh, but my purpose endures.",
+              "The Sacred Grove needs guardians now more than ever."
+            ]
+          }
+        },
+        {
+          "originalNpcId": "smitty-ironhammer",
+          "epochTransform": {
+            "name": "Statue of Smitty Ironhammer",
+            "title": "Monument to Craftsmanship",
+            "description": "Once a living legend, Smitty was immortalized as a statue in the town square. Some say the statue's eyes follow you...",
+            "isStatue": true,
+            "stats_delta": {
+              "str": 0,
+              "agi": -10,
+              "int": 0,
+              "cha": 0,
+              "end": 20,
+              "luk": 0
+            },
+            "dialogue_suffix": [
+              "[The statue stands silent, but its presence speaks volumes about a master smith's legacy.]"
+            ]
+          }
+        },
+        {
+          "originalNpcId": "sergeant-brynn",
+          "epochTransform": {
+            "name": "Ghost-Captain Brynn",
+            "title": "Sentinel of the Twilight",
+            "description": "Captain Brynn died defending Luminara from the encroaching darkness. Now her spirit guards the ruins, unable to rest while duty remains.",
+            "stats_delta": {
+              "str": 0,
+              "agi": 1,
+              "int": 1,
+              "cha": 2,
+              "end": 0,
+              "luk": 1
+            },
+            "isSpectral": true,
+            "dialogue_suffix": [
+              "The city fell. But I will not abandon my post.",
+              "If you seek to restore what was lost, I will aid you."
+            ]
+          }
+        }
+      ]
     }
   }
 }

@@ -36,7 +36,27 @@ to evolving world history.
 
 ---
 
-## 9.3 Canonical Key Events
+## 9.3 Playable Epochs (Template Defined)
+
+Unlike the static pre-history (the "Immutable Spine"), the modern history of a world template is divided into **Playable Epochs**. The number and duration of these epochs are defined by the World Architect.
+
+### 9.3.1 Luxfier Reference Implementation
+For the *Luxfier* core template, the following windows are defined:
+
+| Epoch | Year (approx) | Theme | Narrative Focus |
+|---|---|---|---|
+| **I: Fracture of Radiance** | 3,412 A.A. | High Magic / Zenith | The peak of Elfin/Beastkin cooperation; early signs of Chaos rot. |
+| **II: Shattered Faith** | 7,982 A.A. | Post-Collapse | Civilizations rebuilt in the ruins of the Great Sundering. Belief is fractured. |
+| **III: Waning Light** | 12,611 A.A. | Entropy / Endtimes | The world is losing color and magic. Survival is the only goal. |
+
+### 9.3.2 Epoch Transition Rules
+- **The Chronicle Sequence:** At the end of an epoch, the AI DM calculates the "World Delta" based on player actions.
+- **Persistent Canon:** Major events (e.g., the destruction of a city) become Hard Canon for all subsequent epochs.
+- **Legacy Carryover:** Characters from Epoch I leave behind legacies (Bloodlines, items, legends) that appear in Epoch II.
+
+---
+
+## 9.4 Canonical Key Events
 
 - **War of Immortals** — Dreakin sealed; Kael'Vahn enacts final command; formation of Last Command cult
 - **Maxi Fluctus** — Extreme environmental collapse; trigger for Beastkin migrations; rise of Mage Guild oversight

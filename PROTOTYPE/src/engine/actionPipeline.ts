@@ -1,6 +1,7 @@
 import { WorldState } from './worldEngine';
 import { Event } from '../events/mutationLog';
 import { random } from './prng';
+import type { DiceRollContext } from '../client/components/DiceAltar';
 import { createPlayerCharacter, validateStatAllocation } from './characterCreation';
 import { resolveCombat, resolveDefense, resolveParry, resolveHeal, CombatantStats, getEquipmentBonuses, applyEquipmentBonuses } from './ruleEngine';
 import { isNpcAvailable, resolveDialogue } from './npcEngine';
@@ -10,6 +11,7 @@ import { calculateDrift, validateAuthority, getParadoxSeverity, checkForSpellBac
 import { calculateMorphCost, generateRitualChallenge, performRitualCheck, handleMorphSuccess, handleMorphFailure, calculateEssenceDecay, checkMorphCooldown, findNearestAltar } from './morphEngine';
 import { calculateEncounterChance, selectEncounterType, generateEncounterNpc, generateEncounterCombatant, calculateTravelDistance, hasHiddenAreas, getLocationBiome, calculateSearchDifficulty, performSearchCheck } from './encounterEngine';
 import { calculateRelicBonus, shouldRelicRebel, checkInfusionStability, calculateUnbindCost, isRelicRebelling, generateRelicDialogue, applyRelicRebellion, getWieldingRequirement, calculateItemCorruption } from './artifactEngine';
+import { getAbility } from './skillEngine';
 import itemsData from '../data/items.json';
 import encountersData from '../data/encounters.json';
 import runesData from '../data/runes.json';
@@ -117,6 +119,10 @@ export type Action = {
   playerId: string;
   type: string;
   payload: any;
+  epochId?: string; // BETA: Track which epoch this action occurred in
+  // M32: Multi-client authorship fields
+  clientId?: string;        // Which client emitted this action
+  sequenceNumber?: number;  // Monotonic sequence per client for ordering
 };
 
 function createEvent(state: WorldState, action: Action, type: string, payload: any): Event {
@@ -131,6 +137,25 @@ function createEvent(state: WorldState, action: Action, type: string, payload: a
     templateOrigin: state.metadata?.templateOrigin,
     timestamp: tick * 1000,
   };
+}
+
+/**
+ * Helper: Check if action has been resolved via DiceAltar
+ * Returns true if diceRollConfirmed is in payload (meaning the player confirmed the roll)
+ */
+function isDiceRollConfirmed(action: Action): boolean {
+  return action.payload?.diceRollConfirmed === true;
+}
+
+/**
+ * Helper: Creates a DICE_ROLL_REQUEST event that signals to the UI to show DiceAltar
+ */
+function createDiceRollRequest(state: WorldState, action: Action, context: DiceRollContext): Event {
+  return createEvent(state, action, 'DICE_ROLL_REQUEST', {
+    diceContext: context,
+    actionType: action.type,
+    actionPayload: action.payload
+  });
 }
 
 export function processAction(state: WorldState, action: Action): Event[] {
@@ -177,12 +202,60 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
   switch (action.type) {
     case 'MOVE': {
+      // M9 Phase 3: Enhanced movement with travel animation and distance-based time
       const to = action.payload?.to;
       if (!to || !state.locations.find(loc => loc.id === to)) {
         // Invalid location - no event
         return [];
       }
-      events.push(createEvent(state, action, 'MOVE', { from: state.player.location, to }));
+
+      const targetLocation = state.locations.find(loc => loc.id === to);
+      const fromLocation = state.locations.find(loc => loc.id === state.player.location);
+
+      if (!targetLocation || !fromLocation) {
+        return [];
+      }
+
+      // M9 Phase 3: Calculate travel distance and time based on coordinates
+      let travelDistance = 100; // Default distance in coordinate units
+      let travelTicks = 30; // Default ticks (30s for typical travel)
+
+      // If both locations have coordinates, use Euclidean distance
+      if (
+        fromLocation.x !== undefined && fromLocation.y !== undefined &&
+        targetLocation.x !== undefined && targetLocation.y !== undefined
+      ) {
+        const dx = targetLocation.x - fromLocation.x;
+        const dy = targetLocation.y - fromLocation.y;
+        travelDistance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Travel time scales with distance
+        // Base: 30 ticks + (distance * 0.01 ticks per coordinate unit)
+        travelTicks = 30 + Math.round(travelDistance * 0.01);
+      }
+
+      // Apply terrain modifier to travel time
+      const targetTerrainMod = targetLocation.terrainModifier ?? 1.0;
+      travelTicks = Math.round(travelTicks * targetTerrainMod);
+
+      // Create travel animation event
+      events.push(createEvent(state, action, 'TRAVEL_STARTED', {
+        from: state.player.location,
+        to,
+        distance: Math.round(travelDistance),
+        estimatedTicks: travelTicks,
+        terrainDifficulty: targetTerrainMod,
+        animationType: targetLocation.biome ? `travel_${targetLocation.biome}` : 'travel_default',
+      }));
+
+      // Log the movement itself with duration
+      events.push(createEvent(state, action, 'MOVE', {
+        from: state.player.location,
+        to,
+        distance: Math.round(travelDistance),
+        travelTime: travelTicks,
+      }));
+
       break;
     }
 
@@ -333,23 +406,34 @@ export function processAction(state: WorldState, action: Action): Event[] {
         playerStats = applyEquipmentBonuses(playerStats, equipBonuses);
       }
 
-      // Get defender stats
-      const defenderStats: Record<string, CombatantStats> = {
-        [defenderId]: (defender.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 })
-      };
+      // M25: Check if DiceAltar has already confirmed the roll
+      if (!isDiceRollConfirmed(action)) {
+        // First time: send DICE_ROLL_REQUEST to show DiceAltar UI
+        const diceContext: DiceRollContext = {
+          actionType: 'attack',
+          actionName: `Attack ${defender.name || 'Unknown'}`,
+          baseValue: Math.floor(playerStats.str / 2) + 5,
+          modifiers: [
+            { name: 'Weapon Bonus', value: 2 },
+            { name: 'Agility', value: Math.floor(playerStats.agi / 5) }
+          ],
+          targetValue: 10 + Math.floor((defender.stats?.agi || 10) / 5),
+          targetDescription: `Defender AC: ${10 + Math.floor((defender.stats?.agi || 10) / 5)}`
+        };
+        return [createDiceRollRequest(state, action, diceContext)];
+      }
 
-      // Resolve combat using ruleEngine
+      // Second time: player has confirmed roll, apply combat normally
       const combatEvents = resolveCombat(
         state.player.id,
         [defenderId],
         playerStats,
-        defenderStats,
+        { [defenderId]: (defender.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 }) },
         state.id
       );
       events.push(...combatEvents);
 
       // Add faction events for combat victories
-      // Check if defender was defeated and has a faction
       const defenderDefeatedEvent = combatEvents.find(e => 
         (e.type === 'NPC_DEFEATED' || e.type === 'COMBAT_VICTORY') && 
         e.payload?.targetId === defenderId
@@ -361,12 +445,12 @@ export function processAction(state: WorldState, action: Action): Event[] {
           victoryType: 'defeated_npc',
           defenderNpcId: defenderId,
           defenderFactionId: defenderFactionId,
-          victoryFactionId: 'player',  // Could be replaced with player faction
-          reputationGain: 10,           // Faction reputation for defeating enemy
-          powerGain: 3                  // Faction power for defeating enemy
+          victoryFactionId: 'player',
+          reputationGain: 10,
+          powerGain: 3
         }));
 
-        // Auto-loot: Roll on loot table and grant items
+        // Auto-loot
         const lootTableId = (defender as any).lootTable || 'common_npc';
         const lootTable = LOOT_TABLES[lootTableId] || LOOT_TABLES['common_npc'];
         if (lootTable && Array.isArray(lootTable)) {
@@ -401,7 +485,23 @@ export function processAction(state: WorldState, action: Action): Event[] {
         playerStats = applyEquipmentBonuses(playerStats, equipBonuses);
       }
 
-      // Simulate an incoming attack of moderate damage
+      // M25: Check if DiceAltar has already confirmed the roll
+      if (!isDiceRollConfirmed(action)) {
+        const diceContext: DiceRollContext = {
+          actionType: 'defend',
+          actionName: `Defend against ${defender.name || 'Unknown'}`,
+          baseValue: Math.floor(playerStats.agi / 2) + 7,
+          modifiers: [
+            { name: 'Armor Bonus', value: 3 },
+            { name: 'Constitution', value: Math.floor(playerStats.end / 5) }
+          ],
+          targetValue: 12 + Math.floor((defender.stats?.str || 10) / 4),
+          targetDescription: `Incoming attack power: ${12 + Math.floor((defender.stats?.str || 10) / 4)}`
+        };
+        return [createDiceRollRequest(state, action, diceContext)];
+      }
+
+      // Second time: apply defense normally
       const incomingDamage = 8 + (defender.stats?.str || 10) / 10;
       const defenseResult = resolveDefense(playerStats, incomingDamage);
 
@@ -434,7 +534,23 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       const defenderStats: CombatantStats = defender.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 };
 
-      // Simulate incoming damage
+      // M25: Check if DiceAltar has already confirmed the roll
+      if (!isDiceRollConfirmed(action)) {
+        const diceContext: DiceRollContext = {
+          actionType: 'defend',
+          actionName: `Parry ${defender.name || 'Unknown'}`,
+          baseValue: Math.floor(playerStats.agi / 2) + 6,
+          modifiers: [
+            { name: 'Weapon Skill', value: 2 },
+            { name: 'Reflex', value: Math.floor(playerStats.agi / 4) }
+          ],
+          targetValue: 11 + Math.floor(defenderStats.str / 4),
+          targetDescription: `Enemy attack: ${11 + Math.floor(defenderStats.str / 4)}`
+        };
+        return [createDiceRollRequest(state, action, diceContext)];
+      }
+
+      // Second time: apply parry normally
       const incomingDamage = 8 + defenderStats.str / 10;
       const parryResult = resolveParry(playerStats, defenderStats, incomingDamage);
 
@@ -727,9 +843,16 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const { newLevel } = action.payload;
       if (!newLevel || newLevel <= 1) return [];
 
+      // Grant attribute points (M7/M8 feature)
+      state.player.attributePoints = (state.player.attributePoints || 0) + 2;
+      
+      // Grant skill points (M9 feature)
+      state.player.skillPoints = (state.player.skillPoints || 0) + 3;
+
       events.push(createEvent(state, action, 'PLAYER_LEVELED_UP', {
         newLevel,
-        attributePointsGranted: 2
+        attributePointsGranted: 2,
+        skillPointsGranted: 3
       }));
       break;
     }
@@ -742,6 +865,121 @@ export function processAction(state: WorldState, action: Action): Event[] {
         stat,
         amount
       }));
+      break;
+    }
+
+    case 'ACTIVATE_ABILITY': {
+      const { abilityId } = action.payload;
+      if (!abilityId) return [];
+
+      // Check if ability exists
+      const ability = getAbility(abilityId);
+      if (!ability) {
+        return [];
+      }
+
+      // Validation 1: Check if ability is equipped
+      if (!state.player.equippedAbilities?.includes(abilityId)) {
+        events.push(createEvent(state, action, 'ABILITY_ACTIVATION_ERROR', {
+          abilityId,
+          reason: 'Ability is not equipped',
+          message: 'You must equip this ability first.'
+        }));
+        break;
+      }
+
+      // Validation 2: Check cooldown
+      const playerCooldowns = state.player.abilityCooldowns || {};
+      const remainingCooldown = Math.max(0, playerCooldowns[abilityId] ?? 0);
+      
+      if (remainingCooldown > 0) {
+        events.push(createEvent(state, action, 'ABILITY_ACTIVATION_ERROR', {
+          abilityId,
+          reason: 'Ability is on cooldown',
+          remainingCooldown,
+          message: `Ability will be ready in ${remainingCooldown} ticks.`
+        }));
+        break;
+      }
+
+      // Validation 3: Check mana cost
+      const manaCost = Math.floor((ability.effect.magnitude || 10) * 0.5);
+      const playerMp = state.player.mp ?? 0;
+      
+      if (playerMp < manaCost) {
+        events.push(createEvent(state, action, 'ABILITY_ACTIVATION_ERROR', {
+          abilityId,
+          reason: 'Insufficient mana',
+          manaCost,
+          currentMana: playerMp,
+          message: `Requires ${manaCost} mana. You have ${playerMp}.`
+        }));
+        break;
+      }
+
+      // Apply mana cost
+      state.player.mp = playerMp - manaCost;
+
+      // Apply effect based on ability type
+      const effectType = ability.effect.type;
+      const magnitude = ability.effect.magnitude ?? 0;
+
+      if (effectType === 'damage') {
+        events.push(createEvent(state, action, 'ABILITY_ACTIVATED', {
+          abilityId,
+          abilityName: ability.name,
+          effectType: 'damage',
+          magnitude,
+          manaCost,
+          message: `Activated ${ability.name} for ${magnitude} damage!`
+        }));
+      } else if (effectType === 'healing' || (effectType === 'interaction' && ability.branch === 'resonance' && ability.id === 'resonance_commune')) {
+        // Healing effect
+        const healAmount = Math.floor(magnitude * (state.player.stats?.int || 10) / 10);
+        const oldHp = state.player.hp ?? 0;
+        const maxHpValue = state.player.maxHp ?? 100;
+        const newHpValue = Math.min(maxHpValue, oldHp + healAmount);
+        state.player.hp = newHpValue;
+
+        events.push(createEvent(state, action, 'ABILITY_ACTIVATED', {
+          abilityId,
+          abilityName: ability.name,
+          effectType: 'healing',
+          healAmount,
+          oldHp,
+          newHp: newHpValue,
+          manaCost,
+          message: `${ability.name} restored ${newHpValue - oldHp} HP!`
+        }));
+      } else {
+        // Utility/other effects
+        events.push(createEvent(state, action, 'ABILITY_ACTIVATED', {
+          abilityId,
+          abilityName: ability.name,
+          effectType,
+          magnitude,
+          manaCost,
+          message: `Activated ${ability.name}!`
+        }));
+      }
+
+      // Set cooldown
+      const cooldownTicks = ability.effect.cooldown ?? 6;
+      state.player.abilityCooldowns = state.player.abilityCooldowns || {};
+      state.player.abilityCooldowns[abilityId] = cooldownTicks;
+
+      // Trigger audio ducking for tier 3+ abilities
+      if (ability.tier >= 3) {
+        const duckingDuration = Math.ceil(cooldownTicks * 0.3);
+        events.push(createEvent(state, action, 'AUDIO_DUCKING_TRIGGERED', {
+          abilityId,
+          abilityName: ability.name,
+          tier: ability.tier,
+          duckingAmount: 0.5,
+          duckingDuration
+        }));
+      }
+
       break;
     }
 
@@ -888,7 +1126,24 @@ export function processAction(state: WorldState, action: Action): Event[] {
         break;
       }
 
-      // Resolve spell
+      // M25: Check if DiceAltar has already confirmed the roll
+      if (!isDiceRollConfirmed(action)) {
+        const playerStats = state.player.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 };
+        const diceContext: DiceRollContext = {
+          actionType: 'magic',
+          actionName: `Cast ${spell.name}`,
+          baseValue: Math.floor(playerStats.int / 2) + 8,
+          modifiers: [
+            { name: 'Mana Affinity', value: 3 },
+            { name: 'Intellect', value: Math.floor(playerStats.int / 5) }
+          ],
+          targetValue: 11 + (target?.stats?.int ? Math.floor(target.stats.int / 6) : 0),
+          targetDescription: `Spell DC: ${11 + (target?.stats?.int ? Math.floor(target.stats.int / 6) : 0)}`
+        };
+        return [createDiceRollRequest(state, action, diceContext)];
+      }
+
+      // Second time: apply spell resolution
       const spellResult = resolveSpell(
         spellId,
         state.player.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 },
@@ -1223,9 +1478,61 @@ export function processAction(state: WorldState, action: Action): Event[] {
     }
 
     case 'SEARCH_AREA': {
-      // Phase 14: Search current location for hidden areas
+      // Phase 14 + M9 Phase 3: Search current location for hidden areas and sub-areas
       const currentLocation = state.player.location;
+      const locationObj = state.locations.find(loc => loc.id === currentLocation);
 
+      if (!locationObj) {
+        events.push(createEvent(state, action, 'SEARCH_NO_LOCATION', {
+          location: currentLocation,
+          message: 'Location not found.'
+        }));
+        break;
+      }
+
+      // M9 Phase 3: Check for undiscovered sub-areas first
+      const undiscoveredSubAreas = (locationObj.subAreas || []).filter(sa => !sa.discovered);
+
+      if (undiscoveredSubAreas.length > 0) {
+        // Calculate search difficulty (use sub-area difficulty if available)
+        const targetSubArea = undiscoveredSubAreas[Math.floor(random() * undiscoveredSubAreas.length)];
+        const difficulty = targetSubArea.difficulty || calculateSearchDifficulty(currentLocation);
+        const playerInt = state.player.stats?.int || 10;
+        const playerLuk = state.player.stats?.luk || 10;
+
+        // Perform search check
+        const searchResult = performSearchCheck(playerInt, playerLuk, difficulty);
+
+        if (searchResult.success) {
+          // Success! Discover the sub-area
+          targetSubArea.discovered = true;
+
+          events.push(createEvent(state, action, 'SUB_AREA_DISCOVERED', {
+            subAreaId: targetSubArea.id,
+            subAreaName: targetSubArea.name,
+            subAreaDescription: targetSubArea.description,
+            parentLocation: currentLocation,
+            environmentalEffects: targetSubArea.environmentalEffects || [],
+            roll: searchResult.roll,
+            dc: searchResult.dc,
+            margin: searchResult.margin,
+            message: `Hidden depths revealed: ${targetSubArea.name}! ${targetSubArea.description}`
+          }));
+        } else {
+          // Failed search
+          events.push(createEvent(state, action, 'SEARCH_FAILED', {
+            location: currentLocation,
+            searchType: 'subarea',
+            roll: searchResult.roll,
+            dc: searchResult.dc,
+            margin: searchResult.margin,
+            message: `Your search of the area yields nothing. (Failed by ${Math.abs(searchResult.margin)})`
+          }));
+        }
+        break;
+      }
+
+      // Fallback to legacy hidden areas if no sub-areas
       if (!hasHiddenAreas(currentLocation)) {
         events.push(createEvent(state, action, 'SEARCH_NO_SECRETS', {
           location: currentLocation,
@@ -1497,6 +1804,36 @@ export function processAction(state: WorldState, action: Action): Event[] {
         soulStrainCost: unbindCost,
         message: `You have severed your bond with ${relic.name}. Soul strain increases by ${unbindCost}.`
       }));
+      break;
+    }
+
+    case 'TOGGLE_SYNTHESIS': {
+      // M21 Developer: Toggle AI synthesis mode for NPC dialogue
+      const { enabled } = action.payload || { enabled: undefined };
+      
+      if (typeof enabled !== 'boolean') {
+        events.push(createEvent(state, action, 'SYNTHESIS_TOGGLE_FAILED', {
+          reason: 'Invalid payload',
+          message: 'Payload must include "enabled": true or false'
+        }));
+        break;
+      }
+
+      // Import and call the setter from npcEngine
+      try {
+        const { setSynthesisModeEnabled } = require('./npcEngine');
+        setSynthesisModeEnabled(enabled);
+        
+        events.push(createEvent(state, action, 'SYNTHESIS_TOGGLED', {
+          enabled,
+          message: `AI synthesis mode ${enabled ? 'enabled' : 'disabled'}.`
+        }));
+      } catch (error) {
+        events.push(createEvent(state, action, 'SYNTHESIS_TOGGLE_FAILED', {
+          reason: 'Module import error',
+          message: 'Failed to toggle synthesis mode.'
+        }));
+      }
       break;
     }
 

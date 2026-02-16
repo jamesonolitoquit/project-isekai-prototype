@@ -1,0 +1,302 @@
+/**
+ * M15 Step 4: Visual Stimuli Integration - CSS Effects
+ * 
+ * High-performance viewport-wide distortions:
+ * - Screen shake: Uses transform: translate3d() for GPU acceleration
+ * - Chromatic aberration: CSS filter with hue-rotate + blur for color separation illusion
+ * - Paradox glitch: Rapid hue/contrast shifts synchronized with chaos score
+ * 
+ * Performance: All effects use transform, opacity, filter (GPU-accelerated)
+ * Accessibility: Wrapped in @media (prefers-reduced-motion: no-preference)
+ */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* ========== SCREEN SHAKE ANIMATION ========== */
+  /* Intense impact feedback for critical hits */
+  @keyframes screen-shake-intense {
+    0%, 100% {
+      transform: translate3d(0, 0, 0);
+    }
+    10% {
+      transform: translate3d(-3px, -2px, 0);
+    }
+    20% {
+      transform: translate3d(2px, 3px, 0);
+    }
+    30% {
+      transform: translate3d(-2px, 2px, 0);
+    }
+    40% {
+      transform: translate3d(3px, -2px, 0);
+    }
+    50% {
+      transform: translate3d(-2px, -3px, 0);
+    }
+    60% {
+      transform: translate3d(2px, 2px, 0);
+    }
+    70% {
+      transform: translate3d(-3px, 1px, 0);
+    }
+    80% {
+      transform: translate3d(2px, -2px, 0);
+    }
+    90% {
+      transform: translate3d(-1px, 2px, 0);
+    }
+  }
+
+  /* Medium shake for moderate impacts */
+  @keyframes screen-shake-medium {
+    0%, 100% {
+      transform: translate3d(0, 0, 0);
+    }
+    25% {
+      transform: translate3d(-2px, -1px, 0);
+    }
+    50% {
+      transform: translate3d(1px, 2px, 0);
+    }
+    75% {
+      transform: translate3d(-1px, -2px, 0);
+    }
+  }
+
+  /* Light shake for minor impacts */
+  @keyframes screen-shake-light {
+    0%, 100% {
+      transform: translate3d(0, 0, 0);
+    }
+    50% {
+      transform: translate3d(-1px, 0, 0);
+    }
+  }
+
+  /* ========== CHROMATIC ABERRATION ANIMATION ========== */
+  /* Reality distortion effect (3-color channel separation illusion) */
+  @keyframes chromatic-aberration {
+    0% {
+      filter: hue-rotate(0deg) blur(0px);
+    }
+    25% {
+      filter: hue-rotate(30deg) blur(2px);
+    }
+    50% {
+      filter: hue-rotate(-30deg) blur(4px);
+    }
+    75% {
+      filter: hue-rotate(15deg) blur(2px);
+    }
+    100% {
+      filter: hue-rotate(0deg) blur(0px);
+    }
+  }
+
+  /* Subtle chromatic edge effect */
+  @keyframes chromatic-edge {
+    0%, 100% {
+      filter: drop-shadow(2px 0 0 #ff0080) drop-shadow(-2px 0 0 #00ff88) blur(1px);
+    }
+    50% {
+      filter: drop-shadow(3px 0 0 #ff0080) drop-shadow(-3px 0 0 #00ff88) blur(2px);
+    }
+  }
+
+  /* ========== PARADOX GLITCH ANIMATION ========== */
+  /* Rapid color and contrast shifts for reality breakdown */
+  @keyframes paradox-glitch {
+    0% {
+      filter: hue-rotate(0deg) contrast(1);
+    }
+    10% {
+      filter: hue-rotate(-180deg) contrast(1.5);
+    }
+    20% {
+      filter: hue-rotate(60deg) contrast(0.8);
+    }
+    30% {
+      filter: hue-rotate(-90deg) contrast(1.2);
+    }
+    40% {
+      filter: hue-rotate(120deg) contrast(1.1);
+    }
+    50% {
+      filter: hue-rotate(-45deg) contrast(1.3);
+    }
+    60% {
+      filter: hue-rotate(90deg) contrast(0.9);
+    }
+    70% {
+      filter: hue-rotate(-120deg) contrast(1.2);
+    }
+    80% {
+      filter: hue-rotate(45deg) contrast(1);
+    }
+    90% {
+      filter: hue-rotate(-60deg) contrast(1.1);
+    }
+    100% {
+      filter: hue-rotate(0deg) contrast(1);
+    }
+  }
+
+  /* Fast glitch for severe chaos */
+  @keyframes paradox-glitch-severe {
+    0%, 100% { filter: hue-rotate(0deg) contrast(1) brightness(1); }
+    5% { filter: hue-rotate(-180deg) contrast(2) brightness(1.1); }
+    10% { filter: hue-rotate(90deg) contrast(0.7) brightness(0.9); }
+    15% { filter: hue-rotate(-90deg) contrast(1.8) brightness(1.05); }
+    20% { filter: hue-rotate(180deg) contrast(1) brightness(1); }
+    25% { filter: hue-rotate(-120deg) contrast(1.5) brightness(0.95); }
+    30% { filter: hue-rotate(60deg) contrast(0.8) brightness(1.05); }
+    35% { filter: hue-rotate(-60deg) contrast(2) brightness(0.9); }
+    40% { filter: hue-rotate(120deg) contrast(1.1) brightness(1.02); }
+    45% { filter: hue-rotate(-45deg) contrast(1.6) brightness(0.98); }
+    50% { filter: hue-rotate(45deg) contrast(0.9) brightness(1.03); }
+    55% { filter: hue-rotate(-150deg) contrast(1.7) brightness(1.01); }
+    60% { filter: hue-rotate(30deg) contrast(1) brightness(0.99); }
+    65% { filter: hue-rotate(-75deg) contrast(1.4) brightness(1.02); }
+    70% { filter: hue-rotate(75deg) contrast(1.2) brightness(0.98); }
+    75% { filter: hue-rotate(-30deg) contrast(1.5) brightness(1); }
+    80% { filter: hue-rotate(150deg) contrast(0.95) brightness(1.01); }
+    85% { filter: hue-rotate(-15deg) contrast(1.3) brightness(0.99); }
+    90% { filter: hue-rotate(15deg) contrast(1.1) brightness(1); }
+    95% { filter: hue-rotate(-10deg) contrast(1.2) brightness(1); }
+  }
+
+  /* ========== FLASH OVERLAY ANIMATION ========== */
+  /* Elemental spell casting flash effects */
+  @keyframes flash-overlay {
+    0% {
+      opacity: 0;
+    }
+    50% {
+      opacity: 0.3;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Slower, more dramatic flash */
+  @keyframes flash-intense {
+    0% { opacity: 0; }
+    20% { opacity: 0.4; }
+    40% { opacity: 0.2; }
+    60% { opacity: 0.35; }
+    100% { opacity: 0; }
+  }
+
+  /* ========== CLASS SELECTORS FOR DYNAMIC APPLICATION ========== */
+
+  /* Container with screen shake */
+  .vibrate {
+    animation: 0.5s screen-shake-intense linear !important;
+    will-change: transform;
+  }
+
+  /* Medium intensity shake */
+  .vibrate-medium {
+    animation: 0.3s screen-shake-medium linear !important;
+    will-change: transform;
+  }
+
+  /* Light intensity shake */
+  .vibrate-light {
+    animation: 0.2s screen-shake-light linear !important;
+    will-change: transform;
+  }
+
+  /* Reality is thinning (chromatic aberration + glitch) */
+  .reality-thinning {
+    animation: 3s chromatic-aberration ease-in-out !important;
+    will-change: filter;
+  }
+
+  /* Paradox induced glitch effect (continuous) */
+  .paradox-glitch {
+    animation: 1.2s paradox-glitch ease-in-out infinite !important;
+    will-change: filter;
+  }
+
+  /* Severe paradox glitch (faster, more intense) */
+  .paradox-glitch-severe {
+    animation: 2s paradox-glitch-severe ease-in-out infinite !important;
+    will-change: filter;
+  }
+
+  /* Chromatic edge effect for anomalies */
+  .chromatic-edge {
+    animation: 0.6s chromatic-edge ease-in-out !important;
+    will-change: filter;
+  }
+
+  /* Spell cast flash (generic overlay) */
+  .flash-overlay {
+    animation: 0.3s flash-overlay ease-out !important;
+    will-change: opacity;
+  }
+
+  /* More intense flash */
+  .flash-intense {
+    animation: 0.4s flash-intense ease-out !important;
+    will-change: opacity;
+  }
+}
+
+/* ========== STATIC OVERLAY ELEMENTS ========== */
+
+/* Global flash overlay element (positioned fixed, covers viewport) */
+#global-flash-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1000;
+  background-color: transparent;
+  will-change: opacity, background-color;
+}
+
+/* Chromatic aberration overlay using mix-blend-mode */
+#chromatic-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.05) 0%,
+    transparent 33%,
+    rgba(0, 255, 0, 0.05) 50%,
+    transparent 66%,
+    rgba(0, 0, 255, 0.05) 100%
+  );
+  mix-blend-mode: screen;
+  will-change: opacity;
+}
+
+/* ========== CSS VARIABLES FOR REAL-TIME SCALING ========== */
+
+:root {
+  /* Paradox intensity (0.0 - 1.0) - drives glitch animation speed */
+  --paradox-intensity: 0;
+
+  /* Shake intensity multiplier for dynamic scaling */
+  --shake-intensity: 1;
+
+  /* Flash intensity for spell effects */
+  --flash-intensity: 0;
+
+  /* Glitch intensity from chaos score */
+  --glitch-intensity: 0;
+}
+
+/* Dynamic class for updating CSS variables */
+.updating-visuals {
+  will-change: filter, transform, opacity;
+}

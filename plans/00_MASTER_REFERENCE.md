@@ -81,7 +81,7 @@
 | 11 | `11_PLAYER_PROGRESSION_LEVELING.md` | X.29 | PROTO | XP table, skill trees, experience acquisition, level-up flow | 10, 04, 05 |
 | 12 | `12_QUEST_SYSTEM.md` | X.28 | PROTO | Quest types, structure, tracking, generation, rewards, AI DM enforcement | 07, 14 |
 | 13 | `13_INVENTORY_CRAFTING.md` | VIII.24 | PROTO | Inventory UI, items, crafting, resource management, DB tables | 08, 11 |
-| 14 | `14_NPC_SYSTEM.md` | V.15–16 | PROTO | NPC types, AI behavior, patrol, dynamic interaction, dialogue | 06, 07 |
+| 14 | `14_NPC_SYSTEM.md` | V.15–16 | PROTO | NPC types, AI DM Synthesis, patrol, dynamic interaction, Resonance | 06, 07 |
 | 15 | `15_RANDOM_ENCOUNTERS_EXPLORATION.md` | IX | ALPHA | Alpha encounter, rare entities, environmental systems, spawn weighting | 14, 09 |
 | 16 | `16_FACTION_POWER_DYNAMICS.md` | IX.26–27 | ALPHA | Faction attributes, power graphs, emergent politics, influence metrics | 07, 12 |
 | 17 | `17_SESSION_CONTINUITY.md` | XII.35 | PROTO | Persistence architecture, tracked components, rollback, UI | All systems |
@@ -161,7 +161,28 @@ Layers 21–27 (SQL Seeds) ← implements Layer 20 schema
 
 ---
 
-## 6. Notes for AI Models
+## 6. BETA Epoch Framework (Template-Driven)
+
+Luxfier uses a **Multi-Generation Chronicle** model. The world is persistent, but characters are mortal. History proceeds through a sequence of **Playable Epochs** defined by the World Template.
+
+### 6.1 Flexible Epoch Model
+- **Architect Choice:** The number of playable epochs is NOT fixed. A World Template may define 1, 3, 5, or more distinct windows of history.
+- **Reference Implementation (Luxfier):**
+    - *Epoch I: The Fracture of Radiance* (Year 3,412)
+    - *Epoch II: The Age of Shattered Faith* (Year 7,982)
+    - *Epoch III: The Waning Light* (Year 12,611)
+- **Divergence Points:** Each epoch begins based on the *result* of the previous one (The Chronicle Sequence).
+- **Chronicle Sequence:** A bridge calculation that shifts the world state between epochs (e.g., Faction power shifts, technological decay, religious evolution).
+
+### 6.2 Legacy Bridge (Player Continuity)
+Across all epochs, player impact is preserved through:
+- **Bloodline Inheritance:** Descendant characters in later epochs gain perks based on ancestors.
+- **Soul Echoes:** Meta-progression unlocks (skills, knowledge) that persist through "reincarnation."
+- **Immutable Spine:** Universal truths (Cosmology, Relics) that remain constant regardless of epoch divergence.
+
+---
+
+## 7. Notes for AI Models
 
 - **Coder (GPT 5 mini):** Load this file + the specific layer file for your task. Do not load all files at once. **Check `28_ROADMAP.md` for current phase scope before implementing features.**
 - **Debugger:** Reference Layer 20 (Alpha Data Schema) for DB structure. Reference Layer 17 for persistence logic.
@@ -171,7 +192,7 @@ Layers 21–27 (SQL Seeds) ← implements Layer 20 schema
 
 ---
 
-## 7. Development Roadmap
+## 8. Development Roadmap
 
 > Full details in `28_ROADMAP.md`. Summary below.
 

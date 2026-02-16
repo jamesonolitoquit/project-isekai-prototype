@@ -23,6 +23,7 @@ export interface Recipe {
   result: RecipeResult;
   difficulty: number;
   description?: string;
+  tier?: 'basic' | 'advanced' | 'runic' | 'legendary'; // M28: Tier for epoch-gating
 }
 
 export interface LootTableEntry {
@@ -149,4 +150,106 @@ export function addCraftResult(
   }
 
   return updated;
+}
+
+/**
+ * Epoch-Gated Crafting System (M28: Runic Decay)
+ * 
+ * Rules:
+ * - Epoch I (Fracture): High-tier runic infusions have 100% success rate
+ * - Epoch II (Waning): Success rates decline
+ * - Epoch III (Twilight): Runic recipes have 50% fail rate unless Primal Flux is used
+ * 
+ * Primal Flux: A legacy ingredient that stabilizes runic crafting across epochs
+ */
+export type EpochType = 'epoch_i_fracture' | 'epoch_ii_waning' | 'epoch_iii_twilight';
+
+/**
+ * Calculate epoch-adjusted crafting success
+ * Higher success in early epochs, declining through time
+ */
+export function calculateEpochAdjustedSuccess(
+  baseSuccessChance: number,
+  recipe: Recipe,
+  epochId: EpochType,
+  hasPrimalFlux: boolean = false
+): number {
+  // Non-runic recipes are unaffected by epochs
+  if (recipe.tier !== 'runic' && recipe.tier !== 'legendary') {
+    return baseSuccessChance;
+  }
+
+  // Map epoch to multiplier
+  const epochMultipliers: Record<EpochType, number> = {
+    'epoch_i_fracture': 1.0,      // 100% (no penalty in Fracture)
+    'epoch_ii_waning': 0.85,      // 15% penalty - magic is fading
+    'epoch_iii_twilight': 0.5     // 50% base fail in Twilight (unless Primal Flux used)
+  };
+
+  let adjustedChance = baseSuccessChance * epochMultipliers[epochId];
+
+  // Primal Flux ingredient stabilizes crafting across epochs
+  if (hasPrimalFlux && epochId === 'epoch_iii_twilight') {
+    adjustedChance = Math.max(adjustedChance, 0.9); // 90% success with Primal Flux in Twilight
+  }
+
+  return Math.min(1.0, adjustedChance);
+}
+
+/**
+ * Check if player has Primal Flux ingredient
+ */
+export function hasPrimalFluxIngredient(inventory: InventoryItem[]): boolean {
+  return inventory.some(item => item.itemId === 'primal_flux' && (item as any).quantity > 0);
+}
+
+/**
+ * Primal Flux consumption: if used, deduct one from inventory
+ */
+export function consumePrimalFlux(inventory: InventoryItem[]): InventoryItem[] {
+  return inventory.map(item => {
+    if (item.itemId === 'primal_flux') {
+      return {
+        ...item,
+        quantity: Math.max(0, (item as any).quantity - 1)
+      };
+    }
+    return item;
+  }).filter(item => (item as any).quantity > 0);
+}
+
+/**
+ * Perform epoch-gated crafting check
+ * Returns success/failure, accounting for epoch decay and Primal Flux stabilization
+ */
+export function rollEpochAdjustedCraft(
+  playerInt: number,
+  recipe: Recipe,
+  epochId: EpochType,
+  modifier: number = 0,
+  hasPrimalFlux: boolean = false
+): { success: boolean; roll: number; difficulty: number; epochPenalty?: number } {
+  // Base crafting roll (d20 + INT bonus + modifier)
+  const roll = Math.floor(random() * 20) + 1 + Math.floor(playerInt / 3) + modifier;
+  const baseDifficulty = recipe.difficulty;
+
+  // Apply epoch adjustment
+  const epochMultiplier = calculateEpochAdjustedSuccess(
+    1.0,
+    recipe,
+    epochId,
+    hasPrimalFlux
+  );
+
+  // Adjusted difficulty represents the "current age's resistance" to runic crafting
+  const adjustedDifficulty = Math.ceil(baseDifficulty / epochMultiplier);
+
+  const success = roll >= adjustedDifficulty;
+
+  return {
+    success,
+    roll,
+    difficulty: baseDifficulty,
+    epochPenalty: baseDifficulty * (1 - epochMultiplier)
+  };
 }
