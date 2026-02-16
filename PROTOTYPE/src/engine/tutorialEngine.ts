@@ -14,8 +14,18 @@ import { WorldState } from './worldEngine';
 
 /**
  * M41: Milestone identifiers for tutorial progression
+ * Tier 1 (Early Game): character_created, first_roll, first_trade, first_combat, first_spell, epoch_shift
+ * Tier 2 (Mid Game): diplomat (faction influence), weaver (grand ritual)
  */
-export type MilestoneId = 'first_roll' | 'first_trade' | 'epoch_shift' | 'character_created' | 'first_combat' | 'first_spell';
+export type MilestoneId = 
+  | 'first_roll' 
+  | 'first_trade' 
+  | 'epoch_shift' 
+  | 'character_created' 
+  | 'first_combat' 
+  | 'first_spell'
+  | 'diplomat'      // M42 Tier 2: Triggered on faction turn influence
+  | 'weaver';       // M42 Tier 2: Triggered on grand ritual with 3+ participants
 
 /**
  * M41: Milestone state tracking
@@ -96,6 +106,21 @@ const TUTORIAL_DATABASE: Record<MilestoneId, Omit<TutorialOverlay, 'visible' | '
     loreText: `The Chronicle of Epochs: "Each epoch shift represents a fundamental rewrite of natural law. What was possible in one age may become impossible in the next. Adapt or perish."`,
     actionLabel: "Embrace New Era",
     icon: "⏳"
+  },
+  // ============ M42 TIER 2 MILESTONES ============
+  diplomat: {
+    title: "The Diplomat's Path",
+    text: "You have wielded influence over a faction's fate. Your negotiation has shaped the course of their power.",
+    loreText: `From the Archives of Influence: "Diplomacy is the art of rewriting consensus without breaking consensus. A skilled diplomat understands that every faction harbors contradictions - and those contradictions are where change lives. Your choice has echoed through the faction's hierarchy, altering their trajectory for epochs to come."`,
+    actionLabel: "Embrace Diplomacy",
+    icon: "🎭"
+  },
+  weaver: {
+    title: "The Grand Weaver's Ritual",
+    text: "You have orchestrated a grand ritual with 3 or more power sources converging. Reality itself bends to your design.",
+    loreText: `From the Weaver's Codex: "Grand rituals are impossible - they require the unified will of multiple consciousnesses, each tethered to different probability streams. And yet, you have done it. The collective power you have channeled leaves a permanent mark on the timeline. This is not mere magic - this is the fundamental restructuring of reality's consensus. You are no longer merely a player in this world. You are an architect of it."`,
+    actionLabel: "Accept Your Role",
+    icon: "✨"
   }
 };
 
@@ -109,7 +134,10 @@ export function initializeTutorialState(): TutorialState {
     first_trade: { id: 'first_trade', achieved: false },
     first_combat: { id: 'first_combat', achieved: false },
     first_spell: { id: 'first_spell', achieved: false },
-    epoch_shift: { id: 'epoch_shift', achieved: false }
+    epoch_shift: { id: 'epoch_shift', achieved: false },
+    // Tier 2
+    diplomat: { id: 'diplomat', achieved: false },
+    weaver: { id: 'weaver', achieved: false }
   };
 
   return {
@@ -176,6 +204,48 @@ export function detectMilestones(state: WorldState, previousTutorialState: Tutor
     detectedMilestones.push('first_roll');
   }
 
+  // M42 TIER 2: Diplomat - Triggered when player influences a faction turn
+  // Detection: Check if player has made faction influence decisions that altered consensus
+  if (
+    !previousTutorialState.milestones.diplomat.achieved &&
+    state.factions &&
+    Array.isArray(state.factions)
+  ) {
+    // Check for faction with recent player-influenced consensus change
+    const hasInfluencedFaction = state.factions.some((faction: any) => {
+      return (
+        faction.recentInfluencers &&
+        Array.isArray(faction.recentInfluencers) &&
+        faction.recentInfluencers.includes(state.player?.id)
+      );
+    });
+    if (hasInfluencedFaction) {
+      detectedMilestones.push('diplomat');
+    }
+  }
+
+  // M42 TIER 2: Weaver - Triggered when player orchestrates grand ritual with 3+ participants
+  // Detection: Check ritual participation metadata
+  if (
+    !previousTutorialState.milestones.weaver.achieved &&
+    state.activeMacroEvents &&
+    Array.isArray(state.activeMacroEvents)
+  ) {
+    // Check for grand ritual with 3+ participants
+    const hasGrandRitual = state.activeMacroEvents.some((event: any) => {
+      return (
+        event.type === 'grand_ritual' &&
+        event.participants &&
+        Array.isArray(event.participants) &&
+        event.participants.length >= 3 &&
+        event.participants.includes(state.player?.id)
+      );
+    });
+    if (hasGrandRitual) {
+      detectedMilestones.push('weaver');
+    }
+  }
+
   return detectedMilestones;
 }
 
@@ -217,13 +287,17 @@ export function getNextTutorialOverlay(tutorialState: TutorialState): TutorialOv
   }
 
   // Find the most recently achieved milestone that hasn't been shown yet
+  // Ordered: Tier 1 first, then Tier 2
   const milestoneIds: MilestoneId[] = [
     'character_created',
     'first_roll',
     'first_trade',
     'first_combat',
     'first_spell',
-    'epoch_shift'
+    'epoch_shift',
+    // Tier 2
+    'diplomat',
+    'weaver'
   ];
 
   for (let i = milestoneIds.length - 1; i >= 0; i--) {
@@ -328,5 +402,63 @@ export function deserializeTutorialState(data: Record<string, any>): TutorialSta
     completedCount: data.completedCount ?? 0,
     lastShownMilestoneId: data.lastShownMilestoneId,
     tutorialEnabled: data.tutorialEnabled !== false
+  };
+}
+
+// ============ M42 TIER 2: MILESTONE HELPERS ============
+
+/**
+ * M42: Manually trigger Diplomat milestone
+ * Called when player makes a significant faction influence decision
+ */
+export function triggerDiplomatMilestone(tutorialState: TutorialState): TutorialState {
+  if (tutorialState.milestones.diplomat.achieved) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['diplomat'], Date.now());
+}
+
+/**
+ * M42: Manually trigger Weaver milestone
+ * Called when player completes a grand ritual with 3+ participants
+ */
+export function triggerWeaverMilestone(tutorialState: TutorialState): TutorialState {
+  if (tutorialState.milestones.weaver.achieved) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['weaver'], Date.now());
+}
+
+/**
+ * M42: Check if player has earned faction influence status
+ * Returns true if player has influenced at least one faction
+ */
+export function hasFactionInfluence(tutorialState: TutorialState): boolean {
+  return tutorialState.milestones.diplomat.achieved;
+}
+
+/**
+ * M42: Check if player has orchestrated grand rituals
+ * Returns true if player has participated in 3+ participant rituals
+ */
+export function hasWeaverStatus(tutorialState: TutorialState): boolean {
+  return tutorialState.milestones.weaver.achieved;
+}
+
+/**
+ * M42: Get Tier 2 progress
+ * Returns count of Tier 2 milestones achieved
+ */
+export function getTier2Progress(tutorialState: TutorialState): { completed: number; total: number } {
+  const tier2Milestones: MilestoneId[] = ['diplomat', 'weaver'];
+  const completed = tier2Milestones.filter(
+    id => tutorialState.milestones[id].achieved
+  ).length;
+
+  return {
+    completed,
+    total: tier2Milestones.length
   };
 }

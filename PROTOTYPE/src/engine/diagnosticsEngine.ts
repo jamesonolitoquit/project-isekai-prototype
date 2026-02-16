@@ -239,3 +239,78 @@ export function generateDiagnosticsReport(
     macroEventCountdowns: getMacroEventCountdowns(state)
   };
 }
+
+/**
+ * M42: Get diagnostics snapshot for DiagnosticPanel
+ */
+export interface DiagnosticsSnapshot {
+  factionPowers: FactionPowerBreakdown[];
+  consensusHealth: ConsensusHealth;
+  macroEventCountdowns: MacroEventCountdown[];
+}
+
+export function getDiagnosticsSnapshot(
+  state: WorldState,
+  registry?: SessionRegistry,
+  latencyHistory?: number[],
+  proposalMetrics?: { totalProposals: number; successfulProposals: number }
+): DiagnosticsSnapshot {
+  return {
+    factionPowers: getFactionPowers(state),
+    consensusHealth: registry ? getConsensusHealth(registry, latencyHistory) : {
+      avgLatency: 0,
+      p95Latency: 0,
+      peerCount: 0,
+      proposalQueueDepth: 0,
+      clockDrift: { max: 0, avg: 0 },
+      healthStatus: 'green'
+    },
+    macroEventCountdowns: getMacroEventCountdowns(state)
+  };
+}
+
+/**
+ * Get display info for a faction power breakdown
+ */
+export interface FactionPowerDisplay {
+  label: string;
+  breakdown: Array<{ type: string; width: number; color: string }>;
+}
+
+export function getFactionPowerDisplay(faction: FactionPowerBreakdown): FactionPowerDisplay {
+  const total = faction.totalPower || 1;
+  return {
+    label: faction.name,
+    breakdown: [
+      { type: 'Military', width: (faction.military / total) * 100, color: '#ff6b6b' },
+      { type: 'Political', width: (faction.political / total) * 100, color: '#4ecdc4' },
+      { type: 'Economic', width: (faction.economic / total) * 100, color: '#ffd700' },
+      { type: 'Spiritual', width: (faction.spiritual / total) * 100, color: '#a78bfa' }
+    ]
+  };
+}
+
+/**
+ * Get latency health color
+ */
+export function getLatencyHealthColor(latencyMs: number): string {
+  if (latencyMs < 50) return '#22c55e'; // Green
+  if (latencyMs < 100) return '#fbbf24'; // Yellow
+  return '#ef4444'; // Red
+}
+
+/**
+ * Get consensus health color
+ */
+export function getConsensusHealthColor(successRate: number): string {
+  if (successRate > 95) return '#22c55e'; // Green
+  if (successRate > 80) return '#fbbf24'; // Yellow
+  return '#ef4444'; // Red
+}
+
+/**
+ * Format ETA for display
+ */
+export function formatETA(ticks: number): string {
+  return formatTickDelta(ticks);
+}

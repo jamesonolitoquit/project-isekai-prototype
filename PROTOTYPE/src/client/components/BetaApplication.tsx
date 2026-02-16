@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { WorldState } from '../../engine/worldEngine';
 import type { TradeState } from '../../engine/multiplayerEngine';
+import type { AtomicTrade } from '../../engine/atomicTradeEngine';
 import BetaGlobalHeader from './BetaGlobalHeader';
 import ErrorBoundary from './ErrorBoundary';
 import CoDmDashboard from './CoDmDashboard';
@@ -27,6 +28,13 @@ import {
 } from '../../engine/tutorialEngine';
 import { themeManager } from '../../devTools/epochThemeManager';
 import { getEpochSyncEngine } from '../../engine/epochSyncEngine';
+// M42 Phase 2 Imports
+import { TradeManager } from '../../engine/tradeManager';
+import TradeOverlay from './TradeOverlay';
+import WorldStateTransitionOverlay, { useWorldStateTransition } from './WorldStateTransitionOverlay';
+import { createPhantomEngine, startPhantomEngine, stopPhantomEngine, type PhantomEngineState } from '../../engine/phantomEngine';
+import { triggerDiplomatMilestone, triggerWeaverMilestone } from '../../engine/tutorialEngine';
+import { getDiagnosticsSnapshot, type DiagnosticsSnapshot } from '../../engine/diagnosticsEngine';
 import '../../styles/epoch-theme.css';
 
 // ============================================================================
@@ -64,13 +72,49 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   const [tutorialState, setTutorialState] = useState<TutorialState>(initializeTutorialState());
   const [currentTutorialOverlay, setCurrentTutorialOverlay] = useState(getNextTutorialOverlay(tutorialState));
 
-  // Removed unused subTab state - planned for future enhancement
-
-  // Removed unused DiceAltar state - will integrate modal system in Task 2
+  // M42 Phase 2: Trade System
   const [showInventory, setShowInventory] = useState(false);
   const [showTradeUI, setShowTradeUI] = useState(false);
-  const [activeTrade, setActiveTrade] = useState<TradeState | null>(null);
+  const [activeTrade, setActiveTrade] = useState<AtomicTrade | null>(null);
+  const [tradeManager] = useState(() => new TradeManager({
+    clientId,
+    getInventory: () => state?.player?.inventory ? new Map(state.player.inventory.map((i: any) => [i.itemId, i.quantity])) : new Map(),
+    applyTransfer: (from: string, to: string, itemId: string, qty: number) => {
+      performAction({ type: 'TRANSFER_ITEM', payload: { from, to, itemId, quantity: qty } });
+      return true;
+    },
+    sendMessage: (msg: any) => {
+      if (controller?.sendTradeMessage) {
+        controller.sendTradeMessage(msg);
+      }
+    }
+  }));
   const [showCraftingModal, setShowCraftingModal] = useState(false);
+
+  // M42 Phase 2: Cinematic Transitions
+  const [currentTransition, setCurrentTransition] = useState<TransitionMetadata | null>(null);
+
+  // M42 Phase 2: Phantom System
+  const [phantomEngine] = useState<PhantomEngineState>(() =>
+    createPhantomEngine({
+      maxConcurrentPhantoms: 10,
+      glowColor: '#0084ff',
+      opacity: 0.35,
+      playbackSpeed: 1.0,
+      createEntity: (pos) => `phantom_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      updateEntity: (entityId, update) => {
+        // TODO: Update phantom entity in rendering engine
+      },
+      removeEntity: (entityId) => {
+        // TODO: Remove phantom entity from rendering
+      },
+      fetchSessionLogs: async () => {
+        // TODO: Fetch anonymized session logs from server
+        return [];
+      }
+    })
+  );
+
   // Faction AI diagnostics (M37)
   const [factionDiagnostics] = useState<any>(null);
 
@@ -200,6 +244,94 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     return () => unsubscribe();
   }, []); // Effect runs once on mount
 
+  // M42 Task 5: Subscribe to world state transition events
+  useEffect(() => {
+    const unsubscribe = transitionEngine.subscribeToTransition((event) => {
+      if (event.type === 'START') {
+        setCurrentTransition(event.metadata);
+      } else if (event.type === 'FINISH') {
+        setCurrentTransition(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // M42 Task 2: Phantom Engine Lifecycle
+  useEffect(() => {
+    if (!phantomEngine) return;
+
+    // Start phantom engine on mount
+    try {
+      startPhantomEngine(phantomEngine);
+      console.log('[BetaApp] Phantom engine started');
+    } catch (error) {
+      console.error('[BetaApp] Failed to start phantom engine:', error);
+    }
+
+    return () => {
+      try {
+        stopPhantomEngine(phantomEngine);
+        console.log('[BetaApp] Phantom engine stopped');
+      } catch (error) {
+        console.error('[BetaApp] Failed to stop phantom engine:', error);
+      }
+    };
+  }, [phantomEngine]);
+
+  // M42 Task 2: Cinematic Transition Overlay Wiring
+  useEffect(() => {
+    if (!state?.epochId) return;
+
+    // Detect epoch shift and trigger transition overlay
+    if (lastEpochId !== undefined && state.epochId !== lastEpochId) {
+      console.log(`[BetaApp] Epoch shifted: ${lastEpochId} → ${state.epochId}`);
+      triggerTransition('epoch_shift', `Entering Epoch ${state.epochId}`);
+    }
+    setLastEpochId(state.epochId);
+  }, [state?.epochId, lastEpochId, triggerTransition]);
+
+  // M42 Task 3: Macro Event Transition Trigger
+  useEffect(() => {
+    if (!macroEventDiagnostics) return;
+
+    // Trigger "world rebuild" glitch effect on catastrophic event
+    if (macroEventDiagnostics.avgSeverity > 80 && macroEventDiagnostics.activeCount > 0) {
+      console.log('[BetaApp] Macro event catastrophe detected - triggering transition');
+      triggerTransition('macro_event', 'Reality Fragments...');
+    }
+  }, [macroEventDiagnostics?.avgSeverity, macroEventDiagnostics?.activeCount, triggerTransition]);
+
+  // M42 Task 5: Tier 2 Milestone Detection (Diplomat & Weaver)
+  useEffect(() => {
+    if (!state) return;
+
+    // Check for Diplomat milestone (faction influence)
+    const hasRecentFactionInfluence = state.factions?.some((f: any) =>
+      f.recentInfluencers?.includes(state.player?.id) && 
+      (f.consensusShiftedAt ?? 0) > Date.now() - 5000 // Within last 5 seconds
+    );
+
+    if (hasRecentFactionInfluence && !tutorialState.milestones.diplomat.achieved) {
+      console.log('[BetaApp] Diplomat milestone detected');
+      setTutorialState(triggerDiplomatMilestone(tutorialState));
+      setCurrentTutorialOverlay(getNextTutorialOverlay(triggerDiplomatMilestone(tutorialState)));
+    }
+
+    // Check for Weaver milestone (3+ participant grand ritual)
+    const hasGrandRitual = state.activeMacroEvents?.some((e: any) =>
+      e.type === 'grand_ritual' &&
+      e.participants?.length >= 3 &&
+      e.participants?.includes(state.player?.id)
+    );
+
+    if (hasGrandRitual && !tutorialState.milestones.weaver.achieved) {
+      console.log('[BetaApp] Weaver milestone detected');
+      setTutorialState(triggerWeaverMilestone(tutorialState));
+      setCurrentTutorialOverlay(getNextTutorialOverlay(triggerWeaverMilestone(tutorialState)));
+    }
+  }, [state?.factions, state?.activeMacroEvents, state?.player?.id, tutorialState]);
+
   // =========================================================================
   // ACTION HANDLERS
   // =========================================================================
@@ -264,32 +396,75 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   }, [controller, state.id, state.player?.id, clientId]);
 
   const handleTradeInitiate = useCallback((responderId: string, initiatorItems: any[], responderItems: any[]) => {
-    performAction({
-      type: 'INITIATE_TRADE',
-      payload: {
-        responderId,
-        initiatorItems,
-        responderItems
-      }
-    });
-    setShowTradeUI(true);
-  }, [performAction]);
+    // M42: Use AtomicTradeEngine for high-integrity P2P trading
+    const result = tradeManager.initiateTraade(responderId, initiatorItems, responderItems);
+    
+    if (!result.success) {
+      console.error('[BetaApp] Trade initiation failed:', result.error);
+      alert(`Trade failed: ${result.error}`);
+      return;
+    }
+
+    if (result.trade) {
+      setActiveTrade(result.trade);
+      setShowTradeUI(true);
+
+      // Subscribe to trade updates
+      tradeManager.subscribe(result.trade.tradeId, (updatedTrade) => {
+        setActiveTrade(updatedTrade);
+        
+        if (updatedTrade.stage === 'completed') {
+          console.log('[BetaApp] Trade completed successfully');
+          setTimeout(() => {
+            setShowTradeUI(false);
+            setActiveTrade(null);
+          }, 2000);
+        } else if (updatedTrade.stage === 'failed' || updatedTrade.stage === 'cancelled') {
+          console.warn('[BetaApp] Trade failed:', updatedTrade.failureReason);
+          setTimeout(() => {
+            setShowTradeUI(false);
+            setActiveTrade(null);
+          }, 1500);
+        }
+      });
+    }
+  }, [tradeManager]);
 
   const handleTradeConfirm = useCallback(() => {
-    performAction({
-      type: 'CONFIRM_TRADE',
-      payload: { tradeId: activeTrade?.tradeId }
-    });
-  }, [activeTrade?.tradeId, performAction]);
+    if (!activeTrade) return;
+
+    // Stage 3: Lock items
+    if (activeTrade.stage === 'negotiating') {
+      const stageResult = tradeManager.stageItems(activeTrade.tradeId);
+      if (!stageResult.success) {
+        console.error('[BetaApp] Failed to stage items:', stageResult.error);
+        alert(stageResult.error);
+        return;
+      }
+    }
+
+    // Stage 4: Commit to trade
+    if (activeTrade.stage === 'staged' || activeTrade.stage === 'committing') {
+      const commitResult = tradeManager.commitToTrade(activeTrade.tradeId);
+      if (!commitResult.success) {
+        console.error('[BetaApp] Failed to commit:', commitResult.error);
+        alert(commitResult.error);
+        return;
+      }
+    }
+  }, [activeTrade, tradeManager]);
 
   const handleTradeCancel = useCallback(() => {
-    performAction({
-      type: 'CANCEL_TRADE',
-      payload: { tradeId: activeTrade?.tradeId }
-    });
+    if (!activeTrade) return;
+
+    const cancelResult = tradeManager.cancelTrade(activeTrade.tradeId, 'User cancelled');
+    if (!cancelResult.success) {
+      console.error('[BetaApp] Failed to cancel trade');
+    }
+
     setActiveTrade(null);
     setShowTradeUI(false);
-  }, [activeTrade?.tradeId, performAction]);
+  }, [activeTrade, tradeManager]);
 
   // =========================================================================
   // RENDER: MAIN LAYOUT
@@ -413,11 +588,29 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
         <BetaInventoryModal state={state} onClose={() => setShowInventory(false)} />
       )}
 
+      {/* M42 Phase 2: High-Integrity Trade Overlay */}
       {showTradeUI && activeTrade && (
-        <BetaTradeModal
+        <TradeOverlay
           trade={activeTrade}
-          onConfirm={handleTradeConfirm}
-          onCancel={handleTradeCancel}
+          clientId={clientId}
+          clientInventory={state?.player?.inventory ? new Map(state.player.inventory.map((i: any) => [i.itemId, i.quantity])) : new Map()}
+          partnerInventory={new Map()} // TODO: Fetch from state or P2P
+          onTradeUpdate={(updatedTrade) => {
+            setActiveTrade(updatedTrade);
+            tradeManager.subscribe(updatedTrade.tradeId, (t) => setActiveTrade(t));
+          }}
+          onTradeComplete={(completedTrade) => {
+            console.log('[BetaApp] Trade completed:', completedTrade.tradeId);
+            setTimeout(() => {
+              setShowTradeUI(false);
+              setActiveTrade(null);
+            }, 1500);
+          }}
+          onCancel={() => {
+            handleTradeCancel();
+          }}
+          allowBarterCheck={true}
+          barterSkillBonus={state.player?.skills?.charisma || 0}
         />
       )}
 
@@ -429,6 +622,16 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
             setShowCraftingModal(false);
           }}
           onClose={() => setShowCraftingModal(false)}
+        />
+      )}
+
+      {/* M42 Phase 2: Cinematic Transition Overlay */}
+      {currentTransition && (
+        <WorldStateTransitionOverlay
+          transitionType={currentTransition.reason as 'epoch_shift' | 'world_reset' | 'macro_event'}
+          duration={currentTransition.estimatedDuration}
+          message={`Rebuilding ${currentTransition.reason.replace('_', ' ')}...`}
+          onComplete={() => setCurrentTransition(null)}
         />
       )}
 

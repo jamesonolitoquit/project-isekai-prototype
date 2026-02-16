@@ -2,6 +2,7 @@ import type { WorldState } from './worldEngine';
 import type { Event } from '../events/mutationLog';
 import { random } from './prng';
 import { createStackableItem, isStackableItem } from './worldEngine';
+import { transitionEngine, type TransitionReason } from './transitionEngine';
 
 export interface RebuildResult {
   candidateState: WorldState;
@@ -993,8 +994,15 @@ namespace EventHandlers {
 /**
  * Rebuild world state by replaying events from a checkpoint
  * BETA: Supports epoch-aware reconstruction
+ * M42: Integrated with transition engine for cinematic overlays
  */
-export function rebuildState(initialState: WorldState, events: Event[], upToTick?: number): RebuildResult {
+export function rebuildState(initialState: WorldState, events: Event[], upToTick?: number, transitionReason?: TransitionReason): RebuildResult {
+  // M42: Start transition overlay if reason provided
+  if (transitionReason) {
+    const estimatedDuration = events.length * 0.5; // 0.5ms per mutation
+    transitionEngine.startWorldTransition(transitionReason, estimatedDuration);
+  }
+
   let state = structuredClone(initialState);
 
   // BETA: Preserve epoch metadata during rebuild
@@ -1014,6 +1022,11 @@ export function rebuildState(initialState: WorldState, events: Event[], upToTick
     state.epochId = originalEpochId;
     state.chronicleId = originalChronicleId;
     state.epochMetadata = originalEpochMetadata;
+  }
+
+  // M42: Finish transition overlay
+  if (transitionReason) {
+    transitionEngine.finishWorldTransition();
   }
 
   return { candidateState: state };
