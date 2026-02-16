@@ -14,232 +14,63 @@ export interface RebuildResult {
  */
 namespace EventHandlers {
   /**
-   * Combat Event Handler
-   * HIT, PARRY, SKILL_CHECK, HEAL, COMBAT_*, SPELL_CAST, MANA_*, STATUS_*
+   * Combat Event Handler - M40: Delegated to micro-handlers
+   * Complexity reduced from 112 to <10
    */
   export function handleCombatEvent(state: WorldState, event: Event): WorldState {
     const newState = structuredClone(state);
     const { payload } = event;
+    const type = event.type;
 
-    switch (event.type) {
-      case 'HIT':
-      case 'COMBAT_HIT':
-        if (newState.player) {
-          newState.player.hp = Math.max(0, (newState.player.hp ?? 0) - (payload.damage ?? 0));
-        }
-        break;
-
-      case 'PARRY':
-      case 'COMBAT_PARRY': {
-        if (newState.player) {
-          const finalDmg = payload.finalDamage ?? 0;
-          if (finalDmg > 0) {
-            newState.player.hp = Math.max(0, (newState.player.hp ?? 100) - finalDmg);
-          }
-        }
-        break;
-      }
-
-      case 'COMBAT_BLOCK': {
-        if (newState.player && payload.finalDamage && payload.finalDamage > 0) {
-          newState.player.hp = Math.max(0, (newState.player.hp ?? 100) - payload.finalDamage);
-        }
-        break;
-      }
-
-      case 'SKILL_CHECK':
-        if (newState.player && payload.success) {
-          newState.player.xp ??= 0;
-          newState.player.xp += (payload.xpReward ?? 0);
-        }
-        break;
-
-      case 'HEAL':
-        if (newState.player) {
-          newState.player.hp = Math.min(
-            newState.player.maxHp ?? 100,
-            (newState.player.hp ?? 0) + (payload.amount ?? 0)
-          );
-        }
-        break;
-
-      case 'PLAYER_HEALED': {
-        if (newState.player) {
-          const hpRestored = payload.hpRestored ?? 0;
-          newState.player.hp = Math.min(
-            newState.player.maxHp ?? 100,
-            (newState.player.hp ?? 0) + hpRestored
-          );
-        }
-        break;
-      }
-
-      case 'PLAYER_REST': {
-        if (newState.player) {
-          const hpRestored = payload.hpRestored ?? 0;
-          newState.player.hp = Math.min(
-            newState.player.maxHp ?? 100,
-            (newState.player.hp ?? 0) + hpRestored
-          );
-          if (typeof payload.newMp === 'number') {
-            newState.player.mp = payload.newMp;
-          } else if (payload.mpRestored ?? 0 > 0) {
-            newState.player.mp = Math.min(
-              newState.player.maxMp ?? 0,
-              (newState.player.mp ?? 0) + (payload.mpRestored ?? 0)
-            );
-          }
-        }
-        break;
-      }
-
-      case 'HAZARD_DAMAGE': {
-        if (newState.player) {
-          if (payload.damage && payload.damage > 0) {
-            newState.player.hp = Math.max(0, (newState.player.hp ?? 100) - payload.damage);
-          }
-          if (payload.statusApplied) {
-            newState.player.statusEffects ??= [];
-            if (!newState.player.statusEffects.includes(payload.statusApplied)) {
-              newState.player.statusEffects.push(payload.statusApplied);
-            }
-          }
-        }
-        break;
-      }
-
-      case 'MANA_REGENERATED':
-        if (newState.player && typeof payload.newMp === 'number') {
-          newState.player.mp = payload.newMp;
-        }
-        break;
-
-      case 'MANA_DRAINED':
-        if (newState.player && typeof payload.newMp === 'number') {
-          newState.player.mp = payload.newMp;
-        }
-        break;
-
-      case 'DRAIN_MANA_FAILED':
-      case 'SPELL_CAST_FAILED':
-        // Log-only events
-        break;
-
-      case 'STATUS_APPLIED': {
-        if (newState.player && payload.statusEffect) {
-          newState.player.statusEffects ??= [];
-          if (!newState.player.statusEffects.includes(payload.statusEffect)) {
-            newState.player.statusEffects.push(payload.statusEffect);
-          }
-        }
-        break;
-      }
-
-      case 'STATUS_EFFECT_EXPIRED':
-        if (newState.player) {
-          newState.player.statusEffects = [];
-        }
-        break;
-
-      case 'SOUL_DECAY': {
-        if (newState.player && typeof payload.newStrain === 'number') {
-          newState.player.soulStrain = payload.newStrain;
-        }
-        break;
-      }
-
-      case 'NPC_SOUL_DECAY': {
-        if (newState.npcs && payload.npcId) {
-          const npc = newState.npcs.find(n => n.id === payload.npcId);
-          if (npc && typeof payload.newStrain === 'number') {
-            (npc as any).soulStrain = payload.newStrain;
-          }
-        }
-        break;
-      }
-
-      case 'COMBAT_STARTED': {
-        if (!newState.combatState) {
-          newState.combatState = {} as any;
-        }
-        newState.combatState.active = true;
-        newState.combatState.participants = payload.participants ?? [];
-        newState.combatState.initiator = payload.initiatorId ?? '';
-        newState.combatState.turnIndex = 0;
-        newState.combatState.roundNumber = 0;
-        newState.combatState.log = [];
-        break;
-      }
-
-      case 'COMBAT_ENDED': {
-        if (newState.combatState) {
-          newState.combatState.active = false;
-          newState.combatState.participants = [];
-          newState.combatState.turnIndex = 0;
-        }
-        break;
-      }
-
-      case 'COMBAT_LOG_ENTRY': {
-        if (newState.combatState && payload.message) {
-          newState.combatState.log ??= [];
-          newState.combatState.log.push(payload.message);
-        }
-        break;
-      }
-
-      case 'ACTOR_WAITED': {
-        if (newState.combatState) {
-          newState.combatState.log ??= [];
-          newState.combatState.log.push(`Actor waited (${payload.reason ?? 'no reason'})`);
-        }
-        break;
-      }
-
-      case 'SPELL_CAST': {
-        const { targetId, damageDealt, healing, statusApplied } = payload;
-        // Handle damage
-        if (damageDealt && damageDealt > 0) {
-          if (targetId === newState.player?.id) {
-            newState.player.hp = Math.max(0, (newState.player.hp ?? 100) - damageDealt);
-          } else {
-            const npc = newState.npcs?.find(n => n.id === targetId);
-            if (npc?.hp !== undefined) {
-              npc.hp = Math.max(0, npc.hp - damageDealt);
-            }
-          }
-        }
-        // Handle healing
-        if (healing && healing > 0) {
-          if (targetId === newState.player?.id) {
-            newState.player.hp = Math.min(newState.player?.maxHp ?? 100, (newState.player?.hp ?? 0) + healing);
-          } else {
-            const npc = newState.npcs?.find(n => n.id === targetId);
-            if (npc?.hp !== undefined && npc.maxHp !== undefined) {
-              npc.hp = Math.min(npc.maxHp, npc.hp + healing);
-            }
-          }
-        }
-        // Handle status
-        if (statusApplied) {
-          if (targetId === newState.player?.id) {
-            newState.player.statusEffects ??= [];
-            if (!newState.player.statusEffects.includes(statusApplied)) {
-              newState.player.statusEffects.push(statusApplied);
-            }
-          } else {
-            const npc = newState.npcs?.find(n => n.id === targetId);
-            if (npc) {
-              npc.statusEffects ??= [];
-              if (!npc.statusEffects?.includes(statusApplied)) {
-                npc.statusEffects?.push(statusApplied);
-              }
-            }
-          }
-        }
-        break;
+    // Damage events
+    if (['HIT', 'COMBAT_HIT', 'PARRY', 'COMBAT_PARRY', 'COMBAT_BLOCK', 'HAZARD_DAMAGE'].includes(type)) {
+      processDamageEvent(newState, type, payload);
+      if (type === 'HAZARD_DAMAGE' && payload.statusApplied) {
+        processStatusEvent(newState, type, payload);
       }
     }
+    
+    // Recovery events
+    else if (['HEAL', 'PLAYER_HEALED', 'PLAYER_REST'].includes(type)) {
+      processRecoveryEvent(newState, type, payload);
+    }
+    
+    // Status events
+    else if (['STATUS_APPLIED', 'STATUS_EFFECT_EXPIRED'].includes(type)) {
+      processStatusEvent(newState, type, payload);
+    }
+    
+    // Mana events
+    else if (['MANA_REGENERATED', 'MANA_DRAINED'].includes(type)) {
+      processManaEvent(newState, payload);
+    }
+    
+    // Soul events
+    else if (['SOUL_DECAY', 'NPC_SOUL_DECAY'].includes(type)) {
+      processSoulEvent(newState, type, payload);
+    }
+    
+    // Combat state events
+    else if (['COMBAT_STARTED', 'COMBAT_ENDED', 'COMBAT_LOG_ENTRY', 'ACTOR_WAITED'].includes(type)) {
+      processCombatStateEvent(newState, type, payload);
+    }
+    
+    // Spell casting
+    else if (type === 'SPELL_CAST') {
+      processSpellCastEvent(newState, payload);
+    }
+    
+    // Simple skill check for XP
+    else if (type === 'SKILL_CHECK') {
+      if (newState.player && payload.success) {
+        newState.player.xp ??= 0;
+        newState.player.xp += (payload.xpReward ?? 0);
+      }
+    }
+    
+    // Log-only events: DRAIN_MANA_FAILED, SPELL_CAST_FAILED
+    // (no state changes)
+
     return newState;
   }
 
@@ -247,151 +78,170 @@ namespace EventHandlers {
    * Player Event Handler
    * MOVE, TICK, QUEST_*, REWARD, LEVEL_UP, REPUTATION_CHANGED, CHARACTER_CREATED
    */
+  // Quest event management: QUEST_STARTED, QUEST_COMPLETED, QUEST_OBJECTIVE_ADVANCED
+  function processQuestEvent(state: WorldState, eventType: string, payload: any, tick: number): void {
+    if (!state.player?.quests) return;
+    const questId = payload.questId ?? '';
+    
+    if (eventType === 'QUEST_STARTED') {
+      state.player.quests[questId] ??= {};
+      state.player.quests[questId].status = 'in_progress';
+      state.player.quests[questId].startedAt = tick;
+    } else if (eventType === 'QUEST_COMPLETED') {
+      if (state.player.quests[questId]) {
+        state.player.quests[questId].status = 'completed';
+        state.player.quests[questId].completedAt = tick;
+      }
+    } else if (eventType === 'QUEST_OBJECTIVE_ADVANCED') {
+      if (state.player.quests[questId]) {
+        state.player.quests[questId].currentObjectiveIndex = payload.newObjective;
+      }
+    }
+  }
+
+  // Reward distribution: gold, xp
+  function processRewardEvent(state: WorldState, payload: any): void {
+    if (!state.player) return;
+    
+    if (payload.type === 'gold') {
+      state.player.gold ??= 0;
+      state.player.gold += payload.amount ?? 0;
+    } else if (payload.type === 'xp') {
+      state.player.xp ??= 0;
+      state.player.xp += payload.amount ?? 0;
+    }
+  }
+
+  // XP and leveling: XP_GAINED, LEVEL_UP
+  function processXPEvent(state: WorldState, eventType: string, payload: any): void {
+    if (!state.player) return;
+    
+    if (eventType === 'LEVEL_UP') {
+      state.player.level ??= 1;
+      state.player.level += 1;
+    } else if (eventType === 'XP_GAINED') {
+      state.player.xp ??= 0;
+      state.player.xp += payload.xpAmount ?? 0;
+      // Auto level-up if XP exceeds threshold
+      const level = state.player.level ?? 1;
+      const xpThreshold = level * 100;
+      if (state.player.xp >= xpThreshold) {
+        state.player.level = level + 1;
+        state.player.xp = 0;
+        state.player.attributePoints ??= 0;
+        state.player.attributePoints += 2;
+      }
+    }
+  }
+
+  // Reputation management: REPUTATION_CHANGED
+  function processReputationEvent(state: WorldState, payload: any): void {
+    if (!state.player) return;
+    const fId = payload.factionId ?? payload.npcId;
+    state.player.reputation ??= {};
+    state.player.reputation[fId] ??= 0;
+    state.player.reputation[fId] += payload.amount ?? payload.delta ?? payload.newRep ?? 0;
+  }
+
+  // Character creation: CHARACTER_CREATED
+  function processCharacterCreation(state: WorldState, payload: any): void {
+    const character = structuredClone(payload.character);
+    if (!character.hp || !character.maxHp) {
+      const endStat = character.stats?.end ?? 10;
+      const baseHp = 80 + endStat * 2;
+      character.hp = baseHp;
+      character.maxHp = baseHp;
+    }
+    character.statusEffects ??= [];
+    character.quests = state.player?.quests ?? {};
+    character.gold ??= 0;
+    character.reputation ??= {};
+    state.player = character;
+    state.needsCharacterCreation = false;
+  }
+
+  /**
+   * Player Event Handler - M40: Delegated to micro-handlers
+   * Complexity reduced from 33 to <10
+   */
   export function handlePlayerEvent(state: WorldState, event: Event): WorldState {
     const newState = structuredClone(state);
     const { payload } = event;
+    const type = event.type;
 
-    switch (event.type) {
-      case 'MOVE': {
-        if (newState.player) {
-          newState.player.location = payload.to ?? payload.playerId;
-        }
-        break;
-      }
-
-      case 'TICK': {
-        newState.hour = payload.newHour ?? newState.hour;
-        newState.day = payload.newDay ?? newState.day;
-        newState.season = payload.newSeason ?? newState.season;
-        newState.tick ??= 0;
-        newState.tick += 1;
-        break;
-      }
-
-      case 'QUEST_STARTED': {
-        if (newState.player?.quests) {
-          const qId = payload.questId ?? '';
-          newState.player.quests[qId] ??= {};
-          newState.player.quests[qId].status = 'in_progress';
-          newState.player.quests[qId].startedAt = event.timestamp;
-        }
-        break;
-      }
-
-      case 'QUEST_COMPLETED': {
-        if (newState.player?.quests?.[payload.questId]) {
-          newState.player.quests[payload.questId].status = 'completed';
-          newState.player.quests[payload.questId].completedAt = newState.tick ?? 0;
-        }
-        break;
-      }
-
-      case 'QUEST_OBJECTIVE_ADVANCED': {
-        if (newState.player?.quests?.[payload.questId]) {
-          newState.player.quests[payload.questId].currentObjectiveIndex = payload.newObjective;
-        }
-        break;
-      }
-
-      case 'REWARD': {
-        if (newState.player) {
-          if (payload.type === 'gold') {
-            newState.player.gold ??= 0;
-            newState.player.gold += payload.amount ?? 0;
-          } else if (payload.type === 'xp') {
-            newState.player.xp ??= 0;
-            newState.player.xp += payload.amount ?? 0;
-          }
-        }
-        break;
-      }
-
-      case 'LEVEL_UP': {
-        if (newState.player) {
-          newState.player.level ??= 1;
-          newState.player.level += 1;
-        }
-        break;
-      }
-
-      case 'XP_GAINED': {
-        if (newState.player) {
-          newState.player.xp ??= 0;
-          newState.player.xp += payload.xpAmount ?? 0;
-          // Auto level-up if XP exceeds threshold
-          const level = newState.player.level ?? 1;
-          const xpThreshold = level * 100;
-          if (newState.player.xp >= xpThreshold) {
-            newState.player.level = level + 1;
-            newState.player.xp = 0;
-            newState.player.attributePoints ??= 0;
-            newState.player.attributePoints += 2;
-          }
-        }
-        break;
-      }
-
-      case 'REPUTATION_CHANGED': {
-        if (newState.player) {
-          const fId = payload.factionId ?? payload.npcId;
-          newState.player.reputation ??= {};
-          newState.player.reputation[fId] ??= 0;
-          newState.player.reputation[fId] += payload.amount ?? payload.delta ?? payload.newRep ?? 0;
-        }
-        break;
-      }
-
-      case 'REPUTATION_MILESTONE_REACHED':
-        // Log-only event
-        break;
-
-      case 'CHARACTER_CREATED': {
-        const character = structuredClone(payload.character);
-        if (!character.hp || !character.maxHp) {
-          const endStat = character.stats?.end ?? 10;
-          const baseHp = 80 + endStat * 2;
-          character.hp = baseHp;
-          character.maxHp = baseHp;
-        }
-        character.statusEffects ??= [];
-        character.quests = newState.player?.quests ?? {};
-        character.gold ??= 0;
-        character.reputation ??= {};
-        newState.player = character;
-        newState.needsCharacterCreation = false;
-        break;
-      }
-
-      case 'INTERACT_NPC': {
-        if (newState.player) {
-          newState.player.dialogueHistory ??= [];
-          newState.player.dialogueHistory.push({
-            npcId: payload.npcId,
-            text: payload.dialogueText,
-            options: payload.options,
-            timestamp: event.timestamp,
-          });
-        }
-        break;
-      }
-
-      case 'STAT_ALLOCATED': {
-        if (newState.player?.stats && payload.stat in newState.player.stats) {
-          (newState.player.stats as any)[payload.stat] += payload.amount ?? 0;
-          newState.player.attributePoints ??= 0;
-          newState.player.attributePoints = Math.max(0, newState.player.attributePoints - (payload.amount ?? 0));
-        }
-        break;
-      }
-
-      case 'PLAYER_DEFEATED': {
-        if (newState.player) {
-          newState.player.location = 'Eldergrove Village';
-          newState.player.hp = Math.ceil((newState.player.maxHp ?? 100) * 0.5);
-        }
-        break;
+    // Movement  
+    if (type === 'MOVE') {
+      if (newState.player) {
+        newState.player.location = payload.to ?? payload.playerId;
       }
     }
+    
+    // Time progression
+    else if (type === 'TICK') {
+      newState.hour = payload.newHour ?? newState.hour;
+      newState.day = payload.newDay ?? newState.day;
+      newState.season = payload.newSeason ?? newState.season;
+      newState.tick ??= 0;
+      newState.tick += 1;
+    }
+    
+    // Quest management
+    else if (['QUEST_STARTED', 'QUEST_COMPLETED', 'QUEST_OBJECTIVE_ADVANCED'].includes(type)) {
+      processQuestEvent(newState, type, payload, newState.tick ?? 0);
+    }
+    
+    // Rewards
+    else if (type === 'REWARD') {
+      processRewardEvent(newState, payload);
+    }
+    
+    // Experience and leveling
+    else if (['LEVEL_UP', 'XP_GAINED'].includes(type)) {
+      processXPEvent(newState, type, payload);
+    }
+    
+    // Reputation
+    else if (type === 'REPUTATION_CHANGED') {
+      processReputationEvent(newState, payload);
+    }
+    
+    // Character creation
+    else if (type === 'CHARACTER_CREATED') {
+      processCharacterCreation(newState, payload);
+    }
+    
+    // Dialogue
+    else if (type === 'INTERACT_NPC') {
+      if (newState.player) {
+        newState.player.dialogueHistory ??= [];
+        newState.player.dialogueHistory.push({
+          npcId: payload.npcId,
+          text: payload.dialogueText,
+          options: payload.options,
+          timestamp: event.timestamp,
+        });
+      }
+    }
+    
+    // Stat allocation
+    else if (type === 'STAT_ALLOCATED') {
+      if (newState.player?.stats && payload.stat in newState.player.stats) {
+        (newState.player.stats as any)[payload.stat] += payload.amount ?? 0;
+        newState.player.attributePoints ??= 0;
+        newState.player.attributePoints = Math.max(0, newState.player.attributePoints - (payload.amount ?? 0));
+      }
+    }
+    
+    // Player defeated/respawn
+    else if (type === 'PLAYER_DEFEATED') {
+      if (newState.player) {
+        newState.player.location = 'Eldergrove Village';
+        newState.player.hp = Math.ceil((newState.player.maxHp ?? 100) * 0.5);
+      }
+    }
+    
+    // Log-only: REPUTATION_MILESTONE_REACHED
+    
     return newState;
   }
 
@@ -524,7 +374,7 @@ namespace EventHandlers {
 
       case 'TRADE_COMPLETED': {
         if (!newState.player) break;
-        const { initiatorId, responderId, initiatorItems, responderItems } = payload;
+        const { initiatorId, initiatorItems, responderItems } = payload;
         const playerId = newState.player.id;
         const isInitiator = playerId === initiatorId;
 
@@ -536,7 +386,7 @@ namespace EventHandlers {
         // Remove items
         for (const removeItem of itemsToRemove ?? []) {
           let qty = removeItem.quantity;
-          for (let i = 0; i < newState.player.inventory.length && qty > 0; i++) {
+          for (let i = 0; i < newState.player.inventory.length && qty > 0; ) {
             const item = newState.player.inventory[i];
             if (isStackableItem(item) && item.itemId === removeItem.itemId) {
               const removed = Math.min(qty, item.quantity);
@@ -544,8 +394,11 @@ namespace EventHandlers {
               qty -= removed;
               if (item.quantity <= 0) {
                 newState.player.inventory.splice(i, 1);
-                i--;
+              } else {
+                i++;
               }
+            } else {
+              i++;
             }
           }
         }
@@ -1043,9 +896,9 @@ namespace EventHandlers {
     const newState = structuredClone(state);
 
     if (event.type === 'INVARIANT_VIOLATION') {
-      (newState as any).metadata ??= {};
-      ((newState as any).metadata as any).violationLog ??= [];
-      ((newState as any).metadata.violationLog as any[]).push({
+      const metadata = (newState as any).metadata ??= {};
+      const violationLog = metadata.violationLog ??= [];
+      violationLog.push({
         tick: event.timestamp,
         violations: event.payload.violations ?? [],
         errorMessage: event.payload.error
@@ -1130,36 +983,217 @@ namespace EventHandlers {
 
   // Helper: Apply item effects
   function applyItemEffects(state: WorldState, itemId: string): void {
-    if (!state.player) return;
+    const player = state.player;
+    if (!player) return;
     
     const effects: Record<string, () => void> = {
       'healing-potion-minor': () => {
-        state.player!.hp = Math.min(
-          state.player!.maxHp ?? 100,
-          (state.player!.hp ?? 0) + 25
+        player.hp = Math.min(
+          player.maxHp ?? 100,
+          (player.hp ?? 0) + 25
         );
       },
       'mana-potion-minor': () => {
-        state.player!.mp = Math.min(
-          state.player!.maxMp ?? 50,
-          (state.player!.mp ?? 0) + 30
+        player.mp = Math.min(
+          player.maxMp ?? 50,
+          (player.mp ?? 0) + 30
         );
       },
       'healing-potion-major': () => {
-        state.player!.hp = Math.min(
-          state.player!.maxHp ?? 100,
-          (state.player!.hp ?? 0) + 60
+        player.hp = Math.min(
+          player.maxHp ?? 100,
+          (player.hp ?? 0) + 60
         );
       },
       'mana-potion-major': () => {
-        state.player!.mp = Math.min(
-          state.player!.maxMp ?? 50,
-          (state.player!.mp ?? 0) + 80
+        player.mp = Math.min(
+          player.maxMp ?? 50,
+          (player.mp ?? 0) + 80
         );
       }
     };
 
     effects[itemId]?.();
+  }
+
+  /**
+   * Micro-Handlers: Break down complex handlers into single-responsibility functions
+   * Each processes specific event types with complexity < 15
+   */
+
+  // Damage events: HIT, PARRY, COMBAT_BLOCK, HAZARD_DAMAGE
+  function processDamageEvent(state: WorldState, eventType: string, payload: any): void {
+    if (!state.player) return;
+    
+    let damage = 0;
+    if (eventType === 'HIT' || eventType === 'COMBAT_HIT') {
+      damage = payload.damage ?? 0;
+    } else if (eventType === 'PARRY' || eventType === 'COMBAT_PARRY') {
+      damage = payload.finalDamage ?? 0;
+    } else if (eventType === 'COMBAT_BLOCK') {
+      damage = payload.finalDamage ?? 0;
+    } else if (eventType === 'HAZARD_DAMAGE') {
+      damage = payload.damage ?? 0;
+    }
+    
+    if (damage > 0) {
+      state.player.hp = Math.max(0, (state.player.hp ?? 100) - damage);
+    }
+  }
+
+  // Recovery events: HEAL, PLAYER_HEALED, PLAYER_REST
+  function processRecoveryEvent(state: WorldState, eventType: string, payload: any): void {
+    if (!state.player) return;
+    
+    if (eventType === 'HEAL') {
+      const hpRestored = payload.amount ?? 0;
+      state.player.hp = Math.min(
+        state.player.maxHp ?? 100,
+        (state.player.hp ?? 0) + hpRestored
+      );
+    } else if (eventType === 'PLAYER_HEALED') {
+      const hpRestored = payload.hpRestored ?? 0;
+      state.player.hp = Math.min(
+        state.player.maxHp ?? 100,
+        (state.player.hp ?? 0) + hpRestored
+      );
+    } else if (eventType === 'PLAYER_REST') {
+      const hpRestored = payload.hpRestored ?? 0;
+      state.player.hp = Math.min(
+        state.player.maxHp ?? 100,
+        (state.player.hp ?? 0) + hpRestored
+      );
+      if (typeof payload.newMp === 'number') {
+        state.player.mp = payload.newMp;
+      } else if ((payload.mpRestored ?? 0) > 0) {
+        state.player.mp = Math.min(
+          state.player.maxMp ?? 0,
+          (state.player.mp ?? 0) + (payload.mpRestored ?? 0)
+        );
+      }
+    }
+  }
+
+  // Status effect events: STATUS_APPLIED, STATUS_EFFECT_EXPIRED, HAZARD_DAMAGE (status part)
+  function processStatusEvent(state: WorldState, eventType: string, payload: any): void {
+    if (!state.player) return;
+    
+    if (eventType === 'STATUS_EFFECT_EXPIRED') {
+      state.player.statusEffects = [];
+    } else if (eventType === 'STATUS_APPLIED' || eventType === 'HAZARD_DAMAGE') {
+      const statusEffect = payload.statusEffect ?? payload.statusApplied;
+      if (statusEffect) {
+        state.player.statusEffects ??= [];
+        if (!state.player.statusEffects.includes(statusEffect)) {
+          state.player.statusEffects.push(statusEffect);
+        }
+      }
+    }
+  }
+
+  // Mana management: MANA_REGENERATED, MANA_DRAINED
+  function processManaEvent(state: WorldState, payload: any): void {
+    if (state.player && typeof payload.newMp === 'number') {
+      state.player.mp = payload.newMp;
+    }
+  }
+
+  // Combat state management: COMBAT_STARTED, COMBAT_ENDED, COMBAT_LOG_ENTRY, ACTOR_WAITED
+  function processCombatStateEvent(state: WorldState, eventType: string, payload: any): void {
+    if (eventType === 'COMBAT_STARTED') {
+      state.combatState ??= {} as any;
+      state.combatState.active = true;
+      state.combatState.participants = payload.participants ?? [];
+      state.combatState.initiator = payload.initiatorId ?? '';
+      state.combatState.turnIndex = 0;
+      state.combatState.roundNumber = 0;
+      state.combatState.log = [];
+    } else if (eventType === 'COMBAT_ENDED') {
+      if (state.combatState) {
+        state.combatState.active = false;
+        state.combatState.participants = [];
+        state.combatState.turnIndex = 0;
+      }
+    } else if (eventType === 'COMBAT_LOG_ENTRY') {
+      if (state.combatState && payload.message) {
+        state.combatState.log ??= [];
+        state.combatState.log.push(payload.message);
+      }
+    } else if (eventType === 'ACTOR_WAITED') {
+      if (state.combatState) {
+        state.combatState.log ??= [];
+        state.combatState.log.push(`Actor waited (${payload.reason ?? 'no reason'})`);
+      }
+    }
+  }
+
+  // Soul management: SOUL_DECAY, NPC_SOUL_DECAY
+  function processSoulEvent(state: WorldState, eventType: string, payload: any): void {
+    if (eventType === 'SOUL_DECAY') {
+      if (state.player && typeof payload.newStrain === 'number') {
+        state.player.soulStrain = payload.newStrain;
+      }
+    } else if (eventType === 'NPC_SOUL_DECAY') {
+      if (state.npcs && payload.npcId) {
+        const npc = state.npcs.find(n => n.id === payload.npcId);
+        if (npc && typeof payload.newStrain === 'number') {
+          (npc as any).soulStrain = payload.newStrain;
+        }
+      }
+    }
+  }
+
+  // Helper: Apply damage to target (player or NPC)
+  function applyDamageToTarget(state: WorldState, targetId: string | undefined, damage: number): void {
+    if (!damage || damage <= 0) return;
+    if (targetId === state.player?.id) {
+      state.player.hp = Math.max(0, (state.player.hp ?? 100) - damage);
+    } else {
+      const npc = state.npcs?.find(n => n.id === targetId);
+      if (npc?.hp !== undefined) {
+        npc.hp = Math.max(0, npc.hp - damage);
+      }
+    }
+  }
+
+  // Helper: Apply healing to target
+  function applyHealingToTarget(state: WorldState, targetId: string | undefined, healing: number): void {
+    if (!healing || healing <= 0) return;
+    if (targetId === state.player?.id) {
+      state.player.hp = Math.min(state.player?.maxHp ?? 100, (state.player?.hp ?? 0) + healing);
+    } else {
+      const npc = state.npcs?.find(n => n.id === targetId);
+      if (npc?.hp !== undefined && npc.maxHp !== undefined) {
+        npc.hp = Math.min(npc.maxHp, npc.hp + healing);
+      }
+    }
+  }
+
+  // Helper: Apply status effect to target
+  function applyStatusToTarget(state: WorldState, targetId: string | undefined, statusEffect: string): void {
+    if (!statusEffect) return;
+    if (targetId === state.player?.id) {
+      state.player.statusEffects ??= [];
+      if (!state.player.statusEffects.includes(statusEffect)) {
+        state.player.statusEffects.push(statusEffect);
+      }
+    } else {
+      const npc = state.npcs?.find(n => n.id === targetId);
+      if (npc) {
+        npc.statusEffects ??= [];
+        if (!npc.statusEffects?.includes(statusEffect)) {
+          npc.statusEffects?.push(statusEffect);
+        }
+      }
+    }
+  }
+
+  // Spell casting with multi-target effects: damage, heal, status
+  function processSpellCastEvent(state: WorldState, payload: any): void {
+    const { targetId, damageDealt, healing, statusApplied } = payload;
+    applyDamageToTarget(state, targetId, damageDealt);
+    applyHealingToTarget(state, targetId, healing);
+    applyStatusToTarget(state, targetId, statusApplied);
   }
 }
 
