@@ -77,6 +77,32 @@ export interface SessionConfig {
 }
 
 /**
+ * M42 Task 1: Epoch Sync Event for P2P coordination
+ */
+export interface EpochSyncEvent {
+  eventId: string;
+  timestamp: number;
+  targetEpoch: 1 | 2 | 3;
+  source: 'director' | 'world_event' | 'player_consensus' | 'system';
+  initiatorClientId: string;
+  clockOffset?: number;
+  reason?: string;
+}
+
+/**
+ * M42 Task 1: Epoch Record for history tracking
+ */
+export interface EpochRecord {
+  tick: number;
+  epoch: 1 | 2 | 3;
+  priorEpoch: 1 | 2 | 3;
+  source: string;
+  initiator: string;
+  timestamp: number;
+  consensusApproved?: boolean;
+}
+
+/**
  * Multiplayer session registry
  */
 export interface SessionRegistry {
@@ -92,6 +118,13 @@ export interface SessionRegistry {
     action: string;
     resolution: 'clientA_wins' | 'clientB_wins' | 'both_fail' | 'merged';
   }>;
+
+  // M42 Task 1: Epoch Sync Support
+  currentEpoch: 1 | 2 | 3;                              // Current epoch across cluster
+  epochEventQueue: EpochSyncEvent[];                    // Pending epoch shift events
+  epochHistory: EpochRecord[];                          // Complete history of epoch changes
+  epochConsensusVotes?: Map<string, 1 | 2 | 3>;        // Track consensus votes per peer (clientId → vote)
+  epochConsensusInProgress?: boolean;                   // Flag if consensus voting active
 }
 
 /**
@@ -117,7 +150,13 @@ export function createSessionRegistry(
     activePlayers: [],
     spectators: [],
     lastSyncTick: 0,
-    conflictLog: []
+    conflictLog: [],
+    // M42 Task 1: Epoch Sync initialization
+    currentEpoch: 1,
+    epochEventQueue: [],
+    epochHistory: [],
+    epochConsensusVotes: new Map(),
+    epochConsensusInProgress: false
   };
 }
 
@@ -1346,3 +1385,123 @@ export function completeTrade(
 
   return transfers;
 }
+
+/**
+ * M42 Task 1: Record an epoch shift event in the session
+ */
+export function recordEpochShiftEvent(
+  registry: SessionRegistry,
+  event: EpochSyncEvent
+): void {
+  // Add to queue if not already processing
+  registry.epochEventQueue.push(event);
+
+  // Add to history
+  const record: EpochRecord = {
+    tick: 0, // Will be set by worldEngine
+    epoch: event.targetEpoch,
+    priorEpoch: registry.currentEpoch,
+    source: event.source,
+    initiator: event.initiatorClientId,
+    timestamp: event.timestamp
+  };
+
+  registry.epochHistory.push(record);
+
+  // Update current epoch
+  registry.currentEpoch = event.targetEpoch;
+
+  console.log(`[Session] Epoch shift: ${record.priorEpoch}→${event.targetEpoch} from ${event.source}`);
+}
+
+/**
+ * M42 Task 1: Handle epoch consensus voting
+ * Returns { approved: boolean, reason: string }
+ */
+export function epochConsensus(
+  registry: SessionRegistry,
+  targetEpoch: 1 | 2 | 3,
+  initiatorClientId: string,
+  consensusType: 'initiator_wins' | 'majority_vote' = 'majority_vote'
+): { approved: boolean; reason: string } {
+  // Director always wins (Initiator Wins mode)
+  if (consensusType === 'initiator_wins') {
+    return {
+      approved: true,
+      reason: 'Director mode: Initiator wins'
+    };
+  }
+
+  // Majority vote mode
+  if (consensusType === 'majority_vote') {
+    const activeCount = registry.activePlayers.length;
+    const votesRequired = Math.ceil(activeCount / 2) + 1; // Majority = >50%
+
+    if (!registry.epochConsensusVotes) {
+      registry.epochConsensusVotes = new Map();
+    }
+
+    const voteCount = Array.from(registry.epochConsensusVotes.values()).filter(
+      v => v === targetEpoch
+    ).length;
+
+    if (voteCount >= votesRequired) {
+      return {
+        approved: true,
+        reason: `Majority consensus: ${voteCount}/${activeCount} voted for Epoch ${targetEpoch}`
+      };
+    }
+
+    return {
+      approved: false,
+      reason: `Insufficient votes: ${voteCount}/${votesRequired} needed for Epoch ${targetEpoch}`
+    };
+  }
+
+  return { approved: false, reason: 'Unknown consensus type' };
+}
+
+/**
+ * M42 Task 1: Record a peer's vote for epoch consensus
+ */
+export function recordEpochVote(
+  registry: SessionRegistry,
+  clientId: string,
+  vote: 1 | 2 | 3
+): void {
+  if (!registry.epochConsensusVotes) {
+    registry.epochConsensusVotes = new Map();
+  }
+
+  registry.epochConsensusVotes.set(clientId, vote);
+  console.log(`[Session] Epoch vote: ${clientId} → Epoch ${vote}`);
+}
+
+/**
+ * M42 Task 1: Clear consensus votes and prepare for next vote
+ */
+export function clearEpochConsensus(registry: SessionRegistry): void {
+  registry.epochConsensusVotes?.clear();
+  registry.epochConsensusInProgress = false;
+  console.log('[Session] Epoch consensus votes cleared');
+}
+
+/**
+ * M42 Task 1: Get epoch consensus health metrics
+ */
+export function getEpochConsensusHealth(registry: SessionRegistry): {
+  currentEpoch: 1 | 2 | 3;
+  historyLength: number;
+  queuedEvents: number;
+  consensusActive: boolean;
+  votesRecorded: number;
+} {
+  return {
+    currentEpoch: registry.currentEpoch,
+    historyLength: registry.epochHistory.length,
+    queuedEvents: registry.epochEventQueue.length,
+    consensusActive: registry.epochConsensusInProgress ?? false,
+    votesRecorded: registry.epochConsensusVotes?.size ?? 0
+  };
+}
+

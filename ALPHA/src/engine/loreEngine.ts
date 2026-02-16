@@ -166,7 +166,7 @@ function checkUnlockConditions(
     case 'temporal': {
       // Temporal/paradox lore requires paradox level to be high
       // Hard canon: checked via paradox accumulation
-      return (player.paradoxLevel ?? 0) >= 20;
+      return (player.temporalDebt ?? 0) >= 20;
     }
 
     default:

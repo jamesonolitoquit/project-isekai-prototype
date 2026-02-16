@@ -455,7 +455,7 @@ namespace EventHandlers {
       
       'PARADOX_STRIKE': () => {
         if (!newState.player) return;
-        if (payload.damage?. > 0) {
+        if (payload.damage && payload.damage > 0) {
           newState.player.hp = Math.max(0, (newState.player.hp ?? 100) - payload.damage);
         }
         newState.player.temporalDebt = Math.min(100, (newState.player.temporalDebt ?? 0) + (payload.temporalCost ?? 5));

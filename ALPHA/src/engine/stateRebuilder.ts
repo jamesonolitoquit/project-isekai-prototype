@@ -500,9 +500,9 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       const { entityType, entityId } = event.payload;
       if (newState.player) {
         if (!newState.player.knowledgeBase) {
-          newState.player.knowledgeBase = new Set();
+          newState.player.knowledgeBase = new Map();
         }
-        newState.player.knowledgeBase.add(`${entityType}:${entityId}`);
+        newState.player.knowledgeBase.set(`${entityType}:${entityId}`, true);
       }
       break;
     }
@@ -510,9 +510,9 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       const { npcId } = event.payload;
       if (newState.player) {
         if (!newState.player.knowledgeBase) {
-          newState.player.knowledgeBase = new Set();
+          newState.player.knowledgeBase = new Map();
         }
-        newState.player.knowledgeBase.add(`npc:${npcId}`);
+        newState.player.knowledgeBase.set(`npc:${npcId}`, true);
       }
       break;
     }
@@ -521,11 +521,11 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       const { knowledgeKey, knowledgeType, knowledgeId } = event.payload;
       if (newState.player) {
         if (!newState.player.knowledgeBase) {
-          newState.player.knowledgeBase = new Set();
+          newState.player.knowledgeBase = new Map();
         }
         // Add knowledge entry
         const key = knowledgeKey || `${knowledgeType}:${knowledgeId}`;
-        newState.player.knowledgeBase.add(key);
+        newState.player.knowledgeBase.set(key, true);
       }
       break;
     }
@@ -695,10 +695,10 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         
         // If OBFUSCATION_INVERSION, reset identification for some NPCs
         if (consequence === 'OBFUSCATION_INVERSION' && newState.player.knowledgeBase) {
-          const npcIdentifications = Array.from(newState.player.knowledgeBase)
-            .filter(item => item.startsWith('npc:'))
+          const npcIdentifications = Array.from(newState.player.knowledgeBase.keys())
+            .filter(key => key.startsWith('npc:'))
             .slice(0, Math.floor(newState.npcs.length * 0.3));  // Forget 30% of NPCs
-          
+
           npcIdentifications.forEach(id => {
             newState.player.knowledgeBase!.delete(id);
           });
@@ -778,7 +778,7 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         
         // Temporarily forget some NPC identifications (30%)
         if (newState.player.knowledgeBase && newState.player.knowledgeBase.size > 0) {
-          const npcEntries = Array.from(newState.player.knowledgeBase).filter(k => k.startsWith('npc:'));
+          const npcEntries = Array.from(newState.player.knowledgeBase.keys()).filter(k => k.startsWith('npc:'));
           const forgotCount = Math.ceil(npcEntries.length * 0.3);
           for (let i = 0; i < forgotCount; i++) {
             const randIdx = Math.floor(random() * npcEntries.length);

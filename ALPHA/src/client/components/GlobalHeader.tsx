@@ -2,9 +2,12 @@ import React from 'react';
 
 interface GlobalHeaderProps {
   state?: any;
+  isDirector?: boolean;
+  onToggleDirector?: () => void;
+  onExportDebug?: () => void;
 }
 
-export default function GlobalHeader({ state }: GlobalHeaderProps) {
+export default function GlobalHeader({ state, isDirector = false, onToggleDirector, onExportDebug }: GlobalHeaderProps) {
   if (!state?.player) return null;
 
   const hp = state.player.hp || 0;
@@ -87,6 +90,46 @@ export default function GlobalHeader({ state }: GlobalHeaderProps) {
              <div style={{ width: `${mpPercent}%`, height: '100%', background: mpColor }} />
           </div>
         </div>
+        {/* Director Mode Toggle */}
+        {onToggleDirector && (
+          <button
+            onClick={onToggleDirector}
+            style={{
+              padding: '6px 10px',
+              backgroundColor: isDirector ? '#6b21a8' : '#493d4a',
+              border: isDirector ? '2px solid #c084fc' : '1px solid #666',
+              color: isDirector ? '#e9d5ff' : '#c084fc',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 600,
+              borderRadius: '3px',
+              transition: 'all 0.2s ease'
+            }}
+            title="Toggle Director Mode (Shift+D)"
+          >
+            👁️ {isDirector ? 'ON' : 'OFF'}
+          </button>
+        )}
+        {/* Debug Export Button */}
+        {onExportDebug && (
+          <button
+            onClick={onExportDebug}
+            style={{
+              padding: '6px 10px',
+              backgroundColor: '#4a3e2a',
+              border: '1px solid #666',
+              color: '#d4af37',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 600,
+              borderRadius: '3px',
+              transition: 'all 0.2s ease'
+            }}
+            title="Export Debug State"
+          >
+            📊
+          </button>
+        )}
       </div>
     </div>
   );

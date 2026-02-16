@@ -1,5 +1,0 @@
-Missing closing ')' in expression.
-    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecor 
-   dException
-    + FullyQualifiedErrorId : MissingEndParenthesisInExpression
- 

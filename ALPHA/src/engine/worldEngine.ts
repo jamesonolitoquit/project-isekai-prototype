@@ -711,19 +711,13 @@ export function reinitializeWorldFromTemplate(
     combatState: newCombatState,
     factions: newFactions,
     factionConflicts: template.factionConflicts ? structuredCloneSafe(template.factionConflicts) : [],
-    factionWars: template.factionWars ? structuredCloneSafe(template.factionWars) : [],
-    mutationLog: currentState.mutationLog, // Preserve mutation log
     metadata: newMetadata,
     audio: currentState.audio || initializeAudioState(), // Preserve audio state
 
     // Preserve existing relic systems
     relics: currentState.relics || {},
     relicEvents: currentState.relicEvents || [],
-    lastFactionTick: currentState.lastFactionTick ?? 0,
-
-    // M19: Preserve emotional ledger entries (NPCs may change but history should persist)
-    npcDisplacements: currentState.npcDisplacements || {},
-    npcDisplacingSearching: currentState.npcDisplacingSearching || []
+    lastFactionTick: currentState.lastFactionTick ?? 0
   };
 }
 

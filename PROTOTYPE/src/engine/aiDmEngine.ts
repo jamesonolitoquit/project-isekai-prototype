@@ -948,7 +948,7 @@ export function getLegendaryLocationNarrative(
         ancestorName: 'Unknown Hero'
       },
       'seal-of-lies': {
-        deed: 'Broke the curse that sealed the Oracle\\'s lips',
+        deed: "Broke the curse that sealed the Oracle's lips",
         ancestorName: 'Unknown Hero'
       }
     };

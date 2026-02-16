@@ -640,9 +640,9 @@ export function processRelicCommunication(
 
   // Get current mood state
   const moods = relic.moods || { bloodthirsty: 0, curious: 0, sullen: 0, protective: 0 };
-  const dominantMood = Object.entries(moods).reduce((max, [mood, value]) =>
-    (value as number) > moods[max]  ? mood : max
-  );
+  const dominantMood = Object.entries(moods).reduce(([maxMood, maxValue], [mood, value]) =>
+    (value as number) > maxValue ? [mood, value] : [maxMood, maxValue]
+  )[0];
 
   // Build contextual message based on location and mood
   const location = state.locations.find(l => l.id === state.player?.location);

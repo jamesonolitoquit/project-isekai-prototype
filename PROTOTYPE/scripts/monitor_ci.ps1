@@ -30,10 +30,11 @@ while((Get-Date) -lt $endTime) {
   if ($status -and $status.statuses.Count -gt 0) { $hasChecks = $true }
 
   if ($hasChecks) {
-    $outDir = Join-Path -Path (Get-Location) -ChildPath 'PROTOTYPE'
+    $outDir = Join-Path -Path (Get-Location) -ChildPath 'PROTOTYPE' -AdditionalChildPath 'artifacts'
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     $checkRunsJson | Out-File -FilePath (Join-Path $outDir 'ci_check_runs.json') -Encoding utf8
     $statusJson | Out-File -FilePath (Join-Path $outDir 'ci_status.json') -Encoding utf8
-    Write-Output "Found CI contexts for commit $sha. Saved to PROTOTYPE/ci_check_runs.json and PROTOTYPE/ci_status.json"
+    Write-Output "Found CI contexts for commit $sha. Saved to PROTOTYPE/artifacts/ci_check_runs.json and PROTOTYPE/artifacts/ci_status.json"
     exit 0
   }
 

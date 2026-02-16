@@ -19,6 +19,7 @@ export interface DialogueOption {
   text: string;
   requiresQuestStatus?: string;
   consequence?: 'quest_start' | 'reputation_change' | 'item_give';
+  itemId?: string; // For item_give consequences
   // M16: Dialogue gating system
   gateType?: 'reputation' | 'knowledge' | 'quest' | 'none';
   minimumTier?: ReputationTier; // For reputation gates

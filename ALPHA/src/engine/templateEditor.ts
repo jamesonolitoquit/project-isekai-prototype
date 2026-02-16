@@ -152,9 +152,6 @@ export function hotSwapTemplateIntoWorld(
           // Update stats and appearance, preserve relationships
           existing.hp = newNpc.hp ?? existing.hp;
           existing.maxHp = newNpc.maxHp ?? existing.maxHp;
-          existing.level = newNpc.level ?? existing.level;
-          existing.traits = newNpc.traits ?? existing.traits;
-          existing.dialogueLines = newNpc.dialogueLines ?? existing.dialogueLines;
           
           // Keep faction/reputation relationship
           // Don't reset these as they represent game state

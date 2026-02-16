@@ -1484,7 +1484,7 @@ export async function callLlmApi(
 
   // Get API key from environment or config
   const apiKey = config.apiKey || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey && config.provider !== 'mock') {
+  if (!apiKey && (config.provider === 'openai' || config.provider === 'claude')) {
     console.warn('LLM API key not found. Using mock response.');
     return mockLlmResponse(prompt);
   }

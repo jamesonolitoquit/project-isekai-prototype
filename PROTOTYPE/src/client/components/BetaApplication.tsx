@@ -15,6 +15,19 @@ import type { WorldState } from '../../engine/worldEngine';
 import type { TradeState } from '../../engine/multiplayerEngine';
 import BetaGlobalHeader from './BetaGlobalHeader';
 import ErrorBoundary from './ErrorBoundary';
+import CoDmDashboard from './CoDmDashboard';
+import TutorialOverlayComponent from './TutorialOverlay';
+import {
+  initializeTutorialState,
+  detectMilestones,
+  updateTutorialState,
+  getNextTutorialOverlay,
+  dismissTutorialOverlay,
+  type TutorialState
+} from '../../engine/tutorialEngine';
+import { themeManager } from '../../devTools/epochThemeManager';
+import { getEpochSyncEngine } from '../../engine/epochSyncEngine';
+import '../../styles/epoch-theme.css';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -47,6 +60,9 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
 
   const [state, setState] = useState<WorldState>(initialState);
   const [activeMainTab, setActiveMainTab] = useState<MainTab>('world');
+  const [isDirector, setIsDirector] = useState(false);
+  const [tutorialState, setTutorialState] = useState<TutorialState>(initializeTutorialState());
+  const [currentTutorialOverlay, setCurrentTutorialOverlay] = useState(getNextTutorialOverlay(tutorialState));
 
   // Removed unused subTab state - planned for future enhancement
 
@@ -105,10 +121,17 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     };
   }, [controller]);
 
-  // M40 Task 4: Keyboard navigation (1-4 for tab switching)
+  // M40 Task 4: Keyboard navigation (1-4 for tab switching, Shift+D for Director Mode)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) return; // Don't interfere with system shortcuts
+
+      // Director Mode toggle: Shift+D
+      if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        setIsDirector(prev => !prev);
+        return;
+      }
 
       const tabMap: Record<string, MainTab> = {
         '1': 'world',
@@ -127,9 +150,105 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // M41 Task 2: Tutorial milestone detection
+  useEffect(() => {
+    if (!state) return;
+
+    // Detect newly achieved milestones
+    const detected = detectMilestones(state, tutorialState);
+    if (detected.length > 0) {
+      const updated = updateTutorialState(tutorialState, detected, state.tick || 0);
+      setTutorialState(updated);
+      setCurrentTutorialOverlay(getNextTutorialOverlay(updated));
+    }
+  }, [state?.tick]); // Re-run when tick changes (new event occurred)
+
+  // M41 Task 5: Epoch-based theme morphing
+  useEffect(() => {
+    if (!state?.epochId) return;
+
+    // Apply theme based on current epoch (1, 2, or 3)
+    const epoch = state.epochId as 1 | 2 | 3;
+    if (epoch >= 1 && epoch <= 3) {
+      themeManager.applyTheme(epoch, true);
+    }
+  }, [state?.epochId]); // Re-run whenever epoch changes
+
+  // M42 Task 1: Subscribe to remote epoch shifts from P2P network
+  useEffect(() => {
+    const epochSyncEngine = getEpochSyncEngine();
+
+    // Subscribe to epoch shift events (both local and remote)
+    const unsubscribe = epochSyncEngine.subscribeToEpochShifts((event) => {
+      try {
+        // Apply theme morphing on remote shift
+        if (event.targetEpoch >= 1 && event.targetEpoch <= 3) {
+          console.log(`[BetaApp] Applying epoch shift to ${event.targetEpoch} from ${event.source}`);
+          themeManager.applyTheme(event.targetEpoch, true);
+        }
+
+        // Record sync timing for telemetry
+        const syncLatency = Date.now() - event.timestamp;
+        if (syncLatency > 100) {
+          console.warn(`[BetaApp] Slow epoch sync: ${syncLatency}ms latency (target: <100ms)`);
+        }
+      } catch (error) {
+        console.error('[BetaApp] Error processing epoch shift:', error);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []); // Effect runs once on mount
+
   // =========================================================================
   // ACTION HANDLERS
   // =========================================================================
+
+  // M41 Task 3: Export full debug state (telemetry)
+  const exportFullDebugState = useCallback(() => {
+    const debugState = {
+      timestamp: new Date().toISOString(),
+      tick: state.tick,
+      worldState: {
+        id: state.id,
+        epoch: state.epochId,
+        player: state.player ? {
+          name: state.player.name,
+          level: state.player.level,
+          hp: state.player.hp,
+          maxHp: state.player.maxHp,
+          location: state.player.location,
+          xp: state.player.xp,
+          gold: state.player.gold,
+          temporalDebt: state.player.temporalDebt,
+          soulStrain: state.player.soulStrain,
+          inventory_count: state.player.inventory?.length || 0
+        } : null,
+        npcs_count: state.npcs?.length || 0,
+        quests_count: state.quests?.length || 0,
+        activeEvents_count: state.activeEvents?.length || 0
+      },
+      tutorialState: tutorialState,
+      environment: {
+        hour: state.hour,
+        day: state.day,
+        season: state.season,
+        weather: state.weather,
+        dayPhase: state.dayPhase
+      }
+    };
+
+    const json = JSON.stringify(debugState, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `debug_state_${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [state, tutorialState]);
 
   const performAction = useCallback((actionRequest: any) => {
     if (!controller) return;
@@ -194,6 +313,7 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
         state={state} 
         consensusDiagnostics={consensusDiagnostics}
         macroEventDiagnostics={macroEventDiagnostics}
+        onExportDebug={exportFullDebugState}
       />
 
       {/* ===== CHARACTER CREATION OVERLAY ===== */}
@@ -214,6 +334,9 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
           onShowInventory={() => setShowInventory(true)}
           onShowTrade={() => setShowTradeUI(true)}
           onShowCrafting={() => setShowCraftingModal(true)}
+          isDirector={isDirector}
+          onToggleDirector={() => setIsDirector(prev => !prev)}
+          onExportDebug={exportFullDebugState}
         />
 
         {/* CENTER: Main Tab Interface */}
@@ -308,6 +431,78 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
           onClose={() => setShowCraftingModal(false)}
         />
       )}
+
+      {/* M41 Task 1: Director Mode - CoDmDashboard Overlay */}
+      {isDirector && (
+        <dialog
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999,
+            padding: '20px',
+            border: 'none',
+            margin: 0
+          }}
+          open={isDirector}
+        >
+          <div
+            style={{
+              backgroundColor: 'rgba(13, 13, 26, 0.95)',
+              border: '2px solid #c084fc',
+              borderRadius: '8px',
+              width: '90%',
+              height: '90%',
+              overflow: 'auto',
+              boxShadow: '0 0 20px rgba(192, 132, 252, 0.3)',
+              position: 'relative'
+            }}
+          >
+            <button
+              onClick={() => setIsDirector(false)}
+              style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                background: '#c084fc',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '4px 8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                zIndex: 10000,
+                color: '#000'
+              }}
+              aria-label="Close Director Mode"
+            >
+              Close (Shift+D)
+            </button>
+            <div style={{ paddingTop: '40px' }}>
+              <CoDmDashboard worldState={state} />
+            </div>
+          </div>
+        </dialog>
+      )}
+
+      {/* M41 Task 2: Tutorial Overlay */}
+      {currentTutorialOverlay && (
+        <TutorialOverlayComponent
+          overlay={currentTutorialOverlay}
+          onDismiss={() => {
+            setCurrentTutorialOverlay(undefined);
+            setTutorialState(
+              dismissTutorialOverlay(tutorialState, currentTutorialOverlay.milestoneId)
+            );
+          }}
+          autoHideDelay={8000}
+        />
+      )}
     </div>
   );
 };
@@ -321,13 +516,19 @@ interface BetaSidebarProps {
   onShowInventory: () => void;
   onShowTrade: () => void;
   onShowCrafting: () => void;
+  isDirector: boolean;
+  onToggleDirector: () => void;
+  onExportDebug: () => void;
 }
 
 const BetaSidebar: React.FC<BetaSidebarProps> = ({
   state,
   onShowInventory,
   onShowTrade,
-  onShowCrafting
+  onShowCrafting,
+  isDirector,
+  onToggleDirector,
+  onExportDebug
 }) => {
   return (
     <div
@@ -406,6 +607,44 @@ const BetaSidebar: React.FC<BetaSidebarProps> = ({
           <strong style={{ color: '#a78bfa' }}>Location:</strong> {state.player?.location || 'Unknown'}
         </div>
       </div>
+
+      {/* M41 Task 3: Director Mode Toggle */}
+      <button
+        onClick={onToggleDirector}
+        style={{
+          marginTop: 'auto',
+          padding: '10px 12px',
+          backgroundColor: isDirector ? '#6b21a8' : '#493d4a',
+          border: isDirector ? '2px solid #c084fc' : '1px solid #666',
+          color: isDirector ? '#e9d5ff' : '#c084fc',
+          cursor: 'pointer',
+          fontSize: '12px',
+          fontWeight: 600,
+          borderRadius: '4px',
+          transition: 'all 0.2s ease'
+        }}
+        title="Toggle Director Mode (Shift+D)"
+      >
+        {isDirector ? '👁️ Director: ON' : '👁️ Director: OFF'}
+      </button>
+
+      {/* M41 Task 3: Debug Export Button */}
+      <button
+        onClick={onExportDebug}
+        style={{
+          padding: '8px 12px',
+          backgroundColor: '#4a3e2a',
+          border: '1px solid #666',
+          color: '#f59e0b',
+          cursor: 'pointer',
+          fontSize: '11px',
+          borderRadius: '4px',
+          transition: 'all 0.2s ease'
+        }}
+        title="Export debug state as JSON"
+      >
+        🐜 Export Debug
+      </button>
     </div>
   );
 };

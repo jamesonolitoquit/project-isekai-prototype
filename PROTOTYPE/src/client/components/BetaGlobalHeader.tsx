@@ -23,12 +23,14 @@ export interface BetaGlobalHeaderProps {
     activeCount: number;
     avgSeverity: number;
   };
+  onExportDebug?: () => void;
 }
 
 export const BetaGlobalHeader: React.FC<BetaGlobalHeaderProps> = ({
   state,
   consensusDiagnostics,
-  macroEventDiagnostics
+  macroEventDiagnostics,
+  onExportDebug
 }) => {
   // =========================================================================
   // STATE
@@ -289,7 +291,7 @@ export const BetaGlobalHeader: React.FC<BetaGlobalHeaderProps> = ({
         >
           <div style={{ color: '#a78bfa' }}>
             👥 {consensusDiagnostics.peerCount} peer
-            {consensusDiagnostics.peerCount !== 1 ? 's' : ''}
+            {consensusDiagnostics.peerCount === 1 ? '' : 's'}
           </div>
           <div
             style={{
@@ -305,6 +307,38 @@ export const BetaGlobalHeader: React.FC<BetaGlobalHeaderProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* M41 Task 3: Debug Export Button */}
+      {onExportDebug && (
+        <button
+          onClick={onExportDebug}
+          style={{
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid #f59e0b',
+            color: '#fbbf24',
+            padding: '6px 12px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 500,
+            transition: 'all 0.2s ease',
+            position: 'relative',
+            zIndex: 1,
+            marginLeft: consensusDiagnostics ? '0' : 'auto'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(245, 158, 11, 0.2)';
+            e.currentTarget.style.boxShadow = '0 0 8px rgba(245, 158, 11, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(245, 158, 11, 0.1)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+          title="Export current world state as JSON"
+        >
+          🐜 Debug
+        </button>
       )}
 
       {/* CSS for pulse animation + M39 Task 5: Glitch effect */}

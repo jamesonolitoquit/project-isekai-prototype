@@ -130,7 +130,7 @@ export function detectMetagameAction(
     case 'MOVE': {
       const targetLocation = action.payload?.to;
       // Moving to undiscovered location without reason (no quests pointing there)
-      if (targetLocation && !hasItem(knowledgeBase, `location:${targetLocation}`)) {
+      if (targetLocation && !knowledgeBase?.has(`location:${targetLocation}`)) {
         const hasQuestReason = Object.values(state.player?.quests || {}).some(
           (q: any) => q.objective?.location === targetLocation
         );
@@ -149,7 +149,7 @@ export function detectMetagameAction(
       const targetId = action.payload?.targetId;
       const target = state.npcs.find(n => n.id === targetId);
       // Attacking NPC without prior discovery or faction knowledge
-      if (target && !hasItem(knowledgeBase, `npc:${targetId}`)) {
+      if (target && !knowledgeBase?.has(`npc:${targetId}`)) {
         return {
           isSuspicious: true,
           reason: 'Attacked unknown entity without identification',

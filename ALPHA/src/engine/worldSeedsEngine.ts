@@ -16,7 +16,7 @@
 
 import type { WorldState } from './worldEngine';
 import type { NPC, Location } from './worldEngine';
-import type { Faction } from './types';
+import type { Faction } from './factionEngine';
 import type { Event } from '../events/mutationLog';
 
 export interface WorldSeedExport {
@@ -163,10 +163,9 @@ function extractLocationMutations(state: WorldState): WorldSeedExport['locationM
   return state.locations.map(loc => ({
     locationId: loc.id,
     name: loc.name,
-    discovered: hasItem(state.player.visitedLocations, loc.id) || 
-                (state.player?.discoveredLocationIds?.has(loc.id) ?? false),
-    hasSecret: loc.hiddenQuest !== undefined,
-    secretName: loc.hiddenQuest?.title ?? ''
+    discovered: hasItem(state.player.visitedLocations, loc.id),
+    hasSecret: false,
+    secretName: ''
   }));
 }
 

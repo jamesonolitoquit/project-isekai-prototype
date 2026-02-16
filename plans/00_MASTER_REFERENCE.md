@@ -1,6 +1,9 @@
-# MASTER REFERENCE — Project Isekai / Luxfier Alpha
+# Master Reference — Project Isekai / Luxfier
 
-> **Read this file first.** Only load individual layer files as needed to avoid context overload.
+> **Status:** ACTIVE
+> **Category:** CORE-DESIGN
+> **Updated:** February 16, 2026
+> **Version:** 1.2.0
 
 ---
 
@@ -63,39 +66,55 @@
 
 ---
 
-## 3. File Index
+## 3. Comprehensive File Index
 
-| # | File | Layer | Phase | One-Line Summary | Dependencies |
-|---|---|---|---|---|---|
-| 00 | `00_MASTER_REFERENCE.md` | — | ALL | This file. Project overview, index, conventions. | None |
-| 01 | `01_META_AUTHORITY.md` | I.1 | ALL | Reality layers, authority hierarchy, canon types, AI DM contract, rewind rules | None |
-| 02 | `02_COSMOLOGY_METAPHYSICS.md` | I.2–3 | ALL | Chaos Realm, Lux-Ar, time, souls, death, magic source, corruption, fate | 01 |
-| 03 | `03_RACES_SPECIES_BIOLOGY.md` | IV | ALL | Elfin, Beastkin, morphing, Succubi, Sanguinarians, humans, hybrids | 01, 02 |
-| 04 | `04_MAGIC_SYSTEMS.md` | VII.22 | ALL | 5 disciplines, costs, forbidden practices, spell learning, cross-race effects | 02, 03 |
-| 05 | `05_COMBAT_SYSTEMS.md` | VII.20–21 | PROTO | Weapons, martial styles, resolution flow, damage, health, environment | 03, 04 |
-| 06 | `06_BELIEF_LAYER_WTOL.md` | VI | ALL | Belief attributes, WTOL, obfuscation, gameplay influence, DB fields | 01, 02 |
-| 07 | `07_FACTIONS_POLITICS.md` | II.6 | PROTO | Faction taxonomy, attributes, power graphs, example relationships | 06 |
-| 08 | `08_RELICS_ARTIFACTS.md` | VIII | ALPHA | Relics of Virtue, Weapons of Sin, artifacts, crafting, alchemy, runic infusion | 02, 04 |
-| 09 | `09_HISTORICAL_TIMELINE.md` | III | ALPHA | Major eras, canonical events, emergent history, timeline DB | 02, 07 |
-| 10 | `10_PLAYABLE_CHARACTERS_MORPHING.md` | V.14, IV.11 | PROTO | Base attributes, racial stats, morphing mechanics, character creation | 03, 05 |
-| 11 | `11_PLAYER_PROGRESSION_LEVELING.md` | X.29 | PROTO | XP table, skill trees, experience acquisition, level-up flow | 10, 04, 05 |
-| 12 | `12_QUEST_SYSTEM.md` | X.28 | PROTO | Quest types, structure, tracking, generation, rewards, AI DM enforcement | 07, 14 |
-| 13 | `13_INVENTORY_CRAFTING.md` | VIII.24 | PROTO | Inventory UI, items, crafting, resource management, DB tables | 08, 11 |
-| 14 | `14_NPC_SYSTEM.md` | V.15–16 | PROTO | NPC types, AI DM Synthesis, patrol, dynamic interaction, Resonance | 06, 07 |
-| 15 | `15_RANDOM_ENCOUNTERS_EXPLORATION.md` | IX | ALPHA | Alpha encounter, rare entities, environmental systems, spawn weighting | 14, 09 |
-| 16 | `16_FACTION_POWER_DYNAMICS.md` | IX.26–27 | ALPHA | Faction attributes, power graphs, emergent politics, influence metrics | 07, 12 |
-| 17 | `17_SESSION_CONTINUITY.md` | XII.35 | PROTO | Persistence architecture, tracked components, rollback, UI | All systems |
-| 18 | `18_ANTI_METAGAMING.md` | XI.33 | ALPHA | Filter layers, knowledge rules, AI DM enforcement, player restrictions | 06, 17 |
-| 19 | `19_ENDGAME_REPLAYABILITY.md` | X.30 | ALPHA | Endgame triggers, emergent conclusions, legacy, epilogue, replay seeds | All systems |
-| 20 | `20_ALPHA_DATA_SCHEMA.md` | XII.34 | ALL | Complete DB schema, operational flow, AI DM rules, ER diagram | All layers |
-| 21 | `21_SEED_WORLD_COSMOLOGY.md` | SQL Seed | PROTO | World core, cosmic realms, Lux-Ar, ontological layers, entities, constraints | 01, 02 |
-| 22 | `22_SEED_GEOGRAPHY_BIOMES.md` | SQL Seed | PROTO | Continents, biomes, cities/settlements, subareas, traversal rules | 09 |
-| 23 | `23_SEED_RACES_MAGIC_COMBAT.md` | SQL Seed | PROTO | Race stats, morphing, hybrids, magic schools, spells, weapons, proficiencies | 03, 04, 05 |
-| 24 | `24_SEED_NPC_PANTHEON.md` | SQL Seed | ALPHA | Sin, 24 Celestin deities, canon heroes, idols, historical anchors | 14, 02 |
-| 25 | `25_SEED_NPC_CLERGY_LEADERS.md` | SQL Seed | ALPHA | Clergy, heretical leaders, monarchs, spawn rules, belief impacts | 24 |
-| 26 | `26_SEED_LOCATIONS_SUBAREAS.md` | SQL Seed | ALPHA | 34 locations, 34 sub-areas with parent references | 22 |
-| 27 | `27_SEED_GAMEPLAY_SYSTEMS.md` | SQL Seed | PROTO | Belief, WTOL, factions, quests, encounters, inventory, progression, sessions | 06–19 |
-| 28 | `28_ROADMAP.md` | Roadmap | ALL | Development phases, acceptance criteria, feature-to-file mapping, phase gates | All |
+### 3.1 Core Design Specifications (`plans/design/`)
+| # | File | Internal Layer | One-Line Summary |
+|---|---|---|---|
+| 01 | [`01_META_AUTHORITY.md`](design/01_META_AUTHORITY.md) | I.1 | Reality layers, authority hierarchy, canon types |
+| 02 | [`02_COSMOLOGY_METAPHYSICS.md`](design/02_COSMOLOGY_METAPHYSICS.md) | I.2–3 | Chaos Realm, Lux-Ar, time, souls, death |
+| 03 | [`03_RACES_SPECIES_BIOLOGY.md`](design/03_RACES_SPECIES_BIOLOGY.md) | IV | Elfin, Beastkin, morphing, biology |
+| 04 | [`04_MAGIC_SYSTEMS.md`](design/04_MAGIC_SYSTEMS.md) | VII.22 | 5 disciplines, costs, spell learning |
+| 05 | [`05_COMBAT_SYSTEMS.md`](design/05_COMBAT_SYSTEMS.md) | VII.20–21 | Weapons, styles, resolution flow, health |
+| 06 | [`06_BELIEF_LAYER_WTOL.md`](design/06_BELIEF_LAYER_WTOL.md) | VI | Belief attributes, obfuscation (WTOL) |
+| 07 | [`07_FACTIONS_POLITICS.md`](design/07_FACTIONS_POLITICS.md) | II.6 | Faction taxonomy, attributes, power graphs |
+| 08 | [`08_RELICS_ARTIFACTS.md`](design/08_RELICS_ARTIFACTS.md) | VIII | Relics of Virtue, Weapons of Sin, crafting |
+| 09 | [`09_HISTORICAL_TIMELINE.md`](design/09_HISTORICAL_TIMELINE.md) | III | Major eras, canonical events, timeline DB |
+| 10 | [`10_PLAYABLE_CHARACTERS_MORPHING.md`](design/10_PLAYABLE_CHARACTERS_MORPHING.md) | V.14, IV.11 | Attributes, morphing, character creation |
+| 11 | [`11_PLAYER_PROGRESSION_LEVELING.md`](design/11_PLAYER_PROGRESSION_LEVELING.md) | X.29 | XP table, skill trees, level-up flow |
+| 12 | [`12_QUEST_SYSTEM.md`](design/12_QUEST_SYSTEM.md) | X.28 | Quest types, Tracking, generation |
+| 13 | [`13_INVENTORY_CRAFTING.md`](design/13_INVENTORY_CRAFTING.md) | VIII.24 | Inventory UI, items, crafting, resources |
+| 14 | [`14_NPC_SYSTEM.md`](design/14_NPC_SYSTEM.md) | V.15–16 | NPC types, DM Synthesis, patrol |
+| 15 | [`15_RANDOM_ENCOUNTERS_EXPLORATION.md`](design/15_RANDOM_ENCOUNTERS_EXPLORATION.md) | IX | Encounter weighting, rare entities |
+| 16 | [`16_FACTION_POWER_DYNAMICS.md`](design/16_FACTION_POWER_DYNAMICS.md) | IX.26–27 | Influence metrics, emergent politics |
+| 17 | [`17_SESSION_CONTINUITY.md`](design/17_SESSION_CONTINUITY.md) | XII.35 | Persistence, tracked components, rollback |
+| 18 | [`18_ANTI_METAGAMING.md`](design/18_ANTI_METAGAMING.md) | XI.33 | Knowledge rules, DM enforcement |
+| 19 | [`19_ENDGAME_REPLAYABILITY.md`](design/19_ENDGAME_REPLAYABILITY.md) | X.30 | Triggers, conclusions, legacy, seeds |
+| 20 | [`20_ALPHA_DATA_SCHEMA.md`](design/20_ALPHA_DATA_SCHEMA.md) | XII.34 | DB schema, operational flow, AI DM rules |
+| 21 | [`21_SEED_WORLD_COSMOLOGY.md`](design/21_SEED_WORLD_COSMOLOGY.md) | SQL Seed | World core, cosmic realms, entities |
+| 22 | [`22_SEED_GEOGRAPHY_BIOMES.md`](design/22_SEED_GEOGRAPHY_BIOMES.md) | SQL Seed | Continents, city sub-areas, biomes |
+| 23 | [`23_SEED_RACES_MAGIC_COMBAT.md`](design/23_SEED_RACES_MAGIC_COMBAT.md) | SQL Seed | Race stats, morphing, spells, weapons |
+| 24 | [`24_SEED_NPC_PANTHEON.md`](design/24_SEED_NPC_PANTHEON.md) | SQL Seed | 24 Celestin deities, canon heroes |
+| 25 | [`25_SEED_NPC_CLERGY_LEADERS.md`](design/25_SEED_NPC_CLERGY_LEADERS.md) | SQL Seed | Clergy, heretical leaders, monarchs |
+| 26 | [`26_SEED_LOCATIONS_SUBAREAS.md`](design/26_SEED_LOCATIONS_SUBAREAS.md) | SQL Seed | 34 locations, parent references |
+| 27 | [`27_SEED_GAMEPLAY_SYSTEMS.md`](design/27_SEED_GAMEPLAY_SYSTEMS.md) | SQL Seed | Belief, Quest, Encounter, Inventory seeds |
+
+### 3.2 Milestones & Roadmaps (`plans/milestones/`)
+| Milestone | File | One-Line Summary |
+|---|---|---|
+| **M28** | [`28_ROADMAP.md`](milestones/28_ROADMAP.md) | Strategic roadmap and phase gates |
+| **M42** | [`M42_INDEX.md`](milestones/M42_INDEX.md) | Current Sprint Index (Social Scaling) |
+| **M42** | [`42_ROADMAP.md`](milestones/42_ROADMAP.md) | M42 Strategic Overview |
+| **M42** | [`M42_TASK_LIST.md`](milestones/M42_TASK_LIST.md) | Sprint tasks and subtasks |
+| **M42** | [`M42_QUICK_START.md`](milestones/M42_QUICK_START.md) | 15-min developer guide |
+
+### 3.3 Implementation History (`plans/implementation/`)
+- Includes technical logs for Combat, Audio, and specific Milestone summaries.
+- See the [Implementation Folder](implementation/) for full details.
+
+### 3.4 External Guides (`plans/guides/`)
+- [`WORLD_TEMPLATE_AUTHORS_GUIDE.md`](guides/WORLD_TEMPLATE_AUTHORS_GUIDE.md)
+- [`UI_UX_DESCRIPTION.md`](guides/UI_UX_DESCRIPTION.md)
 
 ---
 
@@ -194,7 +213,7 @@ Across all epochs, player impact is preserved through:
 
 ## 8. Development Roadmap
 
-> Full details in `28_ROADMAP.md`. Summary below.
+> Full details in [`milestones/28_ROADMAP.md`](milestones/28_ROADMAP.md). Summary below.
 
 | Phase | Goal | Key Deliverables |
 |---|---|---|

@@ -1,0 +1,405 @@
+/**
+ * M41 Task 5: Visual Identity - Epoch-Based Theme Morphing
+ * 
+ * Implements epoch-aware color schemes with smooth CSS transitions.
+ * Each epoch has distinct visual characteristics reflecting its thematic tone:
+ * 
+ * Epoch I (The Fracture of Radiance): Blue/Purple - Hopeful but fractured
+ * Epoch II (Age of Shattered Faith): Amber/Red - Warning, danger, decay
+ * Epoch III (The Waning Light): Green/Teal - Nature reclaiming, hope from despair
+ */
+
+:root {
+  /* Default Theme (Epoch I: The Fracture of Radiance) */
+  /* Represents hope breaking through darkness - blue and purple */
+  
+  --epoch-primary: #6366f1;        /* Indigo - primary accent */
+  --epoch-primary-light: #818cf8;  /* Light indigo for hover states */
+  --epoch-primary-dark: #4f46e5;   /* Dark indigo for active states */
+  
+  --epoch-secondary: #8b5cf6;      /* Purple - mood/atmosphere */
+  --epoch-secondary-light: #a78bfa;/* Light purple for subtle elements */
+  --epoch-secondary-dark: #7c3aed; /* Dark purple for depth */
+  
+  --epoch-accent: #0ea5e9;         /* Cyan - energy and clarity */
+  --epoch-accent-light: #06b6d4;   /* Light cyan for highlights */
+  --epoch-accent-dark: #0284c7;    /* Dark cyan for contrast */
+  
+  --epoch-warning: #f59e0b;        /* Amber - alerts and important info */
+  --epoch-danger: #ef4444;         /* Red - critical alerts */
+  
+  --epoch-border: #4f46e5;         /* Indigo borders */
+  --epoch-border-light: #818cf8;   /* Light borders */
+  --epoch-glow: rgba(99, 102, 241, 0.3);      /* Indigo glow for depth */
+  --epoch-glow-strong: rgba(99, 102, 241, 0.6); /* Strong glow for emphasis */
+  
+  /* Transition timing for smooth theme morphs */
+  --epoch-transition-duration: 800ms;
+  --epoch-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Update these dynamically based on current epoch */
+  --current-epoch: 1;
+}
+
+/**
+ * Epoch II Theme Colors: Age of Shattered Faith
+ * Amber and red palette - warning, decay, danger, urgency
+ */
+[data-epoch="2"] {
+  --epoch-primary: #d97706;        /* Amber - warm but threatening */
+  --epoch-primary-light: #f59e0b;  /* Light amber for accessibility */
+  --epoch-primary-dark: #b45309;   /* Dark amber for depth */
+  
+  --epoch-secondary: #dc2626;      /* Red - danger and loss */
+  --epoch-secondary-light: #ef4444;/* Light red for hover states */
+  --epoch-secondary-dark: #991b1b; /* Dark red for active states */
+  
+  --epoch-accent: #f97316;         /* Orange - decay and heat */
+  --epoch-accent-light: #fb923c;   /* Light orange for highlights */
+  --epoch-accent-dark: #ea580c;    /* Dark orange for contrast */
+  
+  --epoch-warning: #f59e0b;        /* Amber - primary warning now */
+  --epoch-danger: #dc2626;         /* Red - enhanced danger */
+  
+  --epoch-border: #d97706;         /* Amber borders */
+  --epoch-border-light: #f59e0b;   /* Light amber borders */
+  --epoch-glow: rgba(217, 119, 6, 0.3);      /* Amber glow */
+  --epoch-glow-strong: rgba(217, 119, 6, 0.6); /* Strong amber glow */
+}
+
+/**
+ * Epoch III Theme Colors: The Waning Light
+ * Green and teal palette - nature, growth, hope, renewal after darkness
+ */
+[data-epoch="3"] {
+  --epoch-primary: #10b981;        /* Emerald - nature and growth */
+  --epoch-primary-light: #34d399;  /* Light emerald for accessibility */
+  --epoch-primary-dark: #059669;   /* Dark emerald for depth */
+  
+  --epoch-secondary: #06b6d4;      /* Cyan - clarity and renewal */
+  --epoch-secondary-light: #22d3ee;/* Light cyan for hover states */
+  --epoch-secondary-dark: #0891b2; /* Dark cyan for active states */
+  
+  --epoch-accent: #14b8a6;         /* Teal - balance and harmony */
+  --epoch-accent-light: #2dd4bf;   /* Light teal for highlights */
+  --epoch-accent-dark: #0d9488;    /* Dark teal for contrast */
+  
+  --epoch-warning: #f59e0b;        /* Amber - keeps warning consistent */
+  --epoch-danger: #ef4444;         /* Red - keeps danger visible */
+  
+  --epoch-border: #10b981;         /* Emerald borders */
+  --epoch-border-light: #34d399;   /* Light emerald borders */
+  --epoch-glow: rgba(16, 185, 129, 0.3);      /* Emerald glow */
+  --epoch-glow-strong: rgba(16, 185, 129, 0.6); /* Strong emerald glow */
+}
+
+/* Smooth transition when theme changes */
+* {
+  transition: 
+    background-color var(--epoch-transition-duration) var(--epoch-transition-timing),
+    color var(--epoch-transition-duration) var(--epoch-transition-timing),
+    border-color var(--epoch-transition-duration) var(--epoch-transition-timing),
+    box-shadow var(--epoch-transition-duration) var(--epoch-transition-timing);
+}
+
+/**
+ * Component-Specific Epoch Styling
+ */
+
+/* Header - Primary visual anchor for the epoch theme */
+header, 
+.beta-global-header,
+.app-header {
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.6) 100%);
+  border-bottom: 2px solid var(--epoch-primary);
+  box-shadow: 0 4px 12px var(--epoch-glow);
+}
+
+/* Sidebar - Secondary visual anchor */
+.sidebar,
+.beta-sidebar,
+.app-sidebar {
+  border-right: 2px solid var(--epoch-secondary);
+  box-shadow: inset -4px 0 12px var(--epoch-glow);
+}
+
+/* Primary Buttons - Main interaction elements */
+button,
+.button {
+  background-color: var(--epoch-primary);
+  color: white;
+  border: 2px solid var(--epoch-primary-dark);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--epoch-transition-duration) var(--epoch-transition-timing);
+  box-shadow: 0 2px 8px var(--epoch-glow);
+}
+
+button:hover {
+  background-color: var(--epoch-primary-light);
+  box-shadow: 0 4px 16px var(--epoch-glow-strong);
+  transform: translateY(-1px);
+}
+
+button:active {
+  background-color: var(--epoch-primary-dark);
+  transform: translateY(0);
+}
+
+/* Secondary Buttons - Action/accent buttons */
+button.secondary,
+.button.secondary {
+  background-color: var(--epoch-secondary);
+  border-color: var(--epoch-secondary-dark);
+  box-shadow: 0 2px 8px var(--epoch-glow);
+}
+
+button.secondary:hover {
+  background-color: var(--epoch-secondary-light);
+  box-shadow: 0 4px 16px var(--epoch-glow-strong);
+}
+
+/* Accent Buttons - Tertiary/special buttons */
+button.accent,
+.button.accent {
+  background-color: var(--epoch-accent);
+  border-color: var(--epoch-accent-dark);
+}
+
+button.accent:hover {
+  background-color: var(--epoch-accent-light);
+}
+
+/* Director Mode Button - Special styling */
+button[data-action="toggle-director"],
+.button.director-toggle {
+  background: linear-gradient(135deg, var(--epoch-secondary) 0%, var(--epoch-primary) 100%);
+  border: 2px solid var(--epoch-secondary-dark);
+  box-shadow: 0 4px 12px var(--epoch-glow-strong);
+}
+
+button[data-action="toggle-director"]:hover {
+  box-shadow: 0 6px 20px var(--epoch-glow-strong);
+  transform: translateY(-2px);
+}
+
+/* Modal Overlays - Floating containers */
+dialog,
+.modal,
+.overlay {
+  background: linear-gradient(135deg, rgba(10, 15, 25, 0.95) 0%, rgba(15, 20, 35, 0.95) 100%);
+  border: 2px solid var(--epoch-primary);
+  border-radius: 12px;
+  box-shadow: 
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 40px var(--epoch-glow);
+}
+
+/* Tab Styling - Navigation elements */
+.tab,
+button[role="tab"],
+.tab-button {
+  border-bottom: 3px solid transparent;
+  color: #999;
+  transition: all var(--epoch-transition-duration) var(--epoch-transition-timing);
+}
+
+.tab.active,
+button[role="tab"][aria-selected="true"],
+.tab-button.active {
+  border-bottom-color: var(--epoch-primary);
+  color: var(--epoch-primary-light);
+  box-shadow: 0 2px 8px var(--epoch-glow);
+}
+
+/* Input Fields - Text input and form elements */
+input,
+textarea,
+select {
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--epoch-border-light);
+  color: #e0e0e0;
+  border-radius: 4px;
+  padding: 8px 12px;
+  transition: all var(--epoch-transition-duration) var(--epoch-transition-timing);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--epoch-primary);
+  box-shadow: 0 0 12px var(--epoch-glow);
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Status Badges - Indicators */
+.badge,
+.status-indicator {
+  background-color: var(--epoch-primary);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px var(--epoch-glow);
+}
+
+.badge.warning {
+  background-color: var(--epoch-warning);
+}
+
+.badge.danger {
+  background-color: var(--epoch-danger);
+}
+
+/* Highlight/Emphasis Elements */
+.highlight,
+.emphasized {
+  color: var(--epoch-accent);
+  font-weight: 600;
+  text-shadow: 0 0 10px var(--epoch-glow);
+}
+
+/* Borders and Lines */
+.divider,
+hr {
+  border-color: var(--epoch-border);
+  box-shadow: 0 0 8px var(--epoch-glow);
+}
+
+/* Links - Navigation */
+a,
+.link {
+  color: var(--epoch-primary);
+  text-decoration: none;
+  transition: color var(--epoch-transition-duration) var(--epoch-transition-timing);
+  border-bottom: 1px solid transparent;
+}
+
+a:hover {
+  color: var(--epoch-primary-light);
+  border-bottom-color: var(--epoch-primary-light);
+}
+
+/* Placeholder text */
+::placeholder {
+  color: rgba(224, 224, 224, 0.3);
+}
+
+/* Selection color */
+::selection {
+  background-color: var(--epoch-primary);
+  color: white;
+}
+
+/**
+ * Smooth Morphing Animation
+ * Applied when transitioning between epochs
+ */
+@keyframes epoch-morph {
+  0% {
+    opacity: 0.8;
+    filter: brightness(0.9);
+  }
+  50% {
+    filter: brightness(1.1);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+/* Apply morphing animation during theme transition */
+[data-epoch-transitioning] {
+  animation: epoch-morph 0.8s ease-in-out forwards;
+}
+
+/**
+ * Accessibility: Reduced Motion
+ * Respect user preferences for animations
+ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/**
+ * Dark Mode Enhancement (default for this app)
+ */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0f1419;
+    color: #e0e0e0;
+  }
+}
+
+/**
+ * Light Mode Alternative
+ * Can be implemented if needed
+ */
+@media (prefers-color-scheme: light) {
+  :root {
+    --epoch-primary: #4f46e5;      /* Darker indigo for light mode */
+    --epoch-secondary: #7c3aed;    /* Darker purple */
+    --epoch-accent: #0284c7;       /* Darker cyan */
+  }
+  
+  body {
+    background: #f8f9fa;
+    color: #1a1a1a;
+  }
+}
+
+/**
+ * Utility Classes
+ */
+
+/* Force epoch colors for specific elements */
+.force-epoch-primary {
+  color: var(--epoch-primary);
+}
+
+.force-epoch-secondary {
+  color: var(--epoch-secondary);
+}
+
+.force-epoch-accent {
+  color: var(--epoch-accent);
+}
+
+.bg-epoch-primary {
+  background-color: var(--epoch-primary);
+}
+
+.bg-epoch-secondary {
+  background-color: var(--epoch-secondary);
+}
+
+.border-epoch-primary {
+  border-color: var(--epoch-primary);
+}
+
+.glow-epoch {
+  box-shadow: 0 0 20px var(--epoch-glow-strong);
+}
+
+/**
+ * Print Styles
+ */
+@media print {
+  :root {
+    /* Use epoch colors in print, but with reduced transparency */
+    --epoch-primary: #4f46e5;
+    --epoch-secondary: #8b5cf6;
+  }
+  
+  * {
+    transition: none !important;
+  }
+}

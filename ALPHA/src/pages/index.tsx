@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { createWorldController, createInitialWorld } from "../engine/public";
 import { useGlobalVisuals } from "../client/hooks/useGlobalVisuals";
 import SeasonPanel from "../client/components/SeasonPanel";
@@ -37,6 +37,7 @@ export default function HomePage() {
   const [state, setState] = useState<any | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [isDirector, setIsDirector] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showLevelUPModal, setShowLevelUpModal] = useState(false);
   const [showCraftingModal, setShowCraftingModal] = useState(false);
@@ -107,6 +108,23 @@ export default function HomePage() {
     }, 500);
     return () => clearInterval(id);
   }, [controller]);
+
+  // Keyboard navigation (Shift+D for Director Mode)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) return; // Don't interfere with system shortcuts
+
+      // Director Mode toggle: Shift+D
+      if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        setIsDirector(prev => !prev);
+        return;
+      }
+    };
+
+    globalThis.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Wire audio controller for soundscape transitions
   // useAudioController(
@@ -303,6 +321,52 @@ export default function HomePage() {
   const doSave = () => controller?.save();
   const doLoad = () => controller?.load();
 
+  // Export full debug state (telemetry)
+  const exportFullDebugState = useCallback(() => {
+    if (!state) return;
+    const debugState = {
+      timestamp: new Date().toISOString(),
+      tick: state.tick,
+      worldState: {
+        id: state.id,
+        epoch: state.epochId,
+        player: state.player ? {
+          name: state.player.name,
+          level: state.player.level,
+          hp: state.player.hp,
+          maxHp: state.player.maxHp,
+          location: state.player.location,
+          xp: state.player.xp,
+          gold: state.player.gold,
+          temporalDebt: state.player.temporalDebt,
+          soulStrain: state.player.soulStrain,
+          inventory_count: state.player.inventory?.length || 0
+        } : null,
+        npcs_count: state.npcs?.length || 0,
+        quests_count: state.quests?.length || 0,
+        activeEvents_count: state.activeEvents?.length || 0
+      },
+      environment: {
+        hour: state.hour,
+        day: state.day,
+        season: state.season,
+        weather: state.weather,
+        dayPhase: state.dayPhase
+      }
+    };
+
+    const json = JSON.stringify(debugState, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `debug_state_${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [state]);
+
   const npcsHere = (state?.npcs || []).filter((n: any) => n.locationId === state?.player?.location);
   const questStatus = state?.player?.quests?.["winter-festival"]?.status || "not_started";
 
@@ -370,7 +434,14 @@ export default function HomePage() {
       {state && <FactionVisualOverlay state={state} enabled={true} />}
 
       {/* Global Persistent HUD Header */}
-      {state && !state.needsCharacterCreation && <GlobalHeader state={state} />}
+      {state && !state.needsCharacterCreation && (
+        <GlobalHeader
+          state={state}
+          isDirector={isDirector}
+          onToggleDirector={() => setIsDirector(prev => !prev)}
+          onExportDebug={exportFullDebugState}
+        />
+      )}
 
       <div className="main-shell">
         {state?.needsCharacterCreation ? (
@@ -795,6 +866,57 @@ export default function HomePage() {
 
       <ParticleVisualizer state={state} />
       <AudioVisualizer state={state} />
+
+      {/* Director Mode Overlay */}
+      {isDirector && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #c084fc',
+            borderRadius: '8px',
+            padding: '20px',
+            maxWidth: '600px',
+            width: '90%',
+            color: '#fff'
+          }}>
+            <h2 style={{ color: '#c084fc', marginTop: 0 }}>Director Mode</h2>
+            <p>Director dashboard functionality will be implemented here.</p>
+            <p>Current features:</p>
+            <ul>
+              <li>Narrative control tools</li>
+              <li>Debug telemetry export</li>
+              <li>World state monitoring</li>
+            </ul>
+            <button
+              onClick={() => setIsDirector(false)}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#6b21a8',
+                border: '2px solid #c084fc',
+                color: '#e9d5ff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 600,
+                borderRadius: '4px',
+                marginTop: '20px'
+              }}
+            >
+              Exit Director Mode
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
