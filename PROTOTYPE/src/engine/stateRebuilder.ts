@@ -169,79 +169,60 @@ namespace EventHandlers {
     const { payload } = event;
     const type = event.type;
 
-    // Movement  
-    if (type === 'MOVE') {
-      if (newState.player) {
-        newState.player.location = payload.to ?? payload.playerId;
+    const handlerMap: Record<string, () => void> = {
+      'MOVE': () => {
+        if (newState.player) {
+          newState.player.location = payload.to ?? payload.playerId;
+        }
+      },
+      
+      'TICK': () => {
+        newState.hour = payload.newHour ?? newState.hour;
+        newState.day = payload.newDay ?? newState.day;
+        newState.season = payload.newSeason ?? newState.season;
+        newState.tick = (newState.tick ?? 0) + 1;
+      },
+      
+      'QUEST_STARTED': () => processQuestEvent(newState, type, payload, newState.tick ?? 0),
+      'QUEST_COMPLETED': () => processQuestEvent(newState, type, payload, newState.tick ?? 0),
+      'QUEST_OBJECTIVE_ADVANCED': () => processQuestEvent(newState, type, payload, newState.tick ?? 0),
+      
+      'REWARD': () => processRewardEvent(newState, payload),
+      'LEVEL_UP': () => processXPEvent(newState, type, payload),
+      'XP_GAINED': () => processXPEvent(newState, type, payload),
+      'REPUTATION_CHANGED': () => processReputationEvent(newState, payload),
+      
+      'CHARACTER_CREATED': () => processCharacterCreation(newState, payload),
+      
+      'INTERACT_NPC': () => {
+        if (newState.player) {
+          newState.player.dialogueHistory ??= [];
+          newState.player.dialogueHistory.push({
+            npcId: payload.npcId,
+            text: payload.dialogueText,
+            options: payload.options,
+            timestamp: event.timestamp,
+          });
+        }
+      },
+      
+      'STAT_ALLOCATED': () => {
+        if (newState.player?.stats && payload.stat in newState.player.stats) {
+          (newState.player.stats as any)[payload.stat] += payload.amount ?? 0;
+          newState.player.attributePoints ??= 0;
+          newState.player.attributePoints = Math.max(0, newState.player.attributePoints - (payload.amount ?? 0));
+        }
+      },
+      
+      'PLAYER_DEFEATED': () => {
+        if (newState.player) {
+          newState.player.location = 'Eldergrove Village';
+          newState.player.hp = Math.ceil((newState.player.maxHp ?? 100) * 0.5);
+        }
       }
-    }
-    
-    // Time progression
-    else if (type === 'TICK') {
-      newState.hour = payload.newHour ?? newState.hour;
-      newState.day = payload.newDay ?? newState.day;
-      newState.season = payload.newSeason ?? newState.season;
-      newState.tick ??= 0;
-      newState.tick += 1;
-    }
-    
-    // Quest management
-    else if (['QUEST_STARTED', 'QUEST_COMPLETED', 'QUEST_OBJECTIVE_ADVANCED'].includes(type)) {
-      processQuestEvent(newState, type, payload, newState.tick ?? 0);
-    }
-    
-    // Rewards
-    else if (type === 'REWARD') {
-      processRewardEvent(newState, payload);
-    }
-    
-    // Experience and leveling
-    else if (['LEVEL_UP', 'XP_GAINED'].includes(type)) {
-      processXPEvent(newState, type, payload);
-    }
-    
-    // Reputation
-    else if (type === 'REPUTATION_CHANGED') {
-      processReputationEvent(newState, payload);
-    }
-    
-    // Character creation
-    else if (type === 'CHARACTER_CREATED') {
-      processCharacterCreation(newState, payload);
-    }
-    
-    // Dialogue
-    else if (type === 'INTERACT_NPC') {
-      if (newState.player) {
-        newState.player.dialogueHistory ??= [];
-        newState.player.dialogueHistory.push({
-          npcId: payload.npcId,
-          text: payload.dialogueText,
-          options: payload.options,
-          timestamp: event.timestamp,
-        });
-      }
-    }
-    
-    // Stat allocation
-    else if (type === 'STAT_ALLOCATED') {
-      if (newState.player?.stats && payload.stat in newState.player.stats) {
-        (newState.player.stats as any)[payload.stat] += payload.amount ?? 0;
-        newState.player.attributePoints ??= 0;
-        newState.player.attributePoints = Math.max(0, newState.player.attributePoints - (payload.amount ?? 0));
-      }
-    }
-    
-    // Player defeated/respawn
-    else if (type === 'PLAYER_DEFEATED') {
-      if (newState.player) {
-        newState.player.location = 'Eldergrove Village';
-        newState.player.hp = Math.ceil((newState.player.maxHp ?? 100) * 0.5);
-      }
-    }
-    
-    // Log-only: REPUTATION_MILESTONE_REACHED
-    
+    };
+
+    handlerMap[type]?.();
     return newState;
   }
 
