@@ -1208,6 +1208,12 @@ export function isChronicleComplete(currentEpochId: string): boolean {
 export function advanceToNextEpoch(state: WorldState, legacy: LegacyImpact | null): WorldState {
   const rng = new SeededRng(state.seed + (state.tick || 0));
   const currentEpoch = EPOCH_DEFINITIONS[state.epochId || 'epoch_i_fracture'];
+  
+  if (!currentEpoch) {
+    console.warn('[chronicleEngine] Current epoch not found:', state.epochId);
+    return state;
+  }
+  
   const nextEpochId = currentEpoch.nextEpochId;
   
   if (!nextEpochId) {
@@ -1318,7 +1324,6 @@ export function advanceToNextEpoch(state: WorldState, legacy: LegacyImpact | nul
   }
   
   return updatedState;
-}
 }
 
 export function getAvailableStartingEpochs(): EpochDefinition[] {

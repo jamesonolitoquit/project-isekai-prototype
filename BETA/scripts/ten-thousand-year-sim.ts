@@ -358,5 +358,7 @@ async function runTenThousandYearSim(): Promise<SimulationResult> {
 }
 
 // Run simulation
-const result = await runTenThousandYearSim();
-process.exit(result.completedSuccessfully ? 0 : 1);
+(async () => {
+  const result = await runTenThousandYearSim();
+  process.exit(result.completedSuccessfully ? 0 : 1);
+})();
