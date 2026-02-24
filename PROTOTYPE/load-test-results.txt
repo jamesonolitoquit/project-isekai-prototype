@@ -1,0 +1,27 @@
+
+LOAD TEST REPORT
+================
+Date: 2026-02-24T11:59:43.906Z
+Duration: 0.76s
+
+SUMMARY:
+--------
+Total Requests: 500
+Successful: 500
+Failed: 0
+Success Rate: 100.0%
+
+LATENCY METRICS (ms):
+--------------------
+Minimum: 0.94
+P50: 1.65
+Average: 2.68
+P95: 11.79
+P99: 17.92
+Maximum: 20.56
+
+THROUGHPUT:
+-----------
+660 requests/second
+
+STATUS: PASS ✅

@@ -1,52 +1,122 @@
-/node_modules/
-/.idea/
-/.vscode/
-*.log
+# ============================================
+# NODE & PACKAGE MANAGEMENT
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+package-lock.json.lock
 
-# OS
+# ============================================
+# BUILD & DIST OUTPUT
+# ============================================
+dist/
+build/
+.next/
+out/
+.webpack/
+*.tsbuildinfo
+
+# ============================================
+# ENVIRONMENT & SECRETS (CRITICAL)
+# ============================================
+.env
+.env.local
+.env.*.local
+.env.docker
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ============================================
+# IDE & EDITOR
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+*.sublime-workspace
 
-# PROTOTYPE build & test artifacts
-/PROTOTYPE/.next/
-/PROTOTYPE/node_modules/
-/PROTOTYPE/coverage/
-/PROTOTYPE/.parcel-cache/
-/PROTOTYPE/jest.out
-/PROTOTYPE/*.out
-/PROTOTYPE/jest_*.out
-/PROTOTYPE/jest*.log
-/PROTOTYPE/.cache/
-/PROTOTYPE/.pnp.*
-/PROTOTYPE/.turbo/
-/PROTOTYPE/.parcel-cache/
-/PROTOTYPE/.next/
-/PROTOTYPE/.vercel/
-/PROTOTYPE/public/avatars/
-/PROTOTYPE/public/sounds/
+# ============================================
+# TESTING
+# ============================================
+coverage/
+.nyc_output/
+jest-coverage/
+*.lcov
+.cache/
+.pnp.*
+.turbo/
+.parcel-cache/
+.vercel/
 
-# ALPHA build & test artifacts
-/ALPHA/.next/
-/ALPHA/node_modules/
-/ALPHA/coverage/
-/ALPHA/.parcel-cache/
-/ALPHA/jest.out
-/ALPHA/*.out
-/ALPHA/jest_*.out
-/ALPHA/jest*.log
-/ALPHA/.cache/
-/ALPHA/.pnp.*
-/ALPHA/.turbo/
-/ALPHA/.vercel/
+# ============================================
+# LOGS & TEMPORARY
+# ============================================
+*.log
+logs/
+*.tmp
+*.bak
+*.temp
+tmp/
+temp/
+jest.out
+*.out
 
-# Workspace
+# ============================================
+# OS FILES
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+desktop.ini
+
+# ============================================
+# DATABASE & LOCAL
+# ============================================
+*.sqlite
+*.sqlite3
+*.db
+local-data/
+data/postgres/
+psql_history
+
+# ============================================
+# PROFILE & DEBUG
+# ============================================
+isolate-*.log
+*.heapsnapshot
+profile-results.txt
+memory-profiling.txt
+
+# ============================================
+# RAILWAY SPECIFIC
+# ============================================
+.railway/
+railway.json.local
+
+# ============================================
+# ARCHIVED FILES
+# ============================================
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# ============================================
+# WORKSPACE & MISC
+# ============================================
 *.code-workspace
-
-# Misc
 *.status
 .branchname
-
-# Browser baseline and visual artifacts
 baseline-browser*
 
 # Environment files (secrets)
