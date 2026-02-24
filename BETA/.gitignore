@@ -1,13 +1,4 @@
 # ============================================
-# DEPLOYMENT STRUCTURE
-# ============================================
-# BETA is the primary deployment folder (Railway ready)
-# PROTOTYPE is archived locally only (not deployed)
-# ALPHA contains legacy reference files
-/PROTOTYPE/
-/ALPHA/
-
-# ============================================
 # NODE & PACKAGE MANAGEMENT
 # ============================================
 node_modules/
@@ -27,6 +18,7 @@ build/
 out/
 .webpack/
 *.tsbuildinfo
+artifacts/
 
 # ============================================
 # ENVIRONMENT & SECRETS (CRITICAL)
@@ -119,37 +111,3 @@ railway.json.local
 *.zip
 *.rar
 *.7z
-
-# ============================================
-# WORKSPACE & MISC
-# ============================================
-*.code-workspace
-*.status
-.branchname
-baseline-browser*
-
-# Environment files (secrets)
-.env.local
-.env.*.local
-.env.development.local
-.env.test.local
-.env.production.local
-visual-test-*
-
-# Pack/archives produced by git or package managers
-*.pack.gz
-index.pack.gz
-
-# Temp and system files
-*.tmp
-*.temp
-*.cache
-*.bak
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Exclude compiled output folders
-/dist/
-/build/
-
