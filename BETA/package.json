@@ -10,7 +10,9 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "stress-test": "tsx scripts/m43-stress-test.ts",
-    "millennium": "tsx scripts/ten-thousand-year-sim.ts"
+    "millennium": "tsx scripts/ten-thousand-year-sim.ts",
+    "server:dev": "tsx server-start.ts",
+    "server": "node -r ts-node/register server-start.ts"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
