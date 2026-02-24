@@ -385,13 +385,7 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
   );
 };
 
-      {/* Content Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-        {/* Spatial Hierarchy Tab */}
-        {activeTab === 'spatial' && (
-          <div>
-            <div style={{ marginBottom: '12px', fontWeight: 'bold', color: '#60a5fa' }}>
-              Spatial Hierarchy Browser
+export default ArchitectForge;
             </div>
             
             {Array.from(locationHierarchy.entries()).map(([regionName, subAreas]) => (

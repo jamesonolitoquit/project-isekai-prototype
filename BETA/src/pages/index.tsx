@@ -1,13 +1,4 @@
-import React from 'react';
-
-export default function HomePage() {
-  return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>BETA Website Test</h1>
-      <p>If you can see this, the basic Next.js setup is working!</p>
-    </div>
-  );
-}
+import React, { useState, useEffect, useMemo } from 'react';
 
 /**
  * Phase 7: WorldController Interface - Formal type contract

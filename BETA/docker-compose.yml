@@ -85,7 +85,7 @@ services:
         condition: service_healthy
     volumes:
       - ./src:/app/src
-      - ./data:/app/data
+      - ./src/data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
@@ -101,41 +101,33 @@ services:
         max-size: "100m"
         max-file: "5"
 
-  # React Front-end (Development)
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-      args:
-        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5000}
-        REACT_APP_SOCKET_IO_URL: ${REACT_APP_SOCKET_IO_URL:-http://localhost:3002}
-    container_name: isekai-app
-    environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5000}
-      REACT_APP_SOCKET_IO_URL: ${REACT_APP_SOCKET_IO_URL:-http://localhost:3002}
-      WATCHPACK_POLLING: "true"
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
-    volumes:
-      - ./src/client:/app/src/client
-      - ./public:/app/public
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-    networks:
-      - isekai-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
+
+  # React Front-end - Run locally with: npm run dev
+  # (Keeping Docker config as reference for production)
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: isekai-app
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5000}
+  #     REACT_APP_SOCKET_IO_URL: ${REACT_APP_SOCKET_IO_URL:-http://localhost:3002}
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - api
+  #   volumes:
+  #     - ./src/client:/app/src/client
+  #     - ./public:/app/public
+  #   restart: unless-stopped
+  #   networks:
+  #     - isekai-network
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "100m"
+  #       max-file: "5"
 
 volumes:
   postgres_data:
