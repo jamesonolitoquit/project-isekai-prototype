@@ -5,6 +5,178 @@
   "version": "2.0",
   "multiEpochEnabled": true,
   "baseEpoch": "epoch_i_fracture",
+  "timeSettings": {
+    "ticksPerMinute": 1,
+    "ticksPerHour": 60,
+    "ticksPerDay": 1440,
+    "startingHour": 8
+  },
+  "standardActionCosts": {
+    "search": 15,
+    "rest_short": 60,
+    "rest_long": 480,
+    "dialogue_per_word": 0.08,
+    "combat_round": 1
+  },
+  "factions": [
+    {
+      "id": "silver-flame",
+      "name": "The Silver Flame",
+      "philosophy": "Preservation and purification through light and order.",
+      "initialInfluence": 25,
+      "isExpansionist": false,
+      "rivalries": ["shadow-conclave"],
+      "traits": ["ordered", "pious", "defensive"]
+    },
+    {
+      "id": "ironsmith-guild",
+      "name": "Ironsmith Guild",
+      "philosophy": "Strength through craftsmanship and control of resources.",
+      "initialInfluence": 20,
+      "isExpansionist": false,
+      "rivalries": ["luminara-mercantile"],
+      "traits": ["diligent", "sturdy", "mercantile"]
+    },
+    {
+      "id": "luminara-mercantile",
+      "name": "Luminara Mercantile",
+      "philosophy": "Profit and trade as the lifeblood of civilization.",
+      "initialInfluence": 20,
+      "isExpansionist": true,
+      "rivalries": ["ironsmith-guild"],
+      "traits": ["prosperous", "opportunistic", "connected"]
+    },
+    {
+      "id": "shadow-conclave",
+      "name": "Shadow Conclave",
+      "philosophy": "Power through secrecy and the manipulation of the Abyss.",
+      "initialInfluence": 15,
+      "isExpansionist": true,
+      "rivalries": ["silver-flame"],
+      "traits": ["hidden", "ruthless", "ambitious"]
+    },
+    {
+      "id": "adventurers-league",
+      "name": "Adventurers' League",
+      "philosophy": "Individual freedom and the discovery of ancient truths.",
+      "initialInfluence": 20,
+      "isExpansionist": false,
+      "rivalries": [],
+      "traits": ["bold", "curious", "independent"]
+    }
+  ],
+  "economics": {
+    "globalInflation": 1.0,
+    "scarcityBias": 1.1,
+    "markets": [
+      {
+        "id": "luminara-market",
+        "locationId": "luminara-grand-market",
+        "specialties": ["luxeries", "information"],
+        "priceModifier": 1.2
+      },
+      {
+        "id": "eldergrove-market",
+        "locationId": "eldergrove-village",
+        "specialties": ["herbs", "basic_supplies"],
+        "priceModifier": 0.8
+      },
+      {
+        "id": "forge-market",
+        "locationId": "forge-summit",
+        "specialties": ["ore", "weapons", "armor"],
+        "priceModifier": 1.5
+      }
+    ],
+    "resourceNodes": [
+      {
+        "id": "silver-vein-01",
+        "locationId": "forge-summit",
+        "resourceType": "silver",
+        "abundance": 0.8,
+        "regrowthRate": 0.05
+      },
+      {
+        "id": "herbal-patch-01",
+        "locationId": "thornwood-depths",
+        "resourceType": "medicinal_herbs",
+        "abundance": 0.6,
+        "regrowthRate": 0.2
+      }
+    ]
+  },
+  "travelMatrix": {
+    "eldergrove-village": {
+      "luminara-grand-market": 120,
+      "forge-summit": 180,
+      "moonwell-shrine": 90,
+      "thornwood-depths": 150,
+      "frozen-lake": 240,
+      "abyss-edge": 480
+    },
+    "forge-summit": {
+      "eldergrove-village": 180,
+      "frozen-lake": 60,
+      "thornwood-depths": 120,
+      "abyss-edge": 300,
+      "luminara-grand-market": 150
+    },
+    "thornwood-depths": {
+      "eldergrove-village": 150,
+      "moonwell-shrine": 60,
+      "forge-summit": 120,
+      "abyss-edge": 180,
+      "frozen-lake": 300
+    },
+    "luminara-grand-market": {
+      "eldergrove-village": 120,
+      "forge-summit": 150,
+      "moonwell-shrine": 210,
+      "thornwood-depths": 270,
+      "frozen-lake": 360,
+      "abyss-edge": 600
+    },
+    "frozen-lake": {
+      "eldergrove-village": 240,
+      "forge-summit": 60,
+      "thornwood-depths": 300,
+      "abyss-edge": 400
+    },
+    "abyss-edge": {
+      "eldergrove-village": 480,
+      "forge-summit": 300,
+      "thornwood-depths": 180,
+      "frozen-lake": 400
+    }
+  },
+  "worldFragments": [
+    {
+      "id": "scar-the-shattered-gate",
+      "locationId": "luminara-grand-market",
+      "type": "architectural_scar",
+      "description": "A massive stone archway, partially collapsed from the Great Fracture. It serves as a reminder of the barrier between worlds.",
+      "durability": 85,
+      "weatheringRate": 0.01,
+      "isImmutable": true
+    },
+    {
+      "id": "monument-of-the-fallen",
+      "locationId": "eldergrove-village",
+      "type": "cultural_monument",
+      "description": "A simple wooden pillar engraved with the names of those lost to the Abyss.",
+      "durability": 50,
+      "weatheringRate": 0.05,
+      "isImmutable": false
+    }
+  ],
+  "legacyTraits": [
+    {
+      "id": "trait-resurrected-faith",
+      "name": "Resurrected Faith",
+      "probability": 1.0,
+      "description": "Future generations will remember the Silver Flame even if it falls, granting a +10% bonus to faith-based activities."
+    }
+  ],
   "locations": [
     {
       "id": "eldergrove-village",

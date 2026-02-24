@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { generateWorldEndProphecy } from '../engine/legacyEngine';
-import { listCachedTemplatePackages, getCachedTemplatePackage } from '../engine/saveLoadEngine';
+// import { generateWorldEndProphecy } from '../engine/legacyEngine';
+
+// Temporary function
+function generateWorldEndProphecy(epochId?: string, mythStatus?: number): any {
+  return {
+    title: "The End Approaches",
+    prophecy: `Darkness gathers at the horizon in ${epochId}... Myth status: ${mythStatus}`,
+    severity: "high"
+  };
+}
+// import { listCachedTemplatePackages, getCachedTemplatePackage } from '../engine/saveLoadEngine';
+
+// Temporary functions
+function listCachedTemplatePackages(): any[] {
+  return [];
+}
+
+function getCachedTemplatePackage(id: string): any {
+  return null;
+}
 import ModdingCommunityHub from './ModdingCommunityHub';
 
 /**

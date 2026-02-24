@@ -142,6 +142,8 @@ function generateRandomEvents(count: number, numPeers: number): Event[] {
 
     events.push({
       id: (eventId++).toString(),
+      worldInstanceId: 'stress-test-world',
+      actorId: `client_${peerId}`,
       type: eventType as any,
       payload,
       timestamp,
@@ -159,11 +161,13 @@ function generateRandomEvents(count: number, numPeers: number): Event[] {
 function createTestWorldState(): WorldState {
   return {
     id: `stress-test-world-${Date.now()}`,
+    seed: 12345, // Fixed seed for reproducible tests
     tick: 0,
     day: 1,
     hour: 12,
     season: 'spring',
     dayPhase: 'afternoon',
+    weather: 'clear',
     epochId: 'epoch_i_fracture',
     player: {
       id: 'player_0',
@@ -188,13 +192,14 @@ function createTestWorldState(): WorldState {
       { id: 'mountain-peak', name: 'Mountain Peak', biome: 'mountain', spiritDensity: 40 }
     ],
     npcs: [
-      { id: 'npc_1', name: 'Innkeeper', location: 'city-center', hp: 80, maxHp: 80 }
+      { id: 'npc_1', name: 'Innkeeper', locationId: 'city-center', hp: 80, maxHp: 80 }
     ],
+    quests: [],
     factions: [],
     resourceNodes: [],
-    temporalParadoxes: [],
-    tradeLog: []
-  } as WorldState;
+    activeEvents: [],
+    combatState: undefined
+  };
 }
 
 /**

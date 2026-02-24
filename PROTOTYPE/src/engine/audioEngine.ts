@@ -217,6 +217,21 @@ export function calculateSovereignBlend(
 }
 
 /**
+/**
+ * Map faction instrument types to audio synth types
+ */
+function mapInstrumentToSynth(instrument: FactionLeitmotif['primaryInstrument']): AudioLayer['synth'] {
+  const mapping: Record<FactionLeitmotif['primaryInstrument'], AudioLayer['synth']> = {
+    'orchestral': 'orchestral',
+    'synth': 'synth',
+    'percussion': 'percussion',
+    'choir': 'ambient',      // Vocal sounds map to ambient
+    'drone': 'ambient'       // Drone sounds map to ambient
+  };
+  return mapping[instrument];
+}
+
+/**
  * M37 Task 5: Morph soundscape to include faction leitmotif (Sovereign Blend implementation)
  * Adds faction theme layer to existing biome soundscape
  */
@@ -234,7 +249,7 @@ export function morphSoundscapeWithFactionTheme(
   const factionLayer: AudioLayer = {
     id: `faction-${factionLeitmotif.factionId}`,
     name: factionLeitmotif.leitmotifName,
-    synth: factionLeitmotif.primaryInstrument as any,
+    synth: mapInstrumentToSynth(factionLeitmotif.primaryInstrument),
     frequency: factionLeitmotif.baseFrequency,
     volume: (factionLeitmotif.baseVolume * blend.factionAudioIntensity) / 100,
     intensity: blend.factionAudioIntensity,
@@ -635,11 +650,16 @@ export function generateEpochSoundscape(
     volume: Math.max(0, layer.volume + timeModifiers.volumeShift)
   }));
 
-  // Calculate glitch intensity from temporal state
-  const glitchIntensity = Math.min(100, (state.temporalParadoxes?.length || 0) * 5);
+  // Phase 26 Task 1: Calculate glitch intensity from Global Social Tension
+  const socialTension = state.socialTension ?? 0;
+  const glitchIntensity = calculateGlitchIntensityFromGST(socialTension);
 
   // Spirit resonance influenced by location magic concentration
   const spiritResonance = Math.min(100, (location.spiritDensity || 50) + timeModifiers.spiritResonance);
+  
+  // Phase 26 Task 1: Add Tension Dissonance layer if GST > ~0.5
+  const dissonanceLayer = generateTensionDissonanceLayer(glitchIntensity);
+  const allLayers = dissonanceLayer ? [...finalLayers, dissonanceLayer] : finalLayers;
 
   // Duration based on epoch (longer in later epochs)
   const durationMs = (epoch === 1 ? 60000 : epoch === 2 ? 90000 : 120000);
@@ -650,7 +670,7 @@ export function generateEpochSoundscape(
     biome,
     timeOfDay,
     season,
-    layers: finalLayers,
+    layers: allLayers,
     masterVolume: epoch === 3 ? 85 : 75,
     glitchIntensity,
     spiritResonance,
@@ -661,6 +681,7 @@ export function generateEpochSoundscape(
 
 /**
  * M35: Get audio synthesis settings for Web Audio API playback
+ * Phase 26 Task 1: Enhanced with GST-adaptive dynamic filtering
  */
 export function getAudioSynthSettings(soundscape: EpochSoundscape): {
   audioContext: any; // AudioContext
@@ -670,6 +691,23 @@ export function getAudioSynthSettings(soundscape: EpochSoundscape): {
 } {
   // This returns the configuration needed for actual audio synthesis
   // Real implementation would use Web Audio API
+
+  // Phase 26 Task 1: Dynamic filter frequency based on glitch intensity
+  // High glitch intensity = lower filter frequency = "smothered" feeling
+  let filterFrequency = 4000;  // Default: open, clear
+  let filterType: 'highpass' | 'lowpass' = 'lowpass';
+  
+  if (soundscape.glitchIntensity > 30) {
+    // Tension range: low-pass acts as "choking" filter
+    // Maps 30-100 glitch to 4000-800 Hz range
+    filterFrequency = 4000 - (soundscape.glitchIntensity - 30) * (3200 / 70);
+  }
+  
+  if (soundscape.glitchIntensity > 80) {
+    // Extreme tension: switch to high-pass for brittle, harsh effect
+    filterType = 'highpass';
+    filterFrequency = 200 + (soundscape.glitchIntensity - 80) * 10;  // 200-400 Hz
+  }
 
   return {
     audioContext: undefined,
@@ -687,9 +725,9 @@ export function getAudioSynthSettings(soundscape: EpochSoundscape): {
     })),
     filters: [
       {
-        type: soundscape.glitchIntensity > 50 ? 'highpass' : 'lowpass',
-        frequency: soundscape.glitchIntensity > 50 ? 400 : 4000,
-        Q: soundscape.glitchIntensity / 100
+        type: filterType,
+        frequency: filterFrequency,
+        Q: Math.min(10, soundscape.glitchIntensity / 10)  // Q increases with intensity for sharper curve
       }
     ]
   };
@@ -697,6 +735,7 @@ export function getAudioSynthSettings(soundscape: EpochSoundscape): {
 
 /**
  * M35: Get narrative description of the current soundscape
+ * Phase 26 Task 1: Enhanced tension-dependent descriptions
  */
 export function getSoundscapeNarrative(soundscape: EpochSoundscape): string {
   const epochNames = {
@@ -722,10 +761,32 @@ export function getSoundscapeNarrative(soundscape: EpochSoundscape): string {
     'evening': 'as twilight falls'
   };
 
+  // Phase 26 Task 1: Tension-dependent narrative descriptions
+  const tensionDescriptions: Record<string, string> = {
+    'harmonic': 'hopeful bells and clear harmonies',
+    'balanced': 'flowing harmonies',
+    'tense': 'discordant tones with underlying dread',
+    'fractured': 'fractured, glitched harmonies wreathed in temporal echoes',
+    'shattered': '✨ SHATTERED REALITY: Cacophonous noise and impossible harmonies ✨'
+  };
+
+  let tensionDescKey: string;
+  if (soundscape.glitchIntensity < 10) {
+    tensionDescKey = 'harmonic';
+  } else if (soundscape.glitchIntensity < 30) {
+    tensionDescKey = 'balanced';
+  } else if (soundscape.glitchIntensity < 60) {
+    tensionDescKey = 'tense';
+  } else if (soundscape.glitchIntensity < 100) {
+    tensionDescKey = 'fractured';
+  } else {
+    tensionDescKey = 'shattered';
+  }
+
   const descriptions = [
-    `The songs of ${epochNames[soundscape.epoch as 1 | 2 | 3]} echo through ${biomeNames[soundscape.biome] || 'the land'} ${timeDescriptions[soundscape.timeOfDay]}.`,
-    `A soundscape of ${soundscape.glitchIntensity > 50 ? 'fractured' : 'flowing'} harmonies surrounds you in ${biomeNames[soundscape.biome] || 'your current location'}.`,
-    `${soundscape.spiritResonance > 70 ? '✨ Ethereal' : 'Contemplative'} melodies resonate ${timeDescriptions[soundscape.timeOfDay]}.`
+    `The songs of ${epochNames[soundscape.epoch as 1 | 2 | 3]} resonate through ${biomeNames[soundscape.biome] || 'the land'} ${timeDescriptions[soundscape.timeOfDay]}—${tensionDescriptions[tensionDescKey]}.`,
+    `A soundscape of ${tensionDescriptions[tensionDescKey]} surrounds you in ${biomeNames[soundscape.biome] || 'your current location'}.`,
+    `${soundscape.spiritResonance > 70 ? '✨ Ethereal' : 'Contemplative'} melodies ${soundscape.glitchIntensity > 50 ? 'twisted and warped' : 'resonate'} ${timeDescriptions[soundscape.timeOfDay]}.`
   ];
 
   return descriptions[Math.floor(Math.random() * descriptions.length)];
@@ -738,4 +799,73 @@ export function shouldTriggerAudioEvent(soundscape: EpochSoundscape): boolean {
   // Chance of audio event based on spirit resonance
   const eventChance = soundscape.spiritResonance / 100 * 0.3; // Up to 30% chance
   return Math.random() < eventChance;
+}
+
+/**
+ * Phase 26 Task 1: Calculate glitch intensity from Global Social Tension
+ * Maps socialTension (0-1) to glitchIntensity (0-100)
+ * 
+ * GST Impact:
+ * - GST 0-0.3: Harmonious (glitchIntensity 0-10)
+ * - GST 0.3-0.7: Tense (glitchIntensity 10-50)
+ * - GST 0.7-1.0: Dissonant (glitchIntensity 50-100)
+ * - GST >= 1.0: Fractured (glitchIntensity 100+)
+ */
+export function calculateGlitchIntensityFromGST(socialTension: number): number {
+  // Clamp social tension to 0-1 range (but allow >1 for extreme cases)
+  const baseTension = Math.max(0, Math.min(1, socialTension));
+  
+  // Non-linear mapping: tension increases exponentially for dramatic effect
+  // This creates a "cliff" effect at higher tensions
+  const glitchIntensity = Math.pow(baseTension, 0.8) * 100;
+  
+  // If tension exceeds 1.0 (critical state), add extra intensity
+  const extremeBoost = Math.max(0, (socialTension - 1.0) * 50);
+  
+  return Math.min(150, glitchIntensity + extremeBoost); // Cap at 150 for extreme cases
+}
+
+/**
+ * Phase 26 Task 1: Generate Tension Dissonance Layer
+ * Activated when GST > 0.7 to create unsettling high-frequency noise and discordant strings
+ */
+function generateTensionDissonanceLayer(glitchIntensity: number): AudioLayer | null {
+  // Only activate when glitchIntensity > 35 (roughly GST > 0.5)
+  if (glitchIntensity < 35) {
+    return null;
+  }
+  
+  // Intensity of dissonance scales with glitch intensity
+  const dissonanceVolume = Math.min(100, (glitchIntensity - 35) * 0.8);
+  
+  return {
+    id: 'tension-dissonance',
+    name: 'Tension Dissonance',
+    synth: 'glitch',
+    frequency: 3000 + glitchIntensity * 10,  // High-frequency, rises with tension
+    volume: dissonanceVolume,
+    intensity: dissonanceVolume,
+    modulation: 'noise',  // Noise creates unsettling effect
+    envelope: {
+      attack: 100 + glitchIntensity * 2,      // Slower attack = more unsettling
+      decay: 200 + glitchIntensity * 1.5,
+      sustain: Math.max(20, 100 - glitchIntensity),  // Less sustain at high tension
+      release: 300 + glitchIntensity * 3       // Longer release for lingering effect
+    }
+  };
+}
+
+/**
+ * Phase 26 Task 1: Apply reverb decay modulation based on GST
+ * Higher tension = longer reverb decay (unnatural temporal echo effect)
+ * 
+ * Returns reverb decay multiplier (1.0 = normal, 2.0+ = extreme echo)
+ */
+export function calculateReverbDecayFromGST(socialTension: number): number {
+  const baseTension = Math.max(0, Math.min(1, socialTension));
+  
+  // Base reverb: 1.0 (normal)
+  // At GST 0.7: reverb = 1.5x
+  // At GST 1.0: reverb = 2.5x (creates "temporal echo" feeling)
+  return 1.0 + baseTension * 1.5;
 }

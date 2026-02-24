@@ -1,66 +1,823 @@
 /**
- * Legacy Engine (BETA Phase)
- * 
- * Purpose: Handle character canonization, bloodline inheritance, and legacy persistence
- * across epoch transitions. Calculates Myth Status and determines what perks/items
- * pass to the next generation.
- * 
- * Key Concepts:
- * - Myth Status: 0-100 rating based on character achievements
- * - Bloodline: Inherited perks and items that persist across resets
- * - Legacy Points: Accumulated through deeds; carried forward
- * - Soul Echo: The legendary reputation that NPCs remember
+ * legacyEngine.ts - M45-C1 + M32: Bloodline & Soul Echo System
+ * Manages ancestral legacy, soul echoes, bloodline profiles, and cross-epoch transmission.
  */
 
-import type { WorldState, PlayerState, Party } from './worldEngine';
-import type { PlaystyleProfile } from './analyticsEngine';
 import { SeededRng } from './prng';
+import type { WorldState, NPC, PlayerState } from './worldEngine';
+import type { Event } from '../events/mutationLog';
 
-export interface SoulEchoNpc {
+/**
+ * Extract grand deeds from event log for legacy generation
+ */
+function extractGrandDeeds(eventLog: any[]): any[] {
+  // Simple implementation: return events that might be considered grand deeds
+  return eventLog.filter(event => 
+    event.type === 'QUEST_COMPLETED' || 
+    event.type === 'BOSS_DEFEATED' || 
+    event.type === 'LOCATION_DISCOVERED' ||
+    event.type === 'EPOCH_TRANSITION'
+  );
+}
+
+// Strict type interfaces to replace `any`
+export interface WorldTemplate {
+  name: string;
+  soulEchoes: TemplateEcho[];
+  seed?: number;
+  [key: string]: unknown;
+}
+
+export interface TemplateEcho {
+  id?: string;
+  echoType?: 'faint' | 'clear' | 'resonant' | 'overwhelming';
+  powerLevel?: number;
+  originalNpcName?: string;
+  emotionalResonance?: number;
+  name?: string;
+  description?: string;
+  ancestorName?: string;
+  deedTriggered?: string;
+  rarity?: string;
+  mechanicalEffect?: string;
+  narrativeEffect?: string;
+  ancestralAdvice?: string;
+  [key: string]: unknown;
+}
+
+export interface DeedPayload {
+  divergenceRating?: number;
+  powerShift?: number;
+  bonusesApplied?: Record<string, number>;
+  causalities?: number;
+  winnerFactionId?: string;
+  [key: string]: unknown;
+}
+
+export interface PlayerLegacyState extends PlayerState {
+  lastSoulResonanceTick?: number;
+  soulResonanceLevel?: number;
+  deeds?: string[];
+  [key: string]: unknown;
+}
+
+export interface WorldLegacyState extends WorldState {
+  worldTemplate?: WorldTemplate;
+  playerReputation?: number;
+  playerDeeds?: string[];
+  factionStandings?: Record<string, number>;
+  epochCount?: number;
+  [key: string]: unknown;
+}
+
+// PlaystyleProfile for analysis support
+export interface CharacterProfile {
+  combatFrequency: number;
+  socialFrequency: number;
+  explorationFrequency: number;
+  ritualFrequency: number;
+  craftingFrequency: number;
+}
+
+export interface PlaystyleProfile {
+  characterProfile: CharacterProfile;
+  dominantPlaystyle: 'combatant' | 'socialite' | 'explorer' | 'ritualist' | 'crafter' | 'balanced';
+  [key: string]: unknown;
+}
+
+// Phase 13: Ancestral Boon and Blight Types
+export interface AncestralBoon {
   id: string;
   name: string;
-  title: string;
-  description: string;
-  role: string;
-  knownTo: string[];
-  dialogue: {
-    greeting: string;
-    wisdom: string;
-  };
-  stats?: any;
-  hp?: number;
-  maxHp?: number;
-  // M32: Multiplayer cross-world legacy support
-  _soulEchoMemory?: string; // Custom memory for visiting legends
-  _foreignLegacy?: any; // ForeignLegacyImport data
-  _visitingLegend?: boolean; // True if this is a visiting legend from another world
+  bonusType: 'stat_bonus' | 'ability_bonus' | 'faction_bonus' | 'special_effect';
+  targetStat?: string; // 'str', 'int', 'agi', etc.
+  magnitude: number; // bonus amount or percentage
+  duration: number; // in ticks, 0 = permanent
+  deedSource: string; // which deed granted this boon
+  description?: string;
+}
+
+export interface AncestralBlight {
+  id: string;
+  name: string;
+  penaltyType: 'stat_penalty' | 'ability_penalty' | 'faction_penalty' | 'curse_effect';
+  targetStat?: string; // 'str', 'int', 'agi', etc.
+  magnitude: number; // penalty amount or percentage
+  paradoxSource: number; // generational paradox level that triggered this
+  description?: string;
+  permanentCurse?: boolean;
 }
 
 export interface LegacyImpact {
+  id: string;
+  chronicleId: string;
   canonicalName: string;
-  mythStatus: number;           // 0-100: How legendary this character became
-  inheritedPerks: string[];     // Unlocked perks for next generation
-  inheritedItems: Array<{ itemId: string; rarity?: string }>;
-  deeds: string[];             // Memorable achievements
-  factionInfluence: Record<string, number>; // How much this character influenced factions
-  epochsLived: number;         // How many full epochs survived
-  timestamp: number;           // When canonized
+  bloodlineOrigin: string;
+  mythStatus: number;
+  deeds: string[];
+  factionInfluence: Record<string, number>;
+  inheritedPerks: string[];
+  ancestralCurses: string[];
+  epochsLived: number;
+  totalGenerations: number;
+  soulEchoCount: number;
+  finalWorldState: 'improved' | 'declined' | 'neutral';
+  paradoxDebt: number;
+  timestamp: number;
+  inheritedItems?: Array<{ itemId: string; instanceId?: string; ancestorName?: string; rarity?: string }>;
+  // Phase 13 additions
+  ancestralBooms?: AncestralBoon[];
+  ancestralBlights?: AncestralBlight[];
+  canonicalDeeds?: string[];
+  heirlooms?: string[];
 }
 
 export interface BloodlineProfile {
-  name: string;
-  legacyImpacts: LegacyImpact[]; // Accumulated across all lifetimes
-  totalMythStatus: number;        // Sum of all ancestors' myth status
-  totalLegacyPoints: number;      // Total accumulated by entire lineage
+  id: string;
+  originNpcId: string;
+  canonicalName: string;
+  primaryFaction: string;
+  deeds: string[];
+  mythStatus: number;
+  bloodlineTraits: Record<string, number>;
+  inheritedAbilities: string[];
+  curses: string[];
+  generationCount: number;
+  isExtinct: boolean;
+  soulEchoRegistry: SoulEchoRegistry;
 }
 
+export interface SoulEcho {
+  id: string;
+  echoType: 'faint' | 'clear' | 'resonant' | 'overwhelming';
+  originalNpcName: string;
+  originalNpcId: string;
+  echoContent: Record<string, unknown>;
+  emotionalResonance: number;
+  temporalStability: number;
+  canBeCommunicatedWith: boolean;
+  inheritedPerksList: string[];
+  ancestralAdvice?: string;
+  apparitionTrigger?: string;
+}
+
+export interface SoulEchoRegistry {
+  id: string;
+  bloodlineId: string;
+  echoes: SoulEcho[];
+  totalResonance: number;
+  echoCapacity: number;
+}
+
+export interface WorldEndProphecy {
+  id: string;
+  prophecyType: 'dark' | 'neutral' | 'hopeful' | 'transcendent';
+  content: string;
+  ancestorName: string;
+  ancestorGeneration: number;
+  fulfillmentProgress: number;
+  isFulfilled: boolean;
+  worldOutcome?: string;
+}
+
+export interface ReincarnationMetadata {
+  previousChronicleSeed: number;
+  inheritedAbilities: string[];
+  inheritedCurses: string[];
+  bloodlineReputation: Record<string, number>;
+  startingModifiers: Record<string, number>;
+  predestinedMoments: string[];
+  karmaCarryover: number;
+}
+
+export class LegacyEngine {
+  private bloodlines: Map<string, BloodlineProfile> = new Map();
+  private legacies: Map<string, LegacyImpact> = new Map();
+  private soulEchoRegistries: Map<string, SoulEchoRegistry> = new Map();
+  private worldEndProphecies: Map<string, WorldEndProphecy> = new Map();
+  private reincarnationMetadata: Map<string, ReincarnationMetadata> = new Map();
+  private rng: SeededRng;
+
+  constructor(seed: number = 12345) {
+    this.rng = new SeededRng(seed);
+  }
+
+  /**
+   * M49-A4: Initialize Legacy Engine from World Template
+   * Populates soul echoes and bloodlines with pre-seeded data.
+   */
+  initFromTemplate(template: WorldTemplate): void {
+    if (!template || !template.soulEchoes) return;
+
+    // Create a default ancestral bloodline for template-based echoes
+    const defaultBloodline: BloodlineProfile = {
+      id: "bloodline_ancestral_origins",
+      originNpcId: "template",
+      canonicalName: "The Ancestors",
+      primaryFaction: "legacy",
+      deeds: ["Founding the World"],
+      mythStatus: 100,
+      bloodlineTraits: { resilience: 10, charisma: 10, cunning: 10, honor: 10 },
+      inheritedAbilities: [],
+      curses: [],
+      generationCount: 10,
+      isExtinct: false,
+      soulEchoRegistry: {
+        id: "registry_template",
+        bloodlineId: "bloodline_ancestral_origins",
+        echoes: template.soulEchoes.map((echo: TemplateEcho | Record<string, unknown>): SoulEcho => {
+          const e = echo as Record<string, unknown>;
+          const echoType = e.echoType === 'faint' || e.echoType === 'clear' || e.echoType === 'resonant' || e.echoType === 'overwhelming'
+            ? e.echoType
+            : 'resonant';
+          const emotionalRes = typeof e.emotionalResonance === 'number' ? e.emotionalResonance : (e.powerLevel || 50);
+          return {
+            id: e.id || `echo_${Date.now()}_${Math.random()}`,
+            echoType,
+            originalNpcName: e.originalNpcName || 'AncestralVoice',
+            originalNpcId: `npc_template_${e.id || 'unknown'}`,
+            echoContent: { powerLevel: e.powerLevel || 50, ...e },
+            emotionalResonance: emotionalRes,
+            temporalStability: 100,
+            canBeCommunicatedWith: true,
+            inheritedPerksList: []
+          };
+        }),
+        totalResonance: template.soulEchoes.reduce((sum: number, e: TemplateEcho | Record<string, unknown>) => sum + (((e as Record<string, unknown>).powerLevel as number) || 50), 0),
+        echoCapacity: 100
+      }
+    };
+
+    this.bloodlines.set(defaultBloodline.id, defaultBloodline);
+    this.soulEchoRegistries.set(defaultBloodline.soulEchoRegistry.id, defaultBloodline.soulEchoRegistry);
+  }
+
+  createBloodline(originNpc: NPC, primaryFaction: string): BloodlineProfile {
+    const bloodline: BloodlineProfile = {
+      id: `bloodline_${originNpc.id}_${Date.now()}`,
+      originNpcId: originNpc.id,
+      canonicalName: originNpc.name,
+      primaryFaction,
+      deeds: [],
+      mythStatus: 0,
+      bloodlineTraits: {
+        resilience: this.rng.nextInt(1, 10),
+        charisma: this.rng.nextInt(1, 10),
+        cunning: this.rng.nextInt(1, 10),
+        honor: this.rng.nextInt(0, 10)
+      },
+      inheritedAbilities: [],
+      curses: [],
+      generationCount: 1,
+      isExtinct: false,
+      soulEchoRegistry: {
+        id: `registry_${originNpc.id}`,
+        bloodlineId: '',
+        echoes: [],
+        totalResonance: 0,
+        echoCapacity: 10
+      }
+    };
+
+    bloodline.soulEchoRegistry.bloodlineId = bloodline.id;
+    this.bloodlines.set(bloodline.id, bloodline);
+    this.soulEchoRegistries.set(bloodline.soulEchoRegistry.id, bloodline.soulEchoRegistry);
+
+    return bloodline;
+  }
+
+  createSoulEcho(
+    originalNpc: NPC,
+    bloodlineId: string,
+    echoContent: Record<string, unknown>
+  ): SoulEcho | null {
+    const bloodline = this.bloodlines.get(bloodlineId);
+    if (!bloodline) return null;
+
+    const registry = this.soulEchoRegistries.get(bloodline.soulEchoRegistry.id);
+    if (!registry || registry.echoes.length >= registry.echoCapacity) return null;
+
+    const echo: SoulEcho = {
+      id: `echo_${originalNpc.id}_${Date.now()}`,
+      echoType: this.determineEchoType(originalNpc),
+      originalNpcName: originalNpc.name,
+      originalNpcId: originalNpc.id,
+      echoContent,
+      emotionalResonance: this.rng.nextInt(10, 100),
+      temporalStability: this.rng.nextInt(50, 100),
+      canBeCommunicatedWith: this.rng.nextInt(0, 50) > 30,
+      inheritedPerksList: this.generateInheritedPerks(originalNpc),
+      apparitionTrigger: this.generateApparitionTrigger()
+    };
+
+    registry.echoes.push(echo);
+    registry.totalResonance += echo.emotionalResonance;
+    const bloodlineWithCount = bloodline as BloodlineProfile & { soulEchoCount?: number };
+    bloodlineWithCount.soulEchoCount = registry.echoes.length;
+
+    return echo;
+  }
+
+  private determineEchoType(npc: NPC & Partial<{ reputation: number }>): SoulEcho['echoType'] {
+    const mythStatus = (npc.reputation || 0);
+
+    if (mythStatus > 80) return 'overwhelming';
+    if (mythStatus > 50) return 'resonant';
+    if (mythStatus > 25) return 'clear';
+    return 'faint';
+  }
+
+  private generateInheritedPerks(npc: NPC & Partial<{ reputation: number }>): string[] {
+    const perks: string[] = [];
+
+    if (((npc.reputation) || 0) > 50) {
+      perks.push('Legendary Aura');
+      perks.push('Historical Knowledge');
+    }
+
+    if ((npc.stats?.strength || 0) > 15) {
+      perks.push('Ancestral Might');
+    }
+
+    if ((npc.stats?.intellect || 0) > 15) {
+      perks.push('Ancient Wisdom');
+    }
+
+    return perks.length > 0 ? perks : ['Minor Legacy'];
+  }
+
+  private generateApparitionTrigger(): string {
+    const triggers = [
+      'During moments of great peril',
+      'When facing moral crossroads',
+      'In ancestral locations',
+      'During the anniversary of death',
+      'When wielding ancestral artifacts'
+    ];
+
+    return triggers[this.rng.nextInt(0, triggers.length - 1)];
+  }
+
+  /**
+   * M50-A3: Record legacy with cross-epoch narrative generation
+   * @param state - Current world state
+   * @param playerName - Name to record for this legacy
+   * @param eventLog - Optional mutation log for extracting Grand Deeds
+   */
+  recordLegacy(state: WorldLegacyState, playerName: string, eventLog?: Event[]): LegacyImpact {
+    const legacy: LegacyImpact = {
+      id: `legacy_${state.chronicleId}_${Date.now()}`,
+      chronicleId: state.chronicleId,
+      canonicalName: playerName,
+      bloodlineOrigin: (state.worldTemplate?.name) || 'Unknown',
+      mythStatus: (state.playerReputation) || 0,
+      deeds: (state.playerDeeds) || [],
+      factionInfluence: (state.factionStandings) || {},
+      inheritedPerks: [],
+      ancestralCurses: [],
+      epochsLived: (state.epochCount) || 1,
+      totalGenerations: 1,
+      soulEchoCount: 0,
+      finalWorldState: this.calculateWorldState(state),
+      paradoxDebt: state.paradoxDebt || 0,
+      timestamp: Date.now()
+    };
+
+    // M50-A3: Extract Grand Deeds and generate soul echoes for next world
+    if (eventLog && eventLog.length > 0) {
+      const grandDeeds = extractGrandDeeds(eventLog);
+      const generatedEchoes = this.generateEchoesFromDeeds(grandDeeds, playerName, legacy.id);
+      
+      // Store echoes in a registry for next-world access
+      if (generatedEchoes.length > 0) {
+        const echoRegistry: SoulEchoRegistry = {
+          id: `registry_${legacy.id}`,
+          bloodlineId: legacy.id,
+          echoes: generatedEchoes,
+          totalResonance: generatedEchoes.reduce((sum, e) => sum + e.emotionalResonance, 0),
+          echoCapacity: 10  // Max 10 echoes per generation
+        };
+        this.soulEchoRegistries.set(echoRegistry.id, echoRegistry);
+        legacy.soulEchoCount = generatedEchoes.length;
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[LegacyEngine] Generated ${generatedEchoes.length} soul echoes from ${grandDeeds.length} Grand Deeds for ${playerName}`);
+        }
+      }
+    }
+
+    this.legacies.set(legacy.id, legacy);
+    return legacy;
+  }
+
+  /**
+   * M50-A3: Generate soul echoes from historical deeds
+   */
+  private generateEchoesFromDeeds(deeds: Event[], npcName: string, legacyId: string): SoulEcho[] {
+    const echoes: SoulEcho[] = [];
+    
+    for (const deed of deeds) {
+      if (echoes.length >= 10) break;  // Cap at 10 echoes per generation
+      
+      const echoType = this.determineEchoIntensity(deed);
+      const emotionalResonance = this.calculateEmotionalResonance(deed);
+      const advice = this.generateAncestralAdvice(deed);
+      
+      const echoActorId = ((deed.payload as unknown) as Record<string, unknown>)?.['actorId'] as string | undefined;
+      
+      const echo: SoulEcho = {
+        id: `echo_${legacyId}_${deed.id}`,
+        echoType,
+        originalNpcName: npcName,
+        originalNpcId: echoActorId || 'player',
+        echoContent: {
+          deedType: deed.type,
+          payload: deed.payload,
+          parentEvent: deed.id
+        },
+        emotionalResonance,
+        temporalStability: 0.6 + (this.rng.next() * 0.4),  // 0.6-1.0
+        canBeCommunicatedWith: echoType !== 'faint',
+        inheritedPerksList: this.extractPerksList(deed),
+        ancestralAdvice: advice,
+        apparitionTrigger: this.generateTrigger(deed)
+      };
+      
+      echoes.push(echo);
+    }
+    
+    return echoes;
+  }
+
+  /**
+   * Determine soul echo intensity based on deed significance
+   */
+  private determineEchoIntensity(deed: Event): 'faint' | 'clear' | 'resonant' | 'overwhelming' {
+    const payload = (deed.payload as DeedPayload) || {};
+    const divergenceRating = payload.divergenceRating || 0;
+    const powerShift = payload.powerShift || 0;
+    
+    const intensity = divergenceRating + (powerShift * 5);
+    
+    if (intensity > 100) return 'overwhelming';
+    if (intensity > 75) return 'resonant';
+    if (intensity > 40) return 'clear';
+    return 'faint';
+  }
+
+  /**
+   * Calculate emotional resonance value for echo
+   */
+  private calculateEmotionalResonance(deed: Event): number {
+    let resonance = 50;  // Base
+    
+    if (deed.type === 'PLAYER_ACTION' || deed.type === 'FACTION_SKIRMISH') {
+      resonance += 20;
+    }
+    const payload = (deed.payload as DeedPayload);
+    if ((payload?.divergenceRating || 0) > 75) {
+      resonance += 20;
+    }
+    if ((payload?.causalities || 0) > 0) {
+      resonance += 10;  // Sacrifice increases resonance
+    }
+    
+    return Math.min(100, resonance + this.rng.nextInt(-10, 10));
+  }
+
+  /**
+   * Generate trigger condition for echo manifestation
+   */
+  private generateTrigger(deed: Event): string {
+    const triggers = [
+      'At a shrine beneath moonlight',
+      'When facing impossible odds',
+      'In a place of great sorrow',
+      'When the world needs guidance',
+      'At the moment of greatest doubt',
+      'In the presence of their descendants'
+    ];
+    return triggers[this.rng.nextInt(0, triggers.length - 1)];
+  }
+
+  /**
+   * Generate ancestral advice from a deed
+   */
+  private generateAncestralAdvice(deed: Event): string {
+    const adviceTemplates: Record<string, string[]> = {
+      'FACTION_SKIRMISH': [
+        'Remember: the cost of victory is measured in blood. Use power wisely.',
+        'Territories change hands, but honor endures.',
+        'When factions clash, it is innocents who suffer most.'
+      ],
+      'PLAYER_DEATH': [
+        'Death is not an end, but a transformation.',
+        'Your sacrifice echoes through the generations.',
+        'What is lost in flesh may be gained in spirit.'
+      ],
+      'LEGENDARY_DEED': [
+        'One act of courage can reshape the world.',
+        'History remembers not the comfortable, but the audacious.',
+        'Your legacy writes itself through deeds, not words.'
+      ],
+      'PLAYER_ACTION': [
+        'Every choice ripples forward through time.',
+        'The seemingly small act may birth great consequences.'
+      ]
+    };
+    
+    const templates = adviceTemplates[deed.type] || adviceTemplates['PLAYER_ACTION'];
+    return templates[this.rng.nextInt(0, templates.length - 1)];
+  }
+
+  /**
+   * Extract relevant perks that could be inherited from a deed
+   */
+  private extractPerksList(deed: Event): string[] {
+    const perks: string[] = [];
+    const payload = (deed.payload as DeedPayload);
+    if (payload?.bonusesApplied) {
+      if (payload.bonusesApplied['strength'] > 0) perks.push('Ancestral Strength');
+      if (payload.bonusesApplied['agility'] > 0) perks.push('Echo Swift');
+    }
+    
+    if (deed.type === 'FACTION_SKIRMISH' && payload?.winnerFactionId) {
+      perks.push('Faction Legacy');
+    }
+    
+    if (payload?.divergenceRating > 75) {
+      perks.push('Mythic Potential');
+    }
+    
+    return perks;
+  }
+
+  private calculateWorldState(state: WorldLegacyState): 'improved' | 'declined' | 'neutral' {
+    const reputation = (state.playerReputation) || 0;
+    const factionCount = Object.keys((state.factionStandings) || {}).length;
+    const standing = Object.values((state.factionStandings) || {}).reduce((a: number, b: unknown) => a + (Number(b) || 0), 0) / Math.max(1, factionCount);
+
+    if (reputation > 70 && standing > 30) return 'improved';
+    if (reputation < 30 && standing < -30) return 'declined';
+    return 'neutral';
+  }
+
+  createWorldEndProphecy(
+    prophecyType: 'dark' | 'neutral' | 'hopeful' | 'transcendent',
+    ancestorName: string,
+    content: string
+  ): WorldEndProphecy {
+    const prophecy: WorldEndProphecy = {
+      id: `prophecy_${Date.now()}`,
+      prophecyType,
+      content,
+      ancestorName,
+      ancestorGeneration: 1,
+      fulfillmentProgress: 0,
+      isFulfilled: false
+    };
+
+    this.worldEndProphecies.set(prophecy.id, prophecy);
+    return prophecy;
+  }
+
+  fulfillProphecy(prophecyId: string, outcome: string): boolean {
+    const prophecy = this.worldEndProphecies.get(prophecyId);
+    if (!prophecy) return false;
+
+    prophecy.isFulfilled = true;
+    prophecy.worldOutcome = outcome;
+    prophecy.fulfillmentProgress = 100;
+
+    return true;
+  }
+
+  updateProphecyProgress(prophecyId: string, progressAmount: number): boolean {
+    const prophecy = this.worldEndProphecies.get(prophecyId);
+    if (!prophecy) return false;
+
+    prophecy.fulfillmentProgress = Math.min(100, prophecy.fulfillmentProgress + progressAmount);
+
+    if (prophecy.fulfillmentProgress >= 100) {
+      prophecy.isFulfilled = true;
+    }
+
+    return true;
+  }
+
+  createReincarnationMetadata(
+    previousLegacy: LegacyImpact,
+    inheritedAbilities: string[],
+    inheritedCurses: string[]
+  ): ReincarnationMetadata {
+    const metadata: ReincarnationMetadata = {
+      previousChronicleSeed: this.rng.nextInt(1000000, 9999999),
+      inheritedAbilities,
+      inheritedCurses,
+      bloodlineReputation: previousLegacy.factionInfluence,
+      startingModifiers: {
+        reputation_boost: Math.floor(previousLegacy.mythStatus / 5),
+        starting_resources: previousLegacy.mythStatus > 50 ? 500 : 100
+      },
+      predestinedMoments: [],
+      karmaCarryover: previousLegacy.mythStatus / 100
+    };
+
+    this.reincarnationMetadata.set(previousLegacy.id, metadata);
+
+    return metadata;
+  }
+
+  getReincarnationMetadata(legacyId: string): ReincarnationMetadata | undefined {
+    return this.reincarnationMetadata.get(legacyId);
+  }
+
+  getBloodline(bloodlineId: string): BloodlineProfile | undefined {
+    return this.bloodlines.get(bloodlineId);
+  }
+
+  getLegacy(legacyId: string): LegacyImpact | undefined {
+    return this.legacies.get(legacyId);
+  }
+
+  getSoulEchoRegistry(registryId: string): SoulEchoRegistry | undefined {
+    return this.soulEchoRegistries.get(registryId);
+  }
+
+  getSoulEcho(echoId: string): SoulEcho | undefined {
+    for (const registry of this.soulEchoRegistries.values()) {
+      const echo = registry.echoes.find(e => e.id === echoId);
+      if (echo) return echo;
+    }
+    return undefined;
+  }
+
+  getAllBloodlines(): BloodlineProfile[] {
+    return Array.from(this.bloodlines.values());
+  }
+
+  getAllLegacies(): LegacyImpact[] {
+    return Array.from(this.legacies.values());
+  }
+
+  getAllProphecies(): WorldEndProphecy[] {
+    return Array.from(this.worldEndProphecies.values());
+  }
+
+  updateBloodlineGeneration(bloodlineId: string): void {
+    const bloodline = this.bloodlines.get(bloodlineId);
+    if (bloodline) {
+      bloodline.generationCount++;
+    }
+  }
+
+  markBloodlineExtinct(bloodlineId: string): void {
+    const bloodline = this.bloodlines.get(bloodlineId);
+    if (bloodline) {
+      bloodline.isExtinct = true;
+    }
+  }
+
+  /**
+   * M49-A4: Calculate Soul Resonance for the current player
+   * Determines if an ancestral echo should appear or if resonance level changes.
+   */
+  calculateResonance(state: WorldLegacyState): {
+    resonanceDelta: number;
+    triggeredEchoId?: string;
+    advice?: string;
+  } {
+    const player = state.player as PlayerLegacyState;
+    const currentLoc = player.location;
+    const currentTick = state.tick || 0;
+    const lastResonanceTick = (player.lastSoulResonanceTick) || 0;
+    
+    // Cool down for resonance triggers (e.g., once every 50 ticks)
+    if (currentTick - lastResonanceTick < 50) {
+      return { resonanceDelta: 0 };
+    }
+
+    let resonanceDelta = 0;
+    let triggeredEchoId: string | undefined;
+    let advice: string | undefined;
+
+    // Proximity to "Ancestral" locations (simulated check)
+    // In a real world, we'd check against a list of locations where ancestors performed deeds.
+    const isAncestralLocation = currentLoc.includes('shrine') || currentLoc.includes('ruin');
+    
+    if (isAncestralLocation) {
+      resonanceDelta += 5;
+    }
+
+    // Proximity to NPCs from the same bloodline (simulated)
+    const nearbyNpcs = state.npcs.filter(n => n.locationId === currentLoc);
+    const hasFamilyNpc = nearbyNpcs.some(n => n.factionRole === 'leader' || n.importance === 'critical');
+    
+    if (hasFamilyNpc) {
+      resonanceDelta += 3;
+    }
+
+    // Probability of a "Soul Echo" appearing based on current resonance level
+    const currentLevel = (player.soulResonanceLevel) || 0;
+    const triggerChance = (currentLevel + resonanceDelta) / 200; // 0-50% chance
+
+    if (this.rng.next() < triggerChance) {
+      // Pick a random echo from any bloodline registry
+      const allEchoes: SoulEcho[] = [];
+      for (const registry of this.soulEchoRegistries.values()) {
+        allEchoes.push(...registry.echoes);
+      }
+
+      if (allEchoes.length > 0) {
+        const selectedEcho = allEchoes[this.rng.nextInt(0, allEchoes.length - 1)];
+        triggeredEchoId = selectedEcho.id;
+        
+        // Use pre-defined advice or generate a situational one
+        advice = selectedEcho.ancestralAdvice || this.generateSituationalAdvice(state, selectedEcho);
+      }
+    }
+
+    return { resonanceDelta, triggeredEchoId, advice };
+  }
+
+  private generateSituationalAdvice(state: WorldState, echo: SoulEcho): string {
+    const biome = state.player.location;
+    const advices = [
+      `Beware the shadows in ${biome}`,
+      `A great treasure was once lost near here...`,
+      `Trust not the silver-tongued merchants.`,
+      `Your destiny is not yet written, traveler.`,
+      `Remember the name of your bloodline across this threshold.`
+    ];
+    return advices[this.rng.nextInt(0, advices.length - 1)];
+  }
+
+  /**
+   * M50-A3: Export soul echoes for next-world seeding
+   * Called at world end to prepare echoes for inheritance system
+   */
+  exportSoulEchoesForNextWorld(): SoulEcho[] {
+    const allEchoes: SoulEcho[] = [];
+    
+    for (const registry of this.soulEchoRegistries.values()) {
+      allEchoes.push(...registry.echoes);
+    }
+    
+    // Sort by emotional resonance (strongest echoes first)
+    return allEchoes.sort((a, b) => b.emotionalResonance - a.emotionalResonance);
+  }
+
+  /**
+   * M50-A3: Get all active legacy records for historical reference
+   */
+  exportLegacyRecords(): LegacyImpact[] {
+    return Array.from(this.legacies.values());
+  }
+
+  /**
+   * M50-A3: Get all bloodline lineages for genealogical display
+   */
+  exportBloodlineLineages(): BloodlineProfile[] {
+    return Array.from(this.bloodlines.values());
+  }
+
+  clearLegacyData(): void {
+    this.bloodlines.clear();
+    this.legacies.clear();
+    this.soulEchoRegistries.clear();
+    this.worldEndProphecies.clear();
+    this.reincarnationMetadata.clear();
+  }
+
+  reset(): void {
+    this.bloodlines.clear();
+    this.legacies.clear();
+    this.soulEchoRegistries.clear();
+    this.worldEndProphecies.clear();
+    this.reincarnationMetadata.clear();
+  }
+}
+
+let legacyEngineInstance: LegacyEngine | null = null;
+
+export function getLegacyEngine(seed: number = 12345): LegacyEngine {
+  if (!legacyEngineInstance) {
+    legacyEngineInstance = new LegacyEngine(seed);
+  }
+  return legacyEngineInstance;
+}
+
+export function resetLegacyEngine(): void {
+  if (legacyEngineInstance) {
+    legacyEngineInstance.reset();
+    legacyEngineInstance = null;
+  }
+}
+
+// EXPORTED STANDALONE FUNCTIONS FOR EPOCH TRANSITION TEST SUPPORT
+
 /**
- * Calculate Myth Status based on character achievements
- * Factors in:
- * - Playstyle profile completion (explorers get higher status)
- * - Faction reputation (positive reputation = higher myth)
- * - Character level / combat rank
- * - Unique deeds (quests completed, discoveries made)
+ * Calculate myth status from player achievements
  */
 export function calculateMythStatus(
   player: PlayerState,
@@ -72,60 +829,53 @@ export function calculateMythStatus(
 
   // Base from level
   const level = player.level || 1;
-  mythStatus += Math.min(40, level * 2); // Max 40 from level
+  mythStatus += Math.min(40, level * 2);
 
   // Faction reputation bonus
   if (player.factionReputation) {
-    const reputationBonus = Object.values(player.factionReputation).reduce((sum, rep) => {
+    const reputationBonus = (Object.values(player.factionReputation) as Array<number | undefined>).reduce((sum: number, rep: number | undefined): number => {
       if (rep > 0) sum += Math.min(10, rep / 10);
       return sum;
-    }, 0);
+    }, 0) as number;
     mythStatus += Math.min(20, reputationBonus);
   }
 
-  // Playstyle bonus - explorers and ritualists get bonus for discovery
+  // Playstyle bonus
   if (playstyle) {
     const explorerBonus = playstyle.characterProfile.explorationFrequency * 10;
     const ritualistBonus = playstyle.characterProfile.ritualFrequency * 8;
     mythStatus += explorerBonus + ritualistBonus;
   }
 
-  // Deed bonus - each deed adds 2-5 myth
+  // Deed bonus
   if (deeds && deeds.length > 0) {
     mythStatus += Math.min(15, deeds.length * 2);
   }
 
-  // Cap at 100
   return Math.min(100, mythStatus);
 }
 
 /**
- * Determine which perks and items transfer to the next generation
- * Legendary items (Relics) and high-level abilities persist
+ * Calculate inherited perks based on myth status
  */
-export function calculateInheritedPerks(
-  player: PlayerState,
-  mythStatus: number
-): string[] {
+export function calculateInheritedPerks(player: PlayerState, mythStatus: number): string[] {
   const perks: string[] = [];
 
-  // Higher myth status unlocks more perks
   if (mythStatus >= 30) {
-    perks.push('bloodline_resilience'); // +5% HP per generation
+    perks.push('bloodline_resilience');
   }
   if (mythStatus >= 50) {
-    perks.push('ancestral_wisdom');     // +2 max ability cooldown reduction
+    perks.push('ancestral_wisdom');
   }
   if (mythStatus >= 70) {
-    perks.push('legendary_bearing');    // NPCs start at +20 reputation
+    perks.push('legendary_bearing');
   }
   if (mythStatus >= 90) {
-    perks.push('myth_transcendence');   // Unlock special legendary quest line
+    perks.push('myth_transcendence');
   }
 
-  // Unlocked abilities transfer
   if (player.unlockedAbilities && player.unlockedAbilities.length > 0) {
-    player.unlockedAbilities.forEach(abilityId => {
+    player.unlockedAbilities.forEach((abilityId: string) => {
       if (abilityId.includes('legendary') || abilityId.includes('ancient')) {
         perks.push(`inherited_ability_${abilityId}`);
       }
@@ -136,8 +886,7 @@ export function calculateInheritedPerks(
 }
 
 /**
- * Determine which items transfer as heirlooms
- * Only Relic-tier and unique legendary items transfer
+ * Calculate inherited items as heirlooms
  */
 export function calculateInheritedItems(
   player: PlayerState,
@@ -147,10 +896,9 @@ export function calculateInheritedItems(
 
   if (!player.inventory) return items;
 
-  player.inventory.forEach(item => {
+  player.inventory.forEach((item: InventoryItem) => {
     if (item.kind === 'unique') {
-      // Relics and legendary unique items transfer
-      const template = (state as any).ITEM_TEMPLATES?.[item.itemId];
+      const template = state.ITEM_TEMPLATES?.[item.itemId];
       if (template?.rarity === 'legendary' || template?.rarity === 'artifact') {
         items.push({
           itemId: item.itemId,
@@ -164,8 +912,7 @@ export function calculateInheritedItems(
 }
 
 /**
- * Record a canonized character as a legacy impact
- * Called when character completes epoch or dies with significant achievements
+ * Canonize a character into legacy impact
  */
 export function canonizeCharacter(
   player: PlayerState,
@@ -181,33 +928,44 @@ export function canonizeCharacter(
   const inheritedItems = calculateInheritedItems(player, state);
 
   const impact: LegacyImpact = {
+    id: `legacy_${state.seed}_${pseudoTimestamp}`,
+    chronicleId: state.chronicleId,
     canonicalName: player.name || 'Unknown Hero',
+    bloodlineOrigin: (state.worldTemplate?.name) || 'Unknown',
     mythStatus,
-    inheritedPerks,
-    inheritedItems,
     deeds: deeds || [],
     factionInfluence: player.factionReputation ? { ...player.factionReputation } : {},
-    epochsLived: state.epochMetadata?.sequenceNumber || 1,
-    timestamp: pseudoTimestamp
+    inheritedPerks,
+    ancestralCurses: [],
+    epochsLived: (state.epochMetadata?.sequenceNumber) || 1,
+    totalGenerations: 1,
+    soulEchoCount: 0,
+    finalWorldState: 'neutral',
+    paradoxDebt: 0,
+    timestamp: pseudoTimestamp,
+    inheritedItems: inheritedItems.map(item => ({
+      itemId: item.itemId,
+      rarity: item.rarity,
+      ancestorName: player.name
+    }))
   };
 
   return impact;
 }
 
 /**
- * Apply legacy perks to a new character from bloodline history
+ * Apply legacy perks to a new character
  */
 export function applyLegacyPerks(player: PlayerState, legacy: LegacyImpact): PlayerState {
   player.bloodlineData ??= {
     canonicalName: legacy.canonicalName,
     inheritedPerks: legacy.inheritedPerks,
-    inheritedItems: legacy.inheritedItems,
     mythStatus: legacy.mythStatus,
     epochsLived: legacy.epochsLived,
     deeds: legacy.deeds
   };
 
-  // Apply stat bonuses from perks
+  // Apply stat bonuses
   if (legacy.inheritedPerks.includes('bloodline_resilience')) {
     if (player.maxHp) {
       player.maxHp = Math.floor(player.maxHp * 1.05);
@@ -218,682 +976,359 @@ export function applyLegacyPerks(player: PlayerState, legacy: LegacyImpact): Pla
   }
 
   if (legacy.inheritedPerks.includes('legendary_bearing')) {
-    // Start with +20 to all faction reputations
     player.factionReputation ??= {};
     Object.keys(legacy.factionInfluence).forEach(factionId => {
-      player.factionReputation![factionId] = (player.factionReputation![factionId] || 0) + 20;
-    });
-  }
-
-  // Add inherited items to starting inventory
-  player.inventory = player.inventory || [];
-  legacy.inheritedItems.forEach((item, index) => {
-    player.inventory!.push({
-      kind: 'unique',
-      itemId: item.itemId,
-      instanceId: `${item.itemId}-inherited-${legacy.timestamp}-${index}`,
-      metadata: {
-        experience: 0
+      if (player.factionReputation) {
+        player.factionReputation[factionId] = (player.factionReputation[factionId] || 0) + 20;
       }
     });
-  });
+  }
 
   return player;
 }
 
+export const LegacyEngineExports = {
+  getLegacyEngine,
+  resetLegacyEngine,
+  calculateMythStatus,
+  canonizeCharacter,
+  applyLegacyPerks
+};
+// ============================================================================
+// PHASE 30: LEGACY BRIDGE - LP ECONOMY & BLOODLINE PERK STORE
+// ============================================================================
+
 /**
- * Create a "Soul Echo" NPC that represents a canonized ancestor
- * This allows new characters to learn about legendary predecessors
+ * Bloodline Perk Store: Player's LP economy and ancestral boon purchases
+ * Phase 30 Task 1: Operationalize epoch transitions via Legacy Points (LP)
  */
+export interface BloodlinePerkStore {
+  playerId: string;
+  playerLegacyPoints: number;  // Earned from MythStatus + CanonicalDeeds
+  availablePerks: AncestralBoon[];  // Store catalog of purchasable boons
+  purchasedPerks: string[];  // IDs of perks selected by player
+  generationNumber: number;  // Which generation player is in
+  totalLPEarned: number;  // Lifetime LP across all characters in bloodline
+  lastUpdated: number;  // Timestamp of last LP calculation
+}
+
 /**
- * Create a Soul Echo NPC from legacy data
- * M32: Enhanced to support pooling ancestors from entire party
- * If party is provided, will select the greatest ancestor from all party members' legacies
+ * Calculate final session Legacy Points (LP) from MythStatus + CanonicalDeeds
+ * Formula: (MythStatus * 10) + (CanonicalDeeds.count * 5)
+ * 
+ * @param legacy - Previous generation's LegacyImpact
+ * @returns Number of Legacy Points earned in this session
  */
-export function createSoulEchoNpc(
-  legacy: LegacyImpact, 
-  epochNumber: number, 
-  party?: Party,
-  partyLegacies?: Map<string, LegacyImpact[]>
-): SoulEchoNpc {
-  // M32: If party and lineage data provided, select greatest ancestor
-  let selectedLegacy = legacy;
-  if (party && partyLegacies && partyLegacies.size > 0) {
-    // Collect all legacies from all party members
-    const allLegacies: LegacyImpact[] = Array.from(partyLegacies.values())
-      .flat()
-      .sort((a, b) => b.mythStatus - a.mythStatus); // Sort by myth status descending
+export function calculateSessionLP(legacy: LegacyImpact): number {
+  // MythStatus component: 0-100 scale → 0-1000 LP
+  const mythStatusLP = (legacy.mythStatus || 0) * 10;
+  
+  // CanonicalDeeds component: Count of grand deeds → 5 LP each
+  const canonicalDeeds = legacy.canonicalDeeds || legacy.deeds || [];
+  const deedsLP = canonicalDeeds.length * 5;
+  
+  // Total LP earned in session
+  const totalLP = mythStatusLP + deedsLP;
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(
+      `[LegacyBridge] LP Calculation: MythStatus(${legacy.mythStatus})*10=${mythStatusLP} + Deeds(${canonicalDeeds.length})*5=${deedsLP} = ${totalLP}LP`
+    );
+  }
+  
+  return totalLP;
+}
+
+/**
+ * Load or initialize Bloodline Perk Store for a player
+ * Creates store from legacy impact and available perk catalog
+ * 
+ * @param playerId - Current player ID
+ * @param previousLegacy - Legacy from previous generation (or undefined if first generation)
+ * @param generationNumber - Current generation number
+ * @returns BloodlinePerkStore initialized with LP and perks
+ */
+export function loadBloodlinePerkStore(
+  playerId: string,
+  previousLegacy: LegacyImpact | undefined,
+  generationNumber: number,
+  availablePerks?: AncestralBoon[]
+): BloodlinePerkStore {
+  let playerLP = 0;
+  let totalLPEarned = 0;
+  let inheritedPerkIds: string[] = [];
+  
+  // If there's a previous legacy, calculate LP earned
+  if (previousLegacy) {
+    playerLP = calculateSessionLP(previousLegacy);
+    totalLPEarned = playerLP;
     
-    // Select the greatest ancestor (highest myth status)
-    if (allLegacies.length > 0) {
-      selectedLegacy = allLegacies[0];
-    }
+    // Inherited perks from previous generation (free)
+    inheritedPerkIds = previousLegacy.inheritedPerks || [];
   }
-
-  return {
-    id: `soul_echo_${selectedLegacy.canonicalName.toLowerCase().replace(/ /g, '_')}_${selectedLegacy.timestamp}`,
-    name: selectedLegacy.canonicalName,
-    title: `Legendary ${selectedLegacy.epochsLived > 1 ? 'Ancestor' : 'Hero'}`,
-    description: `Spirit of a legendary hero with ${selectedLegacy.mythStatus} mythic stature. Deeds: ${selectedLegacy.deeds.join(', ') || 'Unknown'}`,
-    role: 'spirit_guide',
-    knownTo: party ? party.memberIds : ['all'], // M32: If party, known to all members; otherwise all
-    dialogue: {
-      greeting: `I am ${selectedLegacy.canonicalName}, who lived through ${selectedLegacy.epochsLived} era(s). My myth status was ${selectedLegacy.mythStatus}/100.`,
-      wisdom: `I passed on ${selectedLegacy.inheritedPerks.length} perks to my bloodline. Remember my deeds: ${selectedLegacy.deeds.join(', ')}`
-    }
-  };
-}
-
-/**
- * Pool legacy lineages from all party members
- * M32: Collects all ancestors from entire party for Soul Echo selection
- * Returns Map of memberId -> LegacyImpact[]
- */
-export function poolPartyAncestors(
-  party: Party | undefined,
-  playerLegacyHistory: LegacyImpact[],
-  allPartyLegacyHistories?: Record<string, LegacyImpact[]>
-): Map<string, LegacyImpact[]> {
-  const pooledLegacies = new Map<string, LegacyImpact[]>();
   
-  if (!party) {
-    return pooledLegacies;
+  // Default perk store if not provided
+  if (!availablePerks) {
+    availablePerks = generateDefaultPerkCatalog();
   }
-
-  // Add current player's legacy
-  pooledLegacies.set(party.memberIds[0], playerLegacyHistory);
-
-  // Add other party members' legacies if available
-  if (allPartyLegacyHistories) {
-    for (const memberId of party.memberIds) {
-      if (allPartyLegacyHistories[memberId]) {
-        pooledLegacies.set(memberId, allPartyLegacyHistories[memberId]);
-      }
-    }
-  }
-
-  return pooledLegacies;
-}
-
-/**
- * Calculate party bloodline strength (aggregate of all members)
- * M32: Pools myth status from entire party for party-wide narrative impact
- */
-export function calculatePartyBloodlineStrength(
-  party: Party | undefined,
-  partyLegacies?: Map<string, LegacyImpact[]>
-): number {
-  if (!party || !partyLegacies || partyLegacies.size === 0) {
-    return 0;
-  }
-
-  let totalMythStatus = 0;
-  let totalPerks = 0;
-  let legacyCount = 0;
-
-  const allLegacies = Array.from(partyLegacies.values()).flat();
-  for (const legacy of allLegacies) {
-    totalMythStatus += legacy.mythStatus;
-    totalPerks += legacy.inheritedPerks.length;
-    legacyCount++;
-  }
-
-  if (legacyCount === 0) return 0;
   
-  return Math.min(100, totalMythStatus / legacyCount + totalPerks * 2);
-}
-
-/**
- * Calculate total bloodline power
- * Used to flavor story/NPC dialogue about player ancestry
- */
-export function calculateBloodlineStrength(legacyImpacts: LegacyImpact[]): number {
-  if (legacyImpacts.length === 0) return 0;
-
-  const totalMythStatus = legacyImpacts.reduce((sum, impact) => sum + impact.mythStatus, 0);
-  const totalPerks = legacyImpacts.reduce((sum, impact) => sum + impact.inheritedPerks.length, 0);
-
-  return Math.min(100, totalMythStatus / legacyImpacts.length + totalPerks * 2);
-}
-
-/**
- * Ancestral Teaching System: Legendary Abilities from Soul Echo NPCs
- * 
- * Soul Echo NPCs can teach exclusive abilities if the player achieves high synchronization
- * Synchronization = myth status of the ancestor / 100 (0-100% scale)
- * 
- * Abilities cost a "Teaching" interaction and are permanently unlocked
- */
-export interface LegendaryAbility {
-  id: string;
-  name: string;
-  description: string;
-  mythRequirement: number; // Minimum myth status to unlock (e.g., 50)
-  cooldown: number;  // Ticks between uses
-  manaCost?: number;
-  effect: string; // What the ability does (flavor text + mechanical hook)
-  ancestorName: string; // Which ancestor teaches this
-  type: 'combat' | 'utility' | 'exploration' | 'ritual';
-}
-
-/**
- * Define legendary abilities available from ancestry
- */
-export const LEGENDARY_ABILITIES: LegendaryAbility[] = [
-  {
-    id: 'echo_strike',
-    name: 'Echo Strike',
-    description: 'Channel your ancestor\'s combat prowess to strike with phenomenal force',
-    mythRequirement: 50,
-    cooldown: 300,
-    manaCost: 40,
-    effect: 'Deal 150% weapon damage, ignoring 50% of target armor. Available only through ancestral teaching.',
-    ancestorName: 'First Ancestor',
-    type: 'combat'
-  },
-  {
-    id: 'ancestral_foresight',
-    name: 'Ancestral Foresight',
-    description: 'Glimpse future echoes through your bloodline\'s perception',
-    mythRequirement: 60,
-    cooldown: 600,
-    manaCost: 50,
-    effect: 'Reveal all hidden enemies in a 50-meter radius for 60 seconds. Gain +20% dodge chance.',
-    ancestorName: 'First Ancestor',
-    type: 'utility'
-  },
-  {
-    id: 'spirit_walk',
-    name: 'Spirit Walk',
-    description: 'Project your consciousness to distant ancestors\' locations',
-    mythRequirement: 70,
-    cooldown: 1200,
-    manaCost: 80,
-    effect: 'Teleport to any previously discovered location marked by ancestors. Leaves no trace.',
-    ancestorName: 'First Ancestor',
-    type: 'exploration'
-  },
-  {
-    id: 'ritual_resurrection',
-    name: 'Ritual Resurrection',
-    description: 'Call upon your bloodline to restore you from the brink of death',
-    mythRequirement: 80,
-    cooldown: 3600,
-    manaCost: 100,
-    effect: 'Restore to full HP and remove all negative status effects. Can only be used once per rest.',
-    ancestorName: 'First Ancestor',
-    type: 'ritual'
-  }
-];
-
-/**
- * Get teachable legendary abilities for a given ancestor myth status
- */
-export function getTeachableAbilities(mythStatus: number): LegendaryAbility[] {
-  // Synchronization is mythStatus / 100, so use plain mythStatus for comparison
-  return LEGENDARY_ABILITIES.filter(ability => ability.mythRequirement <= mythStatus);
-}
-
-/**
- * Check if player can learn a specific legendary ability from a Soul Echo
- */
-export function canLearnLegendaryAbility(
-  ancestorMythStatus: number,
-  targetAbilityId: string,
-  playerUnlockedAbilities: string[] = []
-): { canLearn: boolean; reason?: string } {
-  // Check if already learned
-  if (playerUnlockedAbilities.includes(targetAbilityId)) {
-    return { canLearn: false, reason: 'You have already learned this ability from your ancestor.' };
-  }
-
-  // Find the ability
-  const ability = LEGENDARY_ABILITIES.find(a => a.id === targetAbilityId);
-  if (!ability) {
-    return { canLearn: false, reason: 'This ability does not exist in ancestral teaching.' };
-  }
-
-  // Check myth requirement
-  if (ancestorMythStatus < ability.mythRequirement) {
-    const syncPercent = Math.floor((ancestorMythStatus / ability.mythRequirement) * 100);
-    return {
-      canLearn: false,
-      reason: `Your ancestor's legend is not strong enough yet. (${syncPercent}% synchronized - need ${ability.mythRequirement})`
-    };
-  }
-
-  return { canLearn: true };
-}
-
-/**
- * Record that a player has learned a legendary ability
- */
-export function learnLegendaryAbility(
-  playerState: any,
-  abilityId: string
-): any {
-  return {
-    ...playerState,
-    unlockedSoulEchoAbilities: [
-      ...(playerState.unlockedSoulEchoAbilities || []),
-      abilityId
-    ]
+  const store: BloodlinePerkStore = {
+    playerId,
+    playerLegacyPoints: playerLP,
+    availablePerks,
+    purchasedPerks: inheritedPerkIds,  // Start with inherited perks
+    generationNumber,
+    totalLPEarned,
+    lastUpdated: Date.now()
   };
+  
+  return store;
 }
 
 /**
- * Get available teaching dialogue for Soul Echo NPCs
+ * Generate default catalog of ancestral boons for perk store
+ * These are purchasable with Legacy Points
  */
-export function getSoulEchoTeachingDialogue(
-  npcName: string,
-  ancestorMythStatus: number,
-  teachableAbilities: LegendaryAbility[]
-): string {
-  const syncPercent = Math.floor((ancestorMythStatus / 100) * 100);
-
-  if (teachableAbilities.length === 0) {
-    return `I see your bloodline is still weak, young one. Prove yourself worthy, and I shall teach you the ways of our ancestors. (${syncPercent}% synchronized)`;
-  }
-
-  const nextAbility = teachableAbilities[0];
-  return `The bond between us strengthens. I can now teach you "${nextAbility.name}" - a technique passed down through our lineage. (${syncPercent}% synchronized)`;
-}
-
-/**
- * Social Echoes: Asynchronous Multiplayer (M29)
- * 
- * Import a foreign player's legacy into the current world as a "Visiting Legend" NPC.
- * This creates an NPC with the foreign legend's deeds, items, and unique dialogue.
- */
-export interface ForeignLegacyImport {
-  legacyData: LegacyImpact;
-  fromWorldName: string;     // e.g., "Traveler's Luminaria"
-  fromPlayerName: string;    // Name of player this came from
-  importedAt: number;        // Timestamp of import
-}
-
-/**
- * Import a foreign player's legacy and create a "Visiting Legend" NPC
- * Returns NPC object ready to be spawned in the world
- */
-export function importForeignLegacy(
-  legacyData: LegacyImpact,
-  worldName: string = "Unknown Strand",
-  playerName: string = "The Wanderer"
-): SoulEchoNpc & { _foreignLegacy: ForeignLegacyImport; _visitingLegend: boolean } {
-  const deedsDescription = legacyData.deeds?.join("; ") || "Their deeds are shrouded in mystery.";
-  const gearList = legacyData.inheritedItems?.map(item => item.itemId).join(", ") || "They carry nothing of note.";
-
-  return {
-    id: `visiting_legend_${Date.now()}`,
-    name: `${legacyData.canonicalName} the Wanderer`,
-    title: `Visitor from ${worldName}`,
-    description: `A legendary figure from another strand of fate. They speak of deeds most extraordinary: ${deedsDescription}`,
-    role: 'visiting_legend',
-    knownTo: [], // Universally known
-    dialogue: {
-      greeting: `Hail, traveler. I am ${legacyData.canonicalName}, drawn from a parallel world. In my strand, I was known for: ${deedsDescription}`,
-      wisdom: `The threads of fate are many. In my world, I learned that ${legacyData.inheritedPerks?.[0]?.toLocaleLowerCase() || 'even legends must persevere'}. Choose your path carefully, for each choice ripples across all strands.`
+function generateDefaultPerkCatalog(): AncestralBoon[] {
+  return [
+    {
+      id: 'perk_ancestral_resilience',
+      name: 'Bloodline Resilience',
+      bonusType: 'stat_boost',
+      targetStat: 'maxHp',
+      magnitude: 15,  // +15% max HP
+      duration: Infinity,  // Permanent
+      description: 'Base HP increased by ancestral endurance'
     },
-    stats: {
-      str: 14,
-      agi: 13,
-      int: 16,
-      cha: 15,
-      end: 14,
-      luk: 12
+    {
+      id: 'perk_ancestral_wisdom',
+      name: 'Ancestral Wisdom',
+      bonusType: 'stat_boost',
+      targetStat: 'intellect',
+      magnitude: 10,
+      duration: Infinity,
+      description: 'Intellect stat increased by inherited knowledge'
     },
-    hp: 60,
-    maxHp: 60,
-    _foreignLegacy: {
-      legacyData,
-      fromWorldName: worldName,
-      fromPlayerName: playerName,
-      importedAt: Date.now()
+    {
+      id: 'perk_legendary_bearing',
+      name: 'Legendary Bearing',
+      bonusType: 'faction_bonus',
+      magnitude: 25,  // +25 faction reputation
+      duration: Infinity,
+      description: 'Starting faction reputation increased from ancestor\'s legacy'
     },
-    _visitingLegend: true,
-    _soulEchoMemory: `I remember the deeds of ${legacyData.canonicalName}...`
-  };
-}
-
-/**
- * Export a player's legacy as a portable data structure
- * This can be shared/imported by other players
- */
-export function exportLegacyAsJson(
-  legacyImpact: LegacyImpact,
-  currentWorldName: string,
-  playerName: string
-): string {
-  const exportObj = {
-    version: '1.0',
-    legacyData: legacyImpact,
-    worldName: currentWorldName,
-    playerName: playerName,
-    exportedAt: new Date().toISOString(),
-    exportFormat: 'SOUL_STRAND_ECHO'
-  };
-
-  return JSON.stringify(exportObj, null, 2);
-}
-
-/**
- * Import a JSON-encoded legacy string
- */
-export function parseLegacyFromJson(jsonString: string): {
-  legacy: LegacyImpact;
-  worldName: string;
-  playerName: string;
-} | null {
-  try {
-    const parsed = JSON.parse(jsonString);
-    if (parsed.exportFormat !== 'SOUL_STRAND_ECHO') {
-      return null; // Wrong format
+    {
+      id: 'perk_mythic_aura',
+      name: 'Mythic Aura',
+      bonusType: 'stat_boost',
+      targetStat: 'charisma',
+      magnitude: 12,
+      duration: Infinity,
+      description: 'Charisma boosted by legendary presence'
+    },
+    {
+      id: 'perk_echo_insight',
+      name: 'Echo\'s Insight',
+      bonusType: 'ability_unlock',
+      magnitude: 0,
+      duration: Infinity,
+      description: 'Unlock communication with ancestral soul echoes'
+    },
+    {
+      id: 'perk_heirloom_blessing',
+      name: 'Heirloom\'s Blessing',
+      bonusType: 'equipment_bonus',
+      magnitude: 20,  // +20% equipment effectiveness
+      duration: Infinity,
+      description: 'Inherited artifacts gain enhanced effectiveness'
     }
-    return {
-      legacy: parsed.legacyData,
-      worldName: parsed.worldName,
-      playerName: parsed.playerName
-    };
-  } catch (e) {
-    console.error('Failed to parse legacy JSON:', e);
+  ];
+}
+
+/**
+ * Purchase a perk from the Bloodline Perk Store using Legacy Points
+ * 
+ * @param store - Current perk store
+ * @param perkId - ID of perk to purchase
+ * @param lpCost - LP cost (default variable based on perk tier)
+ * @returns Updated store if purchase successful, null if insufficient LP
+ */
+export function purchasePerk(
+  store: BloodlinePerkStore,
+  perkId: string,
+  lpCost?: number
+): BloodlinePerkStore | null {
+  const perk = store.availablePerks.find(p => p.id === perkId);
+  
+  if (!perk) {
+    console.warn(`[BloodlinePerkStore] Perk not found: ${perkId}`);
     return null;
   }
+  
+  // Already purchased
+  if (store.purchasedPerks.includes(perkId)) {
+    console.warn(`[BloodlinePerkStore] Perk already purchased: ${perkId}`);
+    return store;
+  }
+  
+  // Calculate cost if not provided (1 LP per magnitude point, minimum 10)
+  const cost = lpCost !== undefined ? lpCost : Math.max(10, Math.floor(perk.magnitude * 2));
+  
+  // Check if sufficient LP
+  if (store.playerLegacyPoints < cost) {
+    console.warn(
+      `[BloodlinePerkStore] Insufficient LP: need ${cost}, have ${store.playerLegacyPoints}`
+    );
+    return null;
+  }
+  
+  // Deduct LP and add perk
+  store.playerLegacyPoints -= cost;
+  store.purchasedPerks.push(perkId);
+  store.lastUpdated = Date.now();
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(
+      `[BloodlinePerkStore] Purchased "${perk.name}" for ${cost} LP. Remaining: ${store.playerLegacyPoints}LP`
+    );
+  }
+  
+  return store;
 }
 
 /**
- * Generational NPC Lineages (M29: Opinion Inheritance)
+ * Apply all purchased bloodline perks to a new character
+ * Called during character initialization
  * 
- * NPCs can have descendants in future epochs. If the player helped an ancestor,
- * the descendant starts with a "Legacy Bonus" to reputation and special dialogue.
+ * @param player - New character to receive perks
+ * @param store - BloodlinePerkStore with purchased perks
+ * @returns Player state with perks applied
  */
-export interface NpcLineage {
-  lineageId: string;            // Unique identifier for NPC family line
-  ancestorId: string;           // Original NPC from Epoch I
-  ancestorName: string;         // Display name
-  generationNumber: number;     // 1 for original, 2 for child, etc.
-  descendants: Array<{
-    npcId: string;
-    epochId: string;
-    generationNumber: number;
-  }>;
-}
-
-/**
- * Calculate legacy reputation bonus for NPC descendants
- * If the player helped an ancestor, descendants get a head start
- */
-export function calculateAncestryBonus(
-  playerReputation: number,
-  generationDistance: number  // How many epochs since ancestor
-): number {
-  // Reputation decays over generations but remains positive if helpful ancestor
-  if (playerReputation <= 0) return 0;
-
-  // Bonus calculation: original rep * (1 - generation_decay)
-  // Gen 1 (current): full bonus
-  // Gen 2: 80% bonus
-  // Gen 3+: 50% bonus
-  const decayRate = Math.min(0.5, generationDistance * 0.15);
-  const bonus = playerReputation * (1 - decayRate);
-
-  return Math.floor(bonus);
-}
-
-/**
- * Generate legacy-aware dialogue for NPC descendants
- */
-export function getAncestryDialogue(
-  npcName: string,
-  ancestorName: string,
-  playerReputation: number
-): string {
-  if (playerReputation <= 0) {
-    return `${npcName}? My ancestor ${ancestorName} never mentioned your name...`;
-  }
-
-  if (playerReputation >= 75) {
-    return `You're the one my ancestor ${ancestorName} spoke of with such reverence! They said you saved everything. We owe you a great debt.`;
-  }
-
-  if (playerReputation >= 50) {
-    return `My grandfather ${ancestorName} often spoke kindly of you. You were good to our family. That means something.`;
-  }
-
-  return `My ancestor ${ancestorName} mentioned you once. They seemed to respect your character.`;
-}
-
-/**
- * Apply ancestry bonus to NPC reputation in next epoch
- * Called during chronicle seeding to boost descended NPCs
- */
-export function applyAncestryBonusToNpc(
-  npc: any,
-  playerLegacyReps: Record<string, number>,
-  generationDistance: number = 1
-): any {
-  if (!npc.lineageId) return npc;
-
-  // Find if player had relationship with ancestor
-  const ancestorRep = playerLegacyReps[npc.lineageId] || 0;
-  const bonus = calculateAncestryBonus(ancestorRep, generationDistance);
-
-  if (bonus > 0) {
-    return {
-      ...npc,
-      _ancestryBonus: bonus,
-      _ancestorName: npc._ancestorName,
-      // Dialogue will be injected by AI DM using getAncestryDialogue()
-      reputation: (npc.reputation || 0) + bonus
-    };
-  }
-
-  return npc;
-}
-
-// ============================================================================
-// M31 Task 6: The "Observer's Prophecy" (Meta-Narrative Capstone)
-// ============================================================================
-
-/**
- * Represents a prophecy about the bloodline's destiny
- */
-export interface WorldEndProphecy {
-  title: string;
-  prophecyText: string;
-  sentiment: 'dark' | 'neutral' | 'hopeful' | 'transcendent';
-  bloodlinePower: number;         // 0-100 scale of mythStatus influence
-  themeAdjective: string;          // Descriptive word for the age
-  symbolicEnding: string;          // What fate awaits
-  actionImperative: string;        // What should be done next
-}
-
-/**
- * Generate a world-end prophecy based on the bloodline's accumulated myth status
- *
- * This represents the climactic narrative evaluation of the entire saga.
- * As generations pass and accumulate myth, the prophecy shifts from:
- * - Dark Prophecy (0-25 myth): "All will fall to shadow"
- * - Uncertain Prophecy (25-50 myth): "The outcome remains unwritten"
- * - Hopeful Prophecy (50-75 myth): "A light persists against the dark"
- * - Transcendent Prophecy (75-100 myth): "A new age shall dawn from the ashes"
- *
- * The prophecy is updated each epoch, changing as the bloodline's legend grows.
- */
-export function generateWorldEndProphecy(bloodlineProfile: BloodlineProfile): WorldEndProphecy {
-  const totalMythStatus = bloodlineProfile.totalMythStatus;
-  const generationCount = bloodlineProfile.legacyImpacts.length;
-
-  // Normalize myth status to 0-100 scale
-  const maxPossibleMyth = 100 * generationCount; // Each generation can be 0-100
-  const normalizedMyth = Math.min(100, (totalMythStatus / maxPossibleMyth) * 100);
-
-  // Determine sentiment and tone based on myth status
-  let sentiment: 'dark' | 'neutral' | 'hopeful' | 'transcendent';
-  let themeAdjective: string;
-  let prophecyText: string;
-  let symbolicEnding: string;
-  let actionImperative: string;
-
-  if (normalizedMyth < 25) {
-    // Dark prophecy: tragedy and failure
-    sentiment = 'dark';
-    themeAdjective = 'Twilight';
-    prophecyText = `
-**The Prophecy of Eternal Dusk**
-
-The thread spun by your bloodline grows thin and frayed. With each passing age, the light dims further. 
-Generations rise and fall like waves upon a darkening shore, yet the darkness only deepens.
-
-The world remembers your names—but as warnings. Cautionary echoes of those who strove and failed.
-
-There are no heroes coming. There was never salvation written in the stars.
-
-The Age of Shadows closes upon itself.
-    `.trim();
-    symbolicEnding = 'The extinction of all things in eternal darkness';
-    actionImperative =
-      'Prepare for the end. All things must pass. Your defiance cannot change fate itself.';
-  } else if (normalizedMyth < 50) {
-    // Neutral prophecy: unresolved struggle
-    sentiment = 'neutral';
-    themeAdjective = 'Twilight';
-    prophecyText = `
-**The Prophecy of Uncertain Resolution**
-
-Your bloodline has tasted both triumph and despair. The scales remain balanced—neither victory nor defeat is assured.
-
-Each generation adds their weight, each choice matters. Yet the pattern remains unclear.
-
-Will the accumulated courage of your ancestors tip the scales toward light? Or will sorrow consume all?
-
-The prophecy remains inscribed in uncertainty.
-    `.trim();
-    symbolicEnding = 'A world at the precipice, balanced between salvation and ruin';
-    actionImperative = 'Continue striving. History does not write itself. Your choices still matter.';
-  } else if (normalizedMyth < 75) {
-    // Hopeful prophecy: light persists
-    sentiment = 'hopeful';
-    themeAdjective = 'Emerging Dawn';
-    prophecyText = `
-**The Prophecy of Persistence**
-
-Though shadows gather thick, a light persists. Generation after generation, your bloodline has refused to break.
-
-The accumulated deeds of your ancestors shine like stars captured in crystal. In the darkest hours, that light burns brightest.
-
-The darkness recedes, step by step.
-
-A new age stirs beneath the dying one.
-    `.trim();
-    symbolicEnding = 'The world transforms, scarred but renewed, under a new sky';
-    actionImperative =
-      'Continue the work begun by those before you. The light is real. It can yet prevail.';
-  } else {
-    // Transcendent prophecy: transformation and renewal
-    sentiment = 'transcendent';
-    themeAdjective = 'Ascendant';
-    prophecyText = `
-**The Prophecy of Transcendence**
-
-Your bloodline has become a beacon. Across epochs, through impossible trials, you have persisted—and more than persisted: you have *transformed*.
-
-The accumulated wisdom and courage of your ancestors has woven a tapestry of such power that reality itself takes notice.
-
-The old world dissolves. In its place, something unprecedented emerges.
-
-You are no longer merely surviving the end of ages. You are midwives to a new cosmos.
-    `.trim();
-    symbolicEnding = 'The birth of a new age, forever changed by your bloodline\'s touch';
-    actionImperative = 'Embrace what you have become. The world waits for the next chapter you will write.';
-  }
-
-  return {
-    title: sentiment === 'dark' ? 'The Final Prophecy' : 'The Turning Prophecy',
-    prophecyText,
-    sentiment,
-    bloodlinePower: normalizedMyth,
-    themeAdjective,
-    symbolicEnding,
-    actionImperative
+export function applyBloodlinePerks(
+  player: PlayerState,
+  store: BloodlinePerkStore
+): PlayerState {
+  // Initialize bloodline data
+  player.bloodlineData ??= {
+    canonicalName: 'Unknown Ancestor',
+    inheritedPerks: store.purchasedPerks,
+    mythStatus: 0,
+    epochsLived: store.generationNumber,
+    deeds: [],
+    legacyPoints: store.playerLegacyPoints
   };
-}
-
-/**
- * Format prophecy for display in ChronicleScroll UI
- */
-export function formatProphecyForDisplay(prophecy: WorldEndProphecy): string {
-  return `
-# ${prophecy.title}
-
-*Bloodline Power: ${Math.floor(prophecy.bloodlinePower)}%*
-
-${prophecy.prophecyText}
-
----
-
-**The ${prophecy.themeAdjective} Awaits:**
-${prophecy.symbolicEnding}
-
-**What Must Be Done:**
-${prophecy.actionImperative}
-  `.trim();
-}
-
-/**
- * Get color for prophecy display based on sentiment
- */
-export function getProphecyColor(sentiment: string): string {
-  const colors: Record<string, string> = {
-    dark: '#8b0000',        // Dark red
-    neutral: '#808080',     // Gray
-    hopeful: '#4da6ff',     // Light blue
-    transcendent: '#ffd700' // Gold
-  };
-  return colors[sentiment] ?? '#999999';
-}
-
-/**
- * Get icon emoji for prophecy sentiment
- */
-export function getProphecyIcon(sentiment: string): string {
-  const icons: Record<string, string> = {
-    dark: '🌑',             // New moon
-    neutral: '⚖️',         // Scales
-    hopeful: '🌅',         // Sunrise
-    transcendent: '✨'     // Sparkles
-  };
-  return icons[sentiment] ?? '?';
-}
-
-/**
- * Calculate minimum myth needed to reach next prophecy tier
- */
-export function getMythRequiredForNextTier(currentMyth: number, totalGenerations: number): number {
-  const maxMyth = 100 * totalGenerations;
-  const tiers = [0.25 * maxMyth, 0.5 * maxMyth, 0.75 * maxMyth, maxMyth];
-
-  for (const tier of tiers) {
-    if (currentMyth < tier) {
-      return Math.ceil(tier - currentMyth);
+  
+  // Apply each purchased perk
+  for (const perkId of store.purchasedPerks) {
+    const perk = store.availablePerks.find(p => p.id === perkId);
+    if (!perk) continue;
+    
+    switch (perk.bonusType) {
+      case 'stat_boost':
+        applyStatBoost(player, perk);
+        break;
+      case 'faction_bonus':
+        applyFactionBonus(player, perk);
+        break;
+      case 'ability_unlock':
+        applyAbilityUnlock(player, perk);
+        break;
+      case 'equipment_bonus':
+        applyEquipmentBonus(player, perk);
+        break;
     }
   }
-
-  return 0; // Already at max
+  
+  return player;
 }
 
 /**
- * Get prophecy advice based on current trajectory
+ * Apply stat boost bonus from ancestral perk
  */
-export function getProphecyAdvice(prophecy: WorldEndProphecy): string {
-  if (prophecy.sentiment === 'dark') {
-    return 'The darkness deepens. But every hero begins in darkness. Perhaps your bloodline will be different.';
+function applyStatBoost(player: PlayerState, perk: AncestralBoon): void {
+  if (!perk.targetStat) return;
+  
+  const stat = (player.stats as Record<string, number>)?.[perk.targetStat];
+  if (stat === undefined) return;
+  
+  const boost = Math.floor(stat * (perk.magnitude / 100));
+  (player.stats as Record<string, number>)[perk.targetStat] = stat + boost;
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[BloodlinePerks] Applied ${perk.name}: +${boost} to ${perk.targetStat}`);
   }
-  if (prophecy.sentiment === 'neutral') {
-    return 'The outcome hangs in balance. The next generation is crucial. What will they choose?';
+}
+
+/**
+ * Apply faction reputation bonus from ancestral perk
+ */
+function applyFactionBonus(player: PlayerState, perk: AncestralBoon): void {
+  if (!player.factionReputation) {
+    player.factionReputation = {};
   }
-  if (prophecy.sentiment === 'hopeful') {
-    return 'Your ancestors have lit a fire. Keep it burning. The world watches to see if it grows into a blaze.';
+  
+  // Apply bonus to all factions (or primary faction if only one)
+  Object.keys(player.factionReputation).forEach(factionId => {
+    if (player.factionReputation) {
+      player.factionReputation[factionId] = (player.factionReputation[factionId] || 0) + perk.magnitude;
+    }
+  });
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[BloodlinePerks] Applied ${perk.name}: +${perk.magnitude} rep to all factions`);
   }
-  return 'The impossible has become inevitable. Your bloodline transcends the mortal struggle. What now?';
+}
+
+/**
+ * Apply special ability unlock from ancestral perk
+ */
+function applyAbilityUnlock(player: PlayerState, perk: AncestralBoon): void {
+  if (!player.unlockedAbilities) {
+    player.unlockedAbilities = [];
+  }
+  
+  const abilityId = `inherited_${perk.id}`;
+  if (!player.unlockedAbilities.includes(abilityId)) {
+    player.unlockedAbilities.push(abilityId);
+  }
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[BloodlinePerks] Applied ${perk.name}: Unlocked ability ${abilityId}`);
+  }
+}
+
+/**
+ * Apply equipment effectiveness bonus from ancestral perk
+ */
+function applyEquipmentBonus(player: PlayerState, perk: AncestralBoon): void {
+  if (!player.bloodlineData) {
+    player.bloodlineData = {
+      canonicalName: 'Unknown Ancestor',
+      inheritedPerks: [],
+      mythStatus: 0,
+      epochsLived: 1,
+      deeds: [],
+      equipmentBonusMultiplier: perk.magnitude / 100
+    };
+  } else {
+    player.bloodlineData.equipmentBonusMultiplier = (player.bloodlineData.equipmentBonusMultiplier || 1) * (1 + perk.magnitude / 100);
+  }
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[BloodlinePerks] Applied ${perk.name}: Equipment effectiveness +${perk.magnitude}%`);
+  }
+}
+
+/**
+ * Serialize BloodlinePerkStore to JSON for save/load
+ */
+export function serializePerkStore(store: BloodlinePerkStore): string {
+  return JSON.stringify(store);
+}
+
+/**
+ * Deserialize BloodlinePerkStore from JSON
+ */
+export function deserializePerkStore(json: string): BloodlinePerkStore {
+  return JSON.parse(json);
 }

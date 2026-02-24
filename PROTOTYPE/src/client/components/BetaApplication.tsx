@@ -10,20 +10,44 @@
  * Production-ready for Beta launch with real-time state synchronization.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { WorldState } from '../../engine/worldEngine';
+import { calculateParadoxLevel, getAtmosphereState } from '../../engine/worldEngine';
 import type { TradeState } from '../../engine/multiplayerEngine';
-import type { AtomicTrade } from '../../engine/atomicTradeEngine';
+// import type { AtomicTrade } from '../../engine/atomicTradeEngine';
+
+// Temporary type definition
+type AtomicTrade = {
+  tradeId: string;
+  stage: 'proposed' | 'negotiating' | 'staged' | 'committing' | 'completed' | 'cancelled' | 'failed';
+  initiatorId: string;
+  responderId: string;
+  initiatorItems: any[];
+  responderItems: any[];
+  createdAt: number;
+  timeoutAt: number;
+  failureReason?: string;
+};
 import BetaGlobalHeader from './BetaGlobalHeader';
 import ErrorBoundary from './ErrorBoundary';
 import CoDmDashboard from './CoDmDashboard';
 import TutorialOverlayComponent from './TutorialOverlay';
+import { AtmosphericFilterProvider } from './AtmosphericDebugVisual';
+import ModeratorConsole from './ModeratorConsole';
+import RetentionDashboard from './RetentionDashboard';
+import AnalyticsDashboard from './AnalyticsDashboard';
+import { M69ErrorBoundary, M70ErrorBoundary, AnalyticsErrorBoundary } from './ErrorBoundaryWrappers';
+import { useBroadcastListener, initBroadcastEngine } from '../../engine/broadcastEngine';
 import {
   initializeTutorialState,
   detectMilestones,
   updateTutorialState,
   getNextTutorialOverlay,
   dismissTutorialOverlay,
+  getTutorialArchive,
+  startNewPlayerPrologue,
+  isTutorialThrottled,
+  getTier3Progress,
   type TutorialState
 } from '../../engine/tutorialEngine';
 import { themeManager } from '../../devTools/epochThemeManager';
@@ -31,17 +55,23 @@ import { getEpochSyncEngine } from '../../engine/epochSyncEngine';
 // M42 Phase 2 Imports
 import { TradeManager } from '../../engine/tradeManager';
 import TradeOverlay from './TradeOverlay';
-import WorldStateTransitionOverlay, { useWorldStateTransition } from './WorldStateTransitionOverlay';
+import WorldStateTransitionOverlay from './WorldStateTransitionOverlay';
+import { transitionEngine, type TransitionMetadata } from '../../engine/transitionEngine';
 import { createPhantomEngine, startPhantomEngine, stopPhantomEngine, type PhantomEngineState } from '../../engine/phantomEngine';
 import { triggerDiplomatMilestone, triggerWeaverMilestone } from '../../engine/tutorialEngine';
 import { getDiagnosticsSnapshot, type DiagnosticsSnapshot } from '../../engine/diagnosticsEngine';
-import '../../styles/epoch-theme.css';
+// M42 Phase 4 Imports
+import DirectorConsole from './DirectorConsole';
+import { liveOpsEngine } from '../../engine/liveOpsEngine';
+import NarrativeInterventionOverlay, { useNarrativeWhispers, type DirectorWhisper } from './NarrativeInterventionOverlay';
+// Phase 13: Ascension Protocol
+import AscensionProtocolView from './AscensionProtocolView';
 
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
-type MainTab = 'world' | 'social' | 'arcane' | 'records';
+type MainTab = 'world' | 'social' | 'arcane' | 'records' | 'moderation' | 'retention' | 'analytics';
 
 export interface BetaApplicationProps {
   initialState: WorldState;
@@ -69,6 +99,7 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   const [state, setState] = useState<WorldState>(initialState);
   const [activeMainTab, setActiveMainTab] = useState<MainTab>('world');
   const [isDirector, setIsDirector] = useState(false);
+  const [isDirectorConsoleOpen, setIsDirectorConsoleOpen] = useState(false);
   const [tutorialState, setTutorialState] = useState<TutorialState>(initializeTutorialState());
   const [currentTutorialOverlay, setCurrentTutorialOverlay] = useState(getNextTutorialOverlay(tutorialState));
 
@@ -93,6 +124,7 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
 
   // M42 Phase 2: Cinematic Transitions
   const [currentTransition, setCurrentTransition] = useState<TransitionMetadata | null>(null);
+  const [lastEpochId, setLastEpochId] = useState<string | undefined>(state?.epochId);
 
   // M42 Phase 2: Phantom System
   const [phantomEngine] = useState<PhantomEngineState>(() =>
@@ -116,17 +148,39 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   );
 
   // Faction AI diagnostics (M37)
-  const [factionDiagnostics] = useState<any>(null);
+  const [factionDiagnostics, setFactionDiagnostics] = useState<any>(null);
 
   // Macro Event diagnostics (M37)
-  const [macroEventDiagnostics] = useState<any>(null);
+  const [macroEventDiagnostics, setMacroEventDiagnostics] = useState<any>(null);
+
+  // M42 Phase 4 Task 4.3: Narrative Intervention Overlay
+  const { whisperQueue, addWhisper, removeWhisper } = useNarrativeWhispers();
 
   // Multiplayer info (M36)
-  const [consensusDiagnostics] = useState<any>(null);
+  const [consensusDiagnostics, setConsensusDiagnostics] = useState<any>(null);
+
+  // Phase 13: Ascension Protocol
+  const [showAscensionOverlay, setShowAscensionOverlay] = useState(false);
+  const [pendingAscensionData, setPendingAscensionData] = useState<any>(null);
+
+  // Phase 24 Task 4: Tutorial & Onboarding System
+  const [prologatePlayed, setProloguePlayed] = useState(false);
+  const [tutorialArchive, setTutorialArchive] = useState(getTutorialArchive(tutorialState));
+
+  // Phase 2: Real-time broadcast listeners for M69/M70
+  const broadcastEvents = useBroadcastListener('*');
+  const [recentReports, setRecentReports] = useState<any[]>([]);
+  const [flaggedMessages, setFlaggedMessages] = useState<any[]>([]);
+  const [anomalies, setAnomalies] = useState<any[]>([]);
 
   // =========================================================================
   // EFFECTS
   // =========================================================================
+
+  useEffect(() => {
+    // Initialize broadcast engine on mount
+    initBroadcastEngine();
+  }, []);
 
   useEffect(() => {
     if (!controller) return;
@@ -168,6 +222,13 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   // M40 Task 4: Keyboard navigation (1-4 for tab switching, Shift+D for Director Mode)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // M42 Phase 4: Director Console toggle (Ctrl+Shift+D)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        setIsDirectorConsoleOpen(prev => !prev);
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) return; // Don't interfere with system shortcuts
 
       // Director Mode toggle: Shift+D
@@ -182,6 +243,9 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
         '2': 'social',
         '3': 'arcane',
         '4': 'records',
+        '5': 'moderation',
+        '6': 'retention',
+        '7': 'analytics',
       };
 
       if (tabMap[e.key]) {
@@ -204,17 +268,53 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
       const updated = updateTutorialState(tutorialState, detected, state.tick || 0);
       setTutorialState(updated);
       setCurrentTutorialOverlay(getNextTutorialOverlay(updated));
+      
+      // Phase 24: Update tutorial archive
+      setTutorialArchive(getTutorialArchive(updated));
     }
   }, [state?.tick]); // Re-run when tick changes (new event occurred)
+
+  // Phase 24 Task 4: Prologue trigger on character creation
+  useEffect(() => {
+    if (!state || state.needsCharacterCreation === true || prologatePlayed) return;
+
+    // Character just created - trigger prologue whispers
+    if (state.player && state.player.level === 1 && state.tick === 0) {
+      setProloguePlayed(true);
+
+      // Get prologue whisper sequence from tutorialEngine
+      const prologueSequence = startNewPlayerPrologue();
+
+      // Add whispers to queue with appropriate delays
+      prologueSequence.forEach((whisper) => {
+        setTimeout(() => {
+          addWhisper(
+            whisper.message,
+            'director_primary',
+            'normal',
+            1500 // Show for 1.5 seconds
+          );
+        }, whisper.delayMs);
+      });
+
+      console.log('[BetaApp] Phase 24: Prologue sequence initiated');
+    }
+  }, [state?.needsCharacterCreation, state?.player?.level, state?.tick, prologatePlayed, addWhisper]);
 
   // M41 Task 5: Epoch-based theme morphing
   useEffect(() => {
     if (!state?.epochId) return;
 
     // Apply theme based on current epoch (1, 2, or 3)
-    const epoch = state.epochId as 1 | 2 | 3;
-    if (epoch >= 1 && epoch <= 3) {
-      themeManager.applyTheme(epoch, true);
+    // Extract epoch number from string like "epoch_i_fracture"
+    const epochMatch = state.epochId.match(/epoch_([iv]+)_/);
+    if (epochMatch) {
+      const romanNumeral = epochMatch[1].toLowerCase();
+      const epochMap: Record<string, 1 | 2 | 3> = { 'i': 1, 'ii': 2, 'iii': 3 };
+      const epoch = epochMap[romanNumeral];
+      if (epoch) {
+        themeManager.applyTheme(epoch, true);
+      }
     }
   }, [state?.epochId]); // Re-run whenever epoch changes
 
@@ -286,10 +386,10 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     // Detect epoch shift and trigger transition overlay
     if (lastEpochId !== undefined && state.epochId !== lastEpochId) {
       console.log(`[BetaApp] Epoch shifted: ${lastEpochId} → ${state.epochId}`);
-      triggerTransition('epoch_shift', `Entering Epoch ${state.epochId}`);
+      transitionEngine.startWorldTransition('epoch_shift', 800);
     }
     setLastEpochId(state.epochId);
-  }, [state?.epochId, lastEpochId, triggerTransition]);
+  }, [state?.epochId, lastEpochId]);
 
   // M42 Task 3: Macro Event Transition Trigger
   useEffect(() => {
@@ -298,9 +398,51 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     // Trigger "world rebuild" glitch effect on catastrophic event
     if (macroEventDiagnostics.avgSeverity > 80 && macroEventDiagnostics.activeCount > 0) {
       console.log('[BetaApp] Macro event catastrophe detected - triggering transition');
-      triggerTransition('macro_event', 'Reality Fragments...');
+      transitionEngine.startWorldTransition('paradox', 800);
     }
-  }, [macroEventDiagnostics?.avgSeverity, macroEventDiagnostics?.activeCount, triggerTransition]);
+  }, [macroEventDiagnostics?.avgSeverity, macroEventDiagnostics?.activeCount]);
+
+  // M42 Phase 4 Task 2: Live Ops Event Scheduler - Process scheduled events each tick
+  useEffect(() => {
+    if (!state || state.tick === undefined) return;
+
+    // Process scheduled events for this tick
+    const firedEvents = liveOpsEngine.processTick(state.tick);
+
+    if (firedEvents.length > 0) {
+      // Add fired events to state.macroEvents
+      if (!state.macroEvents) {
+        state.macroEvents = [];
+      }
+
+      firedEvents.forEach(fired => {
+        const macroEvent = {
+          id: fired.eventId,
+          name: fired.eventName,
+          category: fired.category,
+          fireAt: state.tick,
+          severity: fired.severity,
+          description: fired.description,
+          active: true,
+          icon: fired.icon,
+          factionImpact: fired.factionImpact,
+          triggeredBy: 'LIVEOPS_SCHEDULER',
+          timestamp: Date.now()
+        };
+
+        state.macroEvents.push(macroEvent);
+        console.log(`[BetaApp] Live Ops event fired: ${fired.eventName} (${fired.scheduleId})`);
+
+        // Trigger transition if catastrophic
+        if (fired.category.includes('catastrophe') || fired.category.includes('apocalypse')) {
+          transitionEngine.startWorldTransition('epoch_shift', 800);
+        }
+      });
+
+      // Force state update to reflect new events
+      setState({ ...state });
+    }
+  }, [state?.tick]);
 
   // M42 Task 5: Tier 2 Milestone Detection (Diplomat & Weaver)
   useEffect(() => {
@@ -319,7 +461,7 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     }
 
     // Check for Weaver milestone (3+ participant grand ritual)
-    const hasGrandRitual = state.activeMacroEvents?.some((e: any) =>
+    const hasGrandRitual = state.activeEvents?.some((e: any) =>
       e.type === 'grand_ritual' &&
       e.participants?.length >= 3 &&
       e.participants?.includes(state.player?.id)
@@ -330,7 +472,104 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
       setTutorialState(triggerWeaverMilestone(tutorialState));
       setCurrentTutorialOverlay(getNextTutorialOverlay(triggerWeaverMilestone(tutorialState)));
     }
-  }, [state?.factions, state?.activeMacroEvents, state?.player?.id, tutorialState]);
+  }, [state?.factions, state?.activeEvents, state?.player?.id, tutorialState]);
+
+  // Phase 13: Ascension Protocol Event Detection
+  useEffect(() => {
+    if (!state?.activeEvents) return;
+
+    // Look for ASCENSION_PROTOCOL_INITIATED event
+    const ascensionEvent = state.activeEvents.find((e: any) => e.type === 'ASCENSION_PROTOCOL_INITIATED');
+    
+    if (ascensionEvent && !showAscensionOverlay) {
+      console.log('[BetaApp] Ascension protocol initiated:', ascensionEvent);
+      setPendingAscensionData(ascensionEvent);
+      setShowAscensionOverlay(true);
+    }
+  }, [state?.activeEvents, showAscensionOverlay]);
+
+  // M42 Task 4: Real-time Diagnostic Panel Wiring
+  useEffect(() => {
+    if (!state) return;
+
+    // Compute diagnostics snapshot for real-time display
+    const snapshot = getDiagnosticsSnapshot(state, undefined, [], {
+      totalProposals: 0,
+      successfulProposals: 0
+    });
+
+    // Update faction diagnostics
+    setFactionDiagnostics({
+      factionPowers: snapshot.factionPowers,
+      activeCount: snapshot.factionPowers.length,
+      avgPower: snapshot.factionPowers.length > 0
+        ? snapshot.factionPowers.reduce((sum, f) => sum + f.totalPower, 0) / snapshot.factionPowers.length
+        : 0
+    });
+
+    // Update macro event diagnostics
+    setMacroEventDiagnostics({
+      events: snapshot.macroEventCountdowns,
+      activeCount: snapshot.macroEventCountdowns.length,
+      avgSeverity: snapshot.macroEventCountdowns.length > 0
+        ? snapshot.macroEventCountdowns.reduce((sum, e) => sum + e.severity, 0) / snapshot.macroEventCountdowns.length
+        : 0,
+      urgentEvents: snapshot.macroEventCountdowns.filter(e => e.etaTicks < 100).length
+    });
+
+    // Update consensus diagnostics
+    setConsensusDiagnostics({
+      consensusHealth: snapshot.consensusHealth,
+      consensusSuccessRate: 95, // TODO: Calculate from proposal metrics
+      peerCount: snapshot.consensusHealth.peerCount,
+      syncLatency: snapshot.consensusHealth.avgLatency,
+      healthStatus: snapshot.consensusHealth.healthStatus
+    });
+  }, [state?.tick, state?.factions, state?.activeEvents]);
+
+  // Phase 2: Process broadcast events for M69/M70 dashboards
+  useEffect(() => {
+    if (!broadcastEvents || broadcastEvents.length === 0) {
+      return;
+    }
+
+    // Filter and organize broadcast events
+    const reports = broadcastEvents
+      .filter((e) => e.type === 'exploit_detected')
+      .map((e) => ({
+        reportId: `${e.data.playerId}-${e.timestamp}`,
+        playerId: e.data.playerId,
+        reportType: e.data.exploitType,
+        reason: `Exploit detected: ${e.data.exploitType}`,
+        severity: e.severity as 'critical' | 'high' | 'low',
+        reviewed: false,
+        timestamp: e.timestamp,
+      }));
+
+    const messages = broadcastEvents
+      .filter((e) => e.type === 'chat_flagged')
+      .map((e) => ({
+        messageId: e.data.messageId,
+        playerId: e.data.playerId,
+        flaggedReason: e.data.reason,
+        action: 'none' as const,
+        timestamp: e.timestamp,
+      }));
+
+    const anomalyList = broadcastEvents
+      .filter((e) => e.type === 'anomaly_flagged')
+      .map((e) => ({
+        anomalyId: `${e.data.anomalyType}-${e.timestamp}`,
+        anomalyType: e.data.anomalyType,
+        severity: e.severity as 'critical' | 'high',
+        affectedPlayers: e.data.playersAffected.length,
+        timestamp: e.timestamp,
+      }));
+
+    setRecentReports(reports.slice(-20));
+    setFlaggedMessages(messages.slice(-20));
+    setAnomalies(anomalyList.slice(-20));
+  }, [broadcastEvents]);
 
   // =========================================================================
   // ACTION HANDLERS
@@ -406,12 +645,12 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     }
 
     if (result.trade) {
-      setActiveTrade(result.trade);
+      setActiveTrade(result.trade as unknown as AtomicTrade);
       setShowTradeUI(true);
 
       // Subscribe to trade updates
       tradeManager.subscribe(result.trade.tradeId, (updatedTrade) => {
-        setActiveTrade(updatedTrade);
+        setActiveTrade(updatedTrade as unknown as AtomicTrade);
         
         if (updatedTrade.stage === 'completed') {
           console.log('[BetaApp] Trade completed successfully');
@@ -466,12 +705,65 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     setShowTradeUI(false);
   }, [activeTrade, tradeManager]);
 
+  // Phase 13: Ascension Protocol Handlers
+  const handleAscensionConfirm = useCallback((selectedDeeds: string[], selectedHeirloom?: string) => {
+    console.log('[BetaApp] Ascension confirmed:', { selectedDeeds, selectedHeirloom });
+    
+    // Dispatch FINALIZE_TRANSCENDENCE action
+    performAction({
+      type: 'FINALIZE_TRANSCENDENCE',
+      payload: {
+        selectedDeeds,
+        selectedHeirloom,
+        confirmedAt: Date.now()
+      }
+    });
+
+    // Close overlay after a brief delay to allow animation
+    setTimeout(() => {
+      setShowAscensionOverlay(false);
+      setPendingAscensionData(null);
+    }, 3000);
+  }, [performAction]);
+
+  const handleAscensionCancel = useCallback(() => {
+    console.log('[BetaApp] Ascension cancelled');
+    setShowAscensionOverlay(false);
+    setPendingAscensionData(null);
+  }, []);
+
+  // Phase 24 Task 4: Tutorial overlay dismissal handler
+  const handleTutorialDismiss = useCallback(() => {
+    // Check if tutorial is throttled (raid in progress or high density)
+    if (isTutorialThrottled(state)) {
+      console.log('[BetaApp] Tutorial throttled - deferred');
+      // Don't show overlay, but still process the dismiss logic
+    }
+
+    // Dispatch DISMISS_TUTORIAL action to backend
+    if (currentTutorialOverlay?.id) {
+      performAction({
+        type: 'DISMISS_TUTORIAL',
+        payload: {
+          milestoneId: currentTutorialOverlay.id
+        }
+      });
+    }
+
+    // Mark tutorial show time for throttle tracking
+    setLastTutorialShowTime(Date.now());
+
+    // Move to next tutorial overlay
+    setCurrentTutorialOverlay(getNextTutorialOverlay(tutorialState));
+  }, [currentTutorialOverlay, state, performAction, tutorialState]);
+
   // =========================================================================
   // RENDER: MAIN LAYOUT
   // =========================================================================
 
   return (
     <div
+      className="atmospheric-filter-root"
       style={{
         width: '100%',
         minHeight: '100vh',
@@ -480,7 +772,8 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
         color: '#e0e0e0',
         fontFamily: 'monospace',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        transition: 'background-color 0.5s ease, background-image 0.5s ease, filter 0.3s ease'
       }}
     >
       {/* ===== M39 TASK 2: BETA GLOBAL HEADER (Real-time Telemetry) ===== */}
@@ -522,10 +815,24 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
             onTabChange={setActiveMainTab}
           />
 
-          {/* Tab Content - M40 Task 4: Add role="tabpanel" for accessibility */}
-          <div style={{ flex: 1, overflow: 'auto', padding: '16px', borderTop: '1px solid #333' }} role="tabpanel">
-            {/* M40 Task 3: Wrap each tab panel in ErrorBoundary */}
-            {activeMainTab === 'world' && (
+          {/* M44-E3: Tab Content wrapped with Atmospheric Filters (Phase 25 Task 1: Enhanced) */}
+          {useMemo(() => {
+            const paradoxLevel = calculateParadoxLevel(state);
+            const atmosphereState = getAtmosphereState(state);
+            const ageRotSeverity = state.ageRotSeverity || 'mild';
+            const socialTension = state.socialTension ?? 0;
+            
+            return (
+              <AtmosphericFilterProvider 
+                paradoxLevel={paradoxLevel}
+                ageRotSeverity={ageRotSeverity}
+                socialTension={socialTension}
+                paradoxMax={300}
+                intensityMultiplier={1.0}
+              >
+                <div style={{ flex: 1, overflow: 'auto', padding: '16px', borderTop: '1px solid #333' }} role="tabpanel">
+              {/* M40 Task 3: Wrap each tab panel in ErrorBoundary */}
+              {activeMainTab === 'world' && (
               <div aria-labelledby="world-tab">
                 <ErrorBoundary tabName="World">
                   <BetaWorldPanel
@@ -570,7 +877,67 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
                 </ErrorBoundary>
               </div>
             )}
-          </div>
+
+            {activeMainTab === 'moderation' && (
+              <div aria-labelledby="moderation-tab">
+                <M69ErrorBoundary>
+                  <ModeratorConsole />
+                </M69ErrorBoundary>
+              </div>
+            )}
+
+            {activeMainTab === 'retention' && (
+              <div aria-labelledby="retention-tab">
+                <M70ErrorBoundary panelName="Player Retention Dashboard">
+                  <RetentionDashboard />
+                </M70ErrorBoundary>
+              </div>
+            )}
+
+            {activeMainTab === 'analytics' && (
+              <div aria-labelledby="analytics-tab">
+                <AnalyticsErrorBoundary>
+                  <AnalyticsDashboard
+                    cohortMetrics={{
+                      dau: 127,
+                      mau: 1042,
+                      sessionLength: 38,
+                      retention: { day1: 92, day7: 68, day30: 42 }
+                    }}
+                    segmentDistribution={{
+                      ultra_core: 142,
+                      core: 524,
+                      regular: 287,
+                      casual: 156,
+                      at_risk: 31
+                    }}
+                    churnPredictions={[
+                      {
+                        riskLevel: 'high',
+                        playersAffected: 31,
+                        confidence: 87,
+                        topReasons: ['No playtime >7 days', 'Low engagement score', 'Missed event streak']
+                      }
+                    ]}
+                    campaignMetrics={[
+                      {
+                        campaignId: 'camp_001',
+                        name: 'Friend Activity Boost',
+                        type: 'friend_activity',
+                        sentTo: 142,
+                        accepted: 89,
+                        reengaged: 52,
+                        reuseRate: 58
+                      }
+                    ]}
+                  />
+                </AnalyticsErrorBoundary>
+              </div>
+            )}
+            </div>
+              </AtmosphericFilterProvider>
+            );
+          }, [state])}
         </div>
 
         {/* RIGHT SIDEBAR: Real-time Diagnostics (Dev Mode) */}
@@ -596,8 +963,8 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
           clientInventory={state?.player?.inventory ? new Map(state.player.inventory.map((i: any) => [i.itemId, i.quantity])) : new Map()}
           partnerInventory={new Map()} // TODO: Fetch from state or P2P
           onTradeUpdate={(updatedTrade) => {
-            setActiveTrade(updatedTrade);
-            tradeManager.subscribe(updatedTrade.tradeId, (t) => setActiveTrade(t));
+            setActiveTrade(updatedTrade as unknown as AtomicTrade);
+            tradeManager.subscribe(updatedTrade.tradeId, (t) => setActiveTrade(t as unknown as AtomicTrade));
           }}
           onTradeComplete={(completedTrade) => {
             console.log('[BetaApp] Trade completed:', completedTrade.tradeId);
@@ -610,7 +977,7 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
             handleTradeCancel();
           }}
           allowBarterCheck={true}
-          barterSkillBonus={state.player?.skills?.charisma || 0}
+          barterSkillBonus={state.player?.stats?.cha || 0}
         />
       )}
 
@@ -632,6 +999,26 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
           duration={currentTransition.estimatedDuration}
           message={`Rebuilding ${currentTransition.reason.replace('_', ' ')}...`}
           onComplete={() => setCurrentTransition(null)}
+        />
+      )}
+
+      {/* Phase 13: Ascension Protocol Overlay */}
+      {showAscensionOverlay && pendingAscensionData && state?.player && (
+        <AscensionProtocolView
+          character={state.player}
+          legacyImpact={pendingAscensionData.legacyImpact || {
+            id: '',
+            ancestralBooms: [],
+            ancestralBlights: [],
+            canonicalDeeds: [],
+            heirlooms: []
+          }}
+          generationalParadox={state.generationalParadox || 0}
+          allDeeds={pendingAscensionData.selectedDeeds || []}
+          worldState={state}
+          onConfirmAscension={handleAscensionConfirm}
+          onCancelAscension={handleAscensionCancel}
+          isDeveloperMode={isDirector}
         />
       )}
 
@@ -693,17 +1080,35 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
         </dialog>
       )}
 
-      {/* M41 Task 2: Tutorial Overlay */}
-      {currentTutorialOverlay && (
+      {/* M42 Phase 4 Task 1: Director Console */}
+      {isDirector && (
+        <DirectorConsole
+          state={state}
+          controller={controller}
+          multiplayerEngine={undefined}
+          transitionEngine={transitionEngine}
+          diagnosticsEngine={undefined}
+          mutationLog={[]}
+          isOpen={isDirectorConsoleOpen}
+          onToggle={setIsDirectorConsoleOpen}
+          isDirectorMode={isDirector}
+        />
+      )}
+
+      {/* M42 Phase 4 Task 4.3: Narrative Intervention Overlay - Director Whispers */}
+      <NarrativeInterventionOverlay
+        whisperQueue={whisperQueue}
+        onWhisperComplete={removeWhisper}
+        currentEpoch={state?.epochId?.includes('i') ? 1 : state?.epochId?.includes('ii') ? 2 : 3}
+        playerName={state?.player?.name}
+        enableAudio={true}
+      />
+
+      {/* M41 Task 2: Tutorial Overlay - Phase 24: With throttle checking */}
+      {currentTutorialOverlay && !isTutorialThrottled(state) && (
         <TutorialOverlayComponent
           overlay={currentTutorialOverlay}
-          onDismiss={() => {
-            setCurrentTutorialOverlay(undefined);
-            setTutorialState(
-              dismissTutorialOverlay(tutorialState, currentTutorialOverlay.milestoneId)
-            );
-          }}
-          autoHideDelay={8000}
+          onDismiss={handleTutorialDismiss}
         />
       )}
     </div>
@@ -866,7 +1271,10 @@ const BetaTabNavigation: React.FC<BetaTabNavigationProps> = ({ activeTab, onTabC
     { id: 'world', label: '🌍 World (1)', ariaLabel: 'World tab - Press 1 to activate' },
     { id: 'social', label: '👥 Social (2)', ariaLabel: 'Social tab - Press 2 to activate' },
     { id: 'arcane', label: '✨ Arcane (3)', ariaLabel: 'Arcane tab - Press 3 to activate' },
-    { id: 'records', label: '📖 Records (4)', ariaLabel: 'Records tab - Press 4 to activate' }
+    { id: 'records', label: '📖 Records (4)', ariaLabel: 'Records tab - Press 4 to activate' },
+    { id: 'moderation', label: '🛡️ Moderation (5)', ariaLabel: 'Moderation tab - Press 5 to activate' },
+    { id: 'retention', label: '🎯 Retention (6)', ariaLabel: 'Retention tab - Press 6 to activate' },
+    { id: 'analytics', label: '📊 Analytics (7)', ariaLabel: 'Analytics tab - Press 7 to activate' }
   ] as const;
 
   return (
@@ -966,7 +1374,9 @@ const BetaWorldPanel: React.FC<BetaWorldPanelProps> = ({
         <div style={{ fontSize: '12px' }}>
           <div>Location: <span style={{ color: '#c084fc' }}>{state.player?.location}</span></div>
           <div>NPCs: <span style={{ color: '#c084fc' }}>{(state.npcs || []).length}</span></div>
-          <div>Time: <span style={{ color: '#c084fc' }}>{state.hour}:00</span></div>
+          <div>Time: <span style={{ color: '#c084fc' }}>
+            {state.hour.toString().padStart(2, '0')}:{ (state.time?.minute ?? 0).toString().padStart(2, '0') }
+          </span></div>
         </div>
       </div>
     </div>
@@ -1051,10 +1461,10 @@ const BetaArcanePanel: React.FC<BetaArcanePanelProps> = ({ state, onPerformActio
           🔮 Prophecy & Paradox
         </h3>
         <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>
-          Paradox Level: {(state as any).paradoxLevel || 0}%
+          Paradox Level: {state.paradoxLevel || 0}%
         </p>
         <p style={{ fontSize: '11px', color: '#999', margin: '4px 0 0 0' }}>
-          Temporal Paradoxes: {(state as any).temporalParadoxes?.length || 0}
+          Temporal Paradoxes: {state.temporalParadoxes?.length || 0}
         </p>
       </div>
     </div>
@@ -1066,20 +1476,24 @@ interface BetaRecordsPanelProps {
 }
 
 const BetaRecordsPanel: React.FC<BetaRecordsPanelProps> = ({ state }) => {
-  const [recordsTab, setRecordsTab] = React.useState<'chronicles' | 'deeds' | 'whispers'>('chronicles');
+  const [recordsTab, setRecordsTab] = React.useState<'chronicles' | 'deeds' | 'tutorials' | 'whispers'>('chronicles');
+  const tutorialArchive = React.useMemo(() => getTutorialArchive(state?.player?.tutorialProgress || initializeTutorialState()), [state?.player?.tutorialProgress]);
+  const tier3Progress = React.useMemo(() => getTier3Progress(state?.player?.tutorialProgress || initializeTutorialState()), [state?.player?.tutorialProgress]);
 
   return (
     <div>
       <h2 style={{ color: '#c084fc', marginBottom: '16px' }}>📖 Chronicles & Records</h2>
 
-      {/* Records Tab Navigation - M40 Task 4: Add ARIA labels */}
+      {/* Records Tab Navigation - M40 Task 4: Add ARIA labels - Phase 24: Added tutorials */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }} role="tablist" aria-label="Records tabs">
-        {(['chronicles', 'deeds', 'whispers'] as const).map(tab => {
-          const getAriaLabel = (tab: 'chronicles' | 'deeds' | 'whispers') => {
+        {(['chronicles', 'deeds', 'tutorials', 'whispers'] as const).map(tab => {
+          const getAriaLabel = (tab: 'chronicles' | 'deeds' | 'tutorials' | 'whispers') => {
             if (tab === 'chronicles')
               return 'Chronicles tab - Timeline showing world history';
             if (tab === 'deeds')
               return 'Deeds tab - Your legendary actions';
+            if (tab === 'tutorials')
+              return 'Tutorials tab - Your discovered milestones and learning archive';
             return 'Whispers tab - Narrative interventions from the Director';
           };
           
@@ -1106,6 +1520,7 @@ const BetaRecordsPanel: React.FC<BetaRecordsPanelProps> = ({ state }) => {
             >
               {tab === 'chronicles' && '🗺️ Chronicles'}
               {tab === 'deeds' && '⚔️ Deeds'}
+              {tab === 'tutorials' && '🎓 Tutorials'}
               {tab === 'whispers' && '🔮 Whispers'}
             </button>
           );
@@ -1154,6 +1569,98 @@ const BetaRecordsPanel: React.FC<BetaRecordsPanelProps> = ({ state }) => {
         </div>
       )}
 
+      {/* Phase 24 Task 4: Tutorials Sub-Pane */}
+      {recordsTab === 'tutorials' && (
+        <div
+          role="tabpanel"
+          aria-labelledby="tutorials-tab"
+          style={{
+            backgroundColor: 'rgba(79, 39, 131, 0.1)',
+            padding: '12px',
+            borderRadius: '4px',
+            border: '1px solid #333'
+          }}
+        >
+          <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 12px 0' }}>
+            🎓 Tutorial Archive
+          </h3>
+          <p style={{ fontSize: '11px', color: '#999', margin: '0 0 12px 0' }}>
+            Milestones you've discovered and mastered in your journey.
+          </p>
+
+          {/* Tutorial Progress */}
+          {tier3Progress && (
+            <div
+              style={{
+                backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                padding: '8px 12px',
+                borderRadius: '4px',
+                marginBottom: '12px',
+                fontSize: '11px',
+                border: '1px solid rgba(139, 92, 246, 0.3)'
+              }}
+            >
+              <div style={{ marginBottom: '6px', color: '#c084fc' }}>
+                <strong>Progress:</strong> {tier3Progress.completed} / {tier3Progress.total} Tier 3 Milestones
+              </div>
+            </div>
+          )}
+
+          {/* Achieved Tutorials */}
+          <div
+            style={{
+              maxHeight: '400px',
+              overflowY: 'auto',
+              backgroundColor: 'rgba(13, 13, 26, 0.5)',
+              padding: '8px',
+              borderRadius: '3px',
+              border: '1px solid #4f2783'
+            }}
+          >
+            {tutorialArchive && tutorialArchive.length > 0 ? (
+              tutorialArchive.map((tutorial: any, idx: number) => (
+                <div
+                  key={tutorial.milestoneId || idx}
+                  style={{
+                    marginBottom: '12px',
+                    paddingBottom: '8px',
+                    borderBottom: '1px solid #333',
+                    fontSize: '11px'
+                  }}
+                >
+                  <div style={{ color: '#c084fc', fontWeight: 'bold', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{tutorial.icon || '📖'}</span>
+                    <span>{tutorial.title}</span>
+                  </div>
+                  <div style={{ color: '#a78bfa', marginBottom: '4px', fontSize: '10px' }}>
+                    {tutorial.text}
+                  </div>
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderLeft: '4px solid #8b5cf6',
+                      borderRadius: '3px',
+                      padding: '6px 8px',
+                      fontSize: '9px',
+                      color: '#a78bfa',
+                      fontStyle: 'italic',
+                      marginTop: '4px'
+                    }}
+                  >
+                    {tutorial.loreText}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ color: '#666', fontSize: '11px', fontStyle: 'italic' }}>
+                No milestones discovered yet. Continue your journey to unlock tutorials.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* M39 Task 4: Whispers Sub-Pane - M40 Task 4: Add role="tabpanel" for accessibility */}
       {recordsTab === 'whispers' && (
         <div
@@ -1184,8 +1691,8 @@ const BetaRecordsPanel: React.FC<BetaRecordsPanelProps> = ({ state }) => {
               border: '1px solid #4f2783'
             }}
           >
-            {(state as any)?.narrativeInterventions && (state as any).narrativeInterventions.length > 0 ? (
-              (state as any).narrativeInterventions.map((whisper: any, idx: number) => (
+            {state?.narrativeInterventions && state.narrativeInterventions.length > 0 ? (
+              state.narrativeInterventions.map((whisper: any, idx: number) => (
                 <div
                   key={whisper.id || idx}
                   style={{

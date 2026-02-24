@@ -1,4 +1,4 @@
-import { WorldState, PlayerState } from './worldEngine';
+import { WorldState, PlayerState, SpellData, SpellsData } from './worldEngine';
 import { CombatantStats } from './ruleEngine';
 import { random } from './prng';
 import spellsData from '../data/spells.json';
@@ -27,9 +27,9 @@ export interface SpellResolution {
 
 // Build spell templates map from spells.json
 const SPELL_TEMPLATES: Record<string, Spell> = {};
-if (spellsData.spells && Array.isArray(spellsData.spells)) {
-  (spellsData.spells as any[]).forEach((spell: any) => {
-    SPELL_TEMPLATES[spell.id] = spell;
+if ((spellsData as unknown as SpellsData).spells && Array.isArray((spellsData as unknown as SpellsData).spells)) {
+  ((spellsData as unknown as SpellsData).spells as SpellData[]).forEach((spell: SpellData) => {
+    SPELL_TEMPLATES[spell.id] = spell as any; // Data import requires this adaptation
   });
 }
 

@@ -1,17 +1,27 @@
-import { WorldState } from './worldEngine';
+import { WorldState, type ItemsDataFile, type EncountersDataFile, type RunesDataFile } from './worldEngine';
 import { Event } from '../events/mutationLog';
 import { random } from './prng';
 import type { DiceRollContext } from '../client/components/DiceAltar';
 import { createPlayerCharacter, validateStatAllocation } from './characterCreation';
 import { resolveCombat, resolveDefense, resolveParry, resolveHeal, CombatantStats, getEquipmentBonuses, applyEquipmentBonuses } from './ruleEngine';
 import { isNpcAvailable, resolveDialogue } from './npcEngine';
-import { resolveLootTable, validateRecipe, rollCraftingCheck, deductMaterials, addCraftResult, type Recipe } from './craftingEngine';
+import { resolveLootTable, validateRecipe, rollCraftingCheck, deductMaterials, addCraftResult, type Recipe, type LootTableEntry } from './craftingEngine';
 import { resolveSpell, getSpellById } from './magicEngine';
 import { calculateDrift, validateAuthority, getParadoxSeverity, checkForSpellBackfire } from './paradoxEngine';
 import { calculateMorphCost, generateRitualChallenge, performRitualCheck, handleMorphSuccess, handleMorphFailure, calculateEssenceDecay, checkMorphCooldown, findNearestAltar } from './morphEngine';
 import { calculateEncounterChance, selectEncounterType, generateEncounterNpc, generateEncounterCombatant, calculateTravelDistance, hasHiddenAreas, getLocationBiome, calculateSearchDifficulty, performSearchCheck } from './encounterEngine';
 import { calculateRelicBonus, shouldRelicRebel, checkInfusionStability, calculateUnbindCost, isRelicRebelling, generateRelicDialogue, applyRelicRebellion, getWieldingRequirement, calculateItemCorruption } from './artifactEngine';
 import { getAbility } from './skillEngine';
+import { getNpcMemoryEngine } from './npcMemoryEngine';
+import { getFactionWarfareEngine } from './factionWarfareEngine';
+import { getLocationControllingFaction, isHostileTerritory, calculateFactionTax } from './factionTerritoryEngine';
+import { getQuestSynthesisAI } from './questSynthesisAI';
+import { getInvestigationPipeline } from './investigationPipelineEngine';
+import { beliefEngine } from './beliefEngine';
+import { isStackable } from './worldEngine'; // Phase 19: For resource harvesting
+import { MarketEngine, type ItemCategory } from './marketEngine';
+// Phase 27 Task 2: Oracle Consensus for multiplayer action validation
+import { isConsentProposal, type ConsentProposal } from './oracleConsensusEngine';
 import itemsData from '../data/items.json';
 import encountersData from '../data/encounters.json';
 import runesData from '../data/runes.json';
@@ -24,27 +34,159 @@ function hasItem(container: Set<string> | string[] | undefined, item: string): b
 }
 
 // Build item templates map from items.json
-const ITEM_TEMPLATES: Record<string, any> = {};
-if (itemsData.items && Array.isArray(itemsData.items)) {
-  itemsData.items.forEach((item: any) => {
+const ITEM_TEMPLATES: Record<string, unknown> = {};
+const loadedItemsData = itemsData as ItemsDataFile;
+if (loadedItemsData.items && Array.isArray(loadedItemsData.items)) {
+  loadedItemsData.items.forEach((item) => {
     ITEM_TEMPLATES[item.id] = item;
   });
 }
 
 // Build recipe map from items.json
 const RECIPES: Record<string, Recipe> = {};
-if ((itemsData as any).recipes && Array.isArray((itemsData as any).recipes)) {
-  (itemsData as any).recipes.forEach((recipe: any) => {
-    RECIPES[recipe.id] = recipe;
+if (loadedItemsData.recipes && Array.isArray(loadedItemsData.recipes)) {
+  loadedItemsData.recipes.forEach((recipe) => {
+    RECIPES[recipe.id] = recipe as Recipe;
   });
 }
 
 // Build loot tables map from items.json
-const LOOT_TABLES: Record<string, any[]> = {};
-if ((itemsData as any).loot_tables && typeof (itemsData as any).loot_tables === 'object') {
-  Object.entries((itemsData as any).loot_tables).forEach(([tableId, entries]: [string, any]) => {
+const LOOT_TABLES: Record<string, Array<{ itemId: string; weight: number; quantity?: number }>> = {};
+if (loadedItemsData.loot_tables && typeof loadedItemsData.loot_tables === 'object') {
+  Object.entries(loadedItemsData.loot_tables).forEach(([tableId, entries]) => {
     LOOT_TABLES[tableId] = entries;
   });
+}
+
+// M44-E1: Initialize Market Engine singleton
+let marketEngineInstance: MarketEngine | null = null;
+function getMarketEngine(): MarketEngine {
+  if (!marketEngineInstance) {
+    marketEngineInstance = new MarketEngine();
+  }
+  return marketEngineInstance;
+}
+
+// Phase 13: Legacy Engine singleton
+let legacyEngineInstance: any = null;
+function getLegacyEngine(): any {
+  if (!legacyEngineInstance) {
+    try {
+      const { getLegacyEngine: importedGetLegacyEngine } = require('./legacyEngine');
+      legacyEngineInstance = importedGetLegacyEngine(12345);
+    } catch (e) {
+      console.warn('[actionPipeline] Failed to initialize legacy engine:', e);
+      return null;
+    }
+  }
+  return legacyEngineInstance;
+}
+
+/**
+ * Phase 13: Calculate ancestral boons based on selected deeds and myth status
+ */
+function calculateAncestralBoonsForAscension(mythStatus: number, selectedDeeds: string[]): any[] {
+  const boons: any[] = [];
+  
+  // Base boon from myth status
+  if (mythStatus >= 50) {
+    boons.push({
+      id: 'ancestral_resonance_soul',
+      name: 'Resonant Soul',
+      description: `Your lineage echoes with power. +${Math.floor(mythStatus * 0.1)} to mental stats.`,
+      bonusType: 'stat',
+      targetStat: 'int',
+      magnitude: Math.floor(mythStatus * 0.1),
+      duration: 'permanent',
+      deedSource: selectedDeeds[0] || 'legacy_start'
+    });
+  }
+  
+  if (mythStatus >= 75) {
+    boons.push({
+      id: 'ancestral_warrior_strength',
+      name: 'Warrior\'s Inheritance',
+      description: 'Battle-forged lineage grants martial prowess. +15% critical chance.',
+      bonusType: 'ability',
+      magnitude: 0.15,
+      duration: 'permanent',
+      deedSource: selectedDeeds[1] || 'legacy_combat'
+    });
+  }
+  
+  if (mythStatus >= 100) {
+    boons.push({
+      id: 'ancestral_legendary_echo',
+      name: 'Legendary Resonance',
+      description: 'Your bloodline has shaped epochs. +25% to all faction reputation gains.',
+      bonusType: 'special',
+      magnitude: 0.25,
+      duration: 'permanent',
+      deedSource: selectedDeeds[2] || 'legend_maker'
+    });
+  }
+  
+  return boons;
+}
+
+/**
+ * Phase 13: Generate curses from accumulated generational paradox
+ */
+function generateCursesFromParadox(generationalParadox: number): any[] {
+  const curses: any[] = [];
+  
+  if (generationalParadox >= 150 && generationalParadox < 225) {
+    // Minor curse
+    curses.push({
+      id: 'paradox_curse_minor',
+      name: 'Tainted Bloodline',
+      description: 'The paradox of your lineage manifests as frailty. -5 to physical stats.',
+      penaltyType: 'stat',
+      targetStat: 'str',
+      magnitude: 5,
+      duration: 'epoch',
+      paradoxSource: generationalParadox
+    });
+  }
+  
+  if (generationalParadox >= 225 && generationalParadox < 300) {
+    // Major curses
+    curses.push({
+      id: 'paradox_curse_echo_conflict',
+      name: 'Echo Conflict',
+      description: 'Ancestor voices whisper contradictory guidance. -10 to wisdom.',
+      penaltyType: 'stat',
+      targetStat: 'wis',
+      magnitude: 10,
+      duration: 'temporary',
+      paradoxSource: generationalParadox
+    });
+    
+    curses.push({
+      id: 'paradox_curse_fate_marked',
+      name: 'Marked by Fate',
+      description: 'You are cursed by temporal anomalies. -15% to all resistances.',
+      penaltyType: 'vulnerability',
+      magnitude: 0.15,
+      duration: 'epoch',
+      paradoxSource: generationalParadox
+    });
+  }
+  
+  if (generationalParadox >= 300) {
+    // Catastrophic curse
+    curses.push({
+      id: 'paradox_curse_catastrophic',
+      name: 'Paradox Unbound',
+      description: 'Your timeline fractures. Reality itself rejects your existence. -20% to all stats.',
+      penaltyType: 'curse',
+      magnitude: 0.20,
+      duration: 'permanent',
+      paradoxSource: generationalParadox
+    });
+  }
+  
+  return curses;
 }
 
 /**
@@ -123,7 +265,57 @@ export type Action = {
   // M32: Multi-client authorship fields
   clientId?: string;        // Which client emitted this action
   sequenceNumber?: number;  // Monotonic sequence per client for ordering
+  // Phase 27 Task 2: Oracle Consensus fields
+  pendingConsentVerdictId?: string;  // If action awaits Oracle verdict, track verdict ID
+  consentStatus?: 'PENDING' | 'GRANTED' | 'DENIED';  // Multiplayer consent state
 };
+
+/**
+ * Phase 27 Task 2: Identify if an action requires Oracle Consensus
+ * Contestable actions target shared entities (items, NPCs, resources)
+ */
+function isContestableAction(actionType: string): boolean {
+  const contestableActions = [
+    'PICK_UP_ITEM',      // Unique items can only be picked by one player
+    'INTERACT_NPC',      // Each NPC can be interacted with by one player per tick
+    'BUY_ITEM',          // Prevent overbuy from limited shop stocks
+    'USE_RESOURCE_NODE', // Resource harvesting is not fully shareable initially
+  ];
+  return contestableActions.includes(actionType);
+}
+
+/**
+ * Phase 27 Task 2: Get consensus target info for contestable action
+ * Returns the entity ID and type that needs Oracle approval
+ */
+function getConsensusTarget(action: Action): { targetId: string; targetType: 'ITEM' | 'NPC' | 'SHOP_STOCK' | 'RESOURCE_NODE' } | null {
+  switch (action.type) {
+    case 'PICK_UP_ITEM': {
+      const itemId = action.payload?.itemId;
+      const item = action.payload?.item;
+      if (!itemId || !item) return null;
+      return { targetId: itemId, targetType: 'ITEM' };
+    }
+    case 'INTERACT_NPC': {
+      const npcId = action.payload?.npcId;
+      if (!npcId) return null;
+      return { targetId: npcId, targetType: 'NPC' };
+    }
+    case 'BUY_ITEM': {
+      const shopId = action.payload?.shopId || 'market-default';
+      const itemId = action.payload?.itemId;
+      if (!itemId) return null;
+      return { targetId: `${shopId}:${itemId}`, targetType: 'SHOP_STOCK' };
+    }
+    case 'USE_RESOURCE_NODE': {
+      const nodeId = action.payload?.nodeId;
+      if (!nodeId) return null;
+      return { targetId: nodeId, targetType: 'RESOURCE_NODE' };
+    }
+    default:
+      return null;
+  }
+}
 
 function createEvent(state: WorldState, action: Action, type: string, payload: any): Event {
   const tick = state.tick || 0;
@@ -161,7 +353,46 @@ function createDiceRollRequest(state: WorldState, action: Action, context: DiceR
 export function processAction(state: WorldState, action: Action): Event[] {
   const events: Event[] = [];
 
-  // Phase 12: Check AI DM authority - is this action permitted by the cosmos?
+  // M44-T1: Sync memory and warfare engines with current state
+  // This ensures deterministic calculations based on event-rebuilt state
+  getNpcMemoryEngine().syncWithState(state);
+  getFactionWarfareEngine().syncWithState(state);
+
+  // Phase 27 Task 2: Oracle Consensus Check for Multiplayer Actions
+  // If action is contestable (targets shared entity) and we're in multiplayer mode,
+  // check if the action has Oracle consent
+  if (action.clientId && isContestableAction(action.type)) {
+    const consensusTarget = getConsensusTarget(action);
+
+    if (consensusTarget) {
+      // Check if we're waiting for a verdict
+      if (action.consentStatus === 'PENDING') {
+        // Oracle verdict hasn't arrived yet; emit PENDING_CONSENT event
+        events.push(createEvent(state, action, 'ACTION_PENDING_CONSENT', {
+          actionType: action.type,
+          targetId: consensusTarget.targetId,
+          targetType: consensusTarget.targetType,
+          verdictId: action.pendingConsentVerdictId,
+          message: 'Waiting for Oracle consensus...'
+        }));
+        return events;  // Stop processing until verdict arrives
+      }
+
+      if (action.consentStatus === 'DENIED') {
+        // Oracle denied this action; emit conflict resolution event
+        events.push(createEvent(state, action, 'ACTION_FAILED_RESOLVED_CONFLICT', {
+          actionType: action.type,
+          targetId: consensusTarget.targetId,
+          reason: action.payload?.conflictReason || 'Oracle consensus denied due to simultaneous action',
+          verdictId: action.payload?.verdictId
+        }));
+        return events;  // Stop processing; action rejected
+      }
+
+      // If consentStatus === 'GRANTED' or undefined, continue processing normally
+      // The action is either pre-approved or doesn't need multiplayer consensus
+    }
+  }  // Phase 12: Check AI DM authority - is this action permitted by the cosmos?
   const authorityCheck = validateAuthority(action, state);
   if (!authorityCheck.allowed) {
     // AI DM denies the action
@@ -288,6 +519,25 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const npc = state.npcs.find(n => n.id === npcId);
       if (!npc) return [];
 
+      // M44-T1: Log memory of this choice if it has sentiment/impact
+      const dialogueResult = resolveDialogue(npc, state.player, state);
+      const chosenOption = dialogueResult.options.find(opt => opt.id === choiceId);
+
+      if (chosenOption && (chosenOption.sentiment !== undefined || chosenOption.impact !== undefined)) {
+        events.push(createEvent(state, action, 'NPC_MEMORY_LOGGED', {
+          npcId,
+          interaction: {
+            timestamp: state.tick || 0,
+            npcId,
+            playerId: state.player.id,
+            action: `dialogue_${choiceId}`,
+            sentiment: chosenOption.sentiment || 0,
+            impactScore: chosenOption.impact || 0.1,
+            description: `Player chose: "${chosenOption.text}"`
+          }
+        }));
+      }
+
       // For now, choices just advance the dialogue
       if (choiceId === 'next') {
         // Assume they're progressing dialogue
@@ -303,6 +553,108 @@ export function processAction(state: WorldState, action: Action): Event[] {
       }
 
       events.push(createEvent(state, action, 'DIALOG_CHOICE', { npcId, choiceId }));
+      break;
+    }
+
+    case 'START_INVESTIGATION': {
+      // M49-A2: Rumor Investigation Pipeline
+      const rumorId = action.payload?.rumorId;
+      
+      // Validate rumor exists in belief registry
+      const believeRegistry = state.beliefRegistry || {};
+      if (!believeRegistry[rumorId]) {
+        events.push(createEvent(state, action, 'INVESTIGATION_FAILED', {
+          reason: 'rumor-not-found',
+          rumorId,
+          message: 'This rumor cannot be found in your knowledge.'
+        }));
+        return events;
+      }
+
+      // Check if investigation already active for this rumor
+      const existingInvestigation = (state.investigations || []).find(inv => inv.targetRumorId === rumorId && inv.status === 'active');
+      if (existingInvestigation) {
+        events.push(createEvent(state, action, 'INVESTIGATION_ALREADY_ACTIVE', {
+          rumorId,
+          investigationId: existingInvestigation.id,
+          message: 'You are already investigating this rumor.'
+        }));
+        return events;
+      }
+
+      // Determine cost: 50 Gold or 20 MP fallback
+      const goldItem = state.player.inventory?.find(item => 
+        (item as any).kind === 'stackable' && (item as any).itemId === 'gold'
+      ) as any;
+      const playerGold = goldItem?.quantity || 0;
+      const INVESTIGATION_COST_GOLD = 50;
+      const INVESTIGATION_COST_MP = 20;
+
+      let costUsed: 'gold' | 'mp';
+      let costAmount: number;
+
+      if (playerGold >= INVESTIGATION_COST_GOLD) {
+        // Use gold
+        if (goldItem) {
+          goldItem.quantity = (goldItem.quantity || 0) - INVESTIGATION_COST_GOLD;
+        }
+        costUsed = 'gold';
+        costAmount = INVESTIGATION_COST_GOLD;
+      } else if ((state.player.mp || 0) >= INVESTIGATION_COST_MP) {
+        // Fallback to MP (scrying cost)
+        state.player.mp = (state.player.mp || 0) - INVESTIGATION_COST_MP;
+        costUsed = 'mp';
+        costAmount = INVESTIGATION_COST_MP;
+      } else {
+        // Insufficient resources
+        events.push(createEvent(state, action, 'INVESTIGATION_INSUFFICIENT_RESOURCES', {
+          rumorId,
+          requiredGold: INVESTIGATION_COST_GOLD,
+          availableGold: playerGold,
+          requiredMp: INVESTIGATION_COST_MP,
+          availableMp: state.player.mp || 0,
+          message: 'You lack sufficient Gold (50) or MP (20) to begin this investigation.'
+        }));
+        return events;
+      }
+
+      // Create investigation via pipeline
+      const investigationPipeline = getInvestigationPipeline();
+      const rumor = beliefEngine.getRumorById(rumorId);
+      const hardFact = beliefEngine.getOriginalFact(rumorId);
+      
+      if (!rumor || !hardFact) {
+        events.push(createEvent(state, action, 'INVESTIGATION_FAILED', {
+          reason: 'rumor-or-fact-not-found',
+          rumorId,
+          message: 'Cannot start investigation: rumor or associated fact not found.'
+        }));
+        return events;
+      }
+      
+      const investigation = investigationPipeline.startInvestigation(
+        `quest_${rumorId}_${Date.now()}`, // questId
+        rumor,
+        hardFact,
+        state.tick || 0
+      );
+
+      // Add to world state investigations
+      if (!state.investigations) {
+        state.investigations = [];
+      }
+      state.investigations.push(investigation);
+
+      // Emit event
+      const costMessage = costUsed === 'gold' ? `${costAmount} Gold` : `${costAmount} MP`;
+      events.push(createEvent(state, action, 'INVESTIGATION_STARTED', {
+        rumorId,
+        investigationId: investigation.id,
+        costUsed,
+        costAmount,
+        message: `You begin investigating the rumor. (${costMessage} invested)`
+      }));
+
       break;
     }
 
@@ -355,8 +707,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
       if (objective?.type === 'visit' && objective.location) {
         if (state.player.location === objective.location) {
           // Check time-lock if specified
-          if ((objective as any).timeConstraints) {
-            const tc = (objective as any).timeConstraints;
+          if (objective?.timeConstraints) {
+            const tc = objective.timeConstraints;
             const hourMatch = typeof tc.startHour === 'number' && typeof tc.endHour === 'number'
               ? (state.hour >= tc.startHour && state.hour <= tc.endHour)
               : true;
@@ -439,8 +791,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
         e.payload?.targetId === defenderId
       );
 
-      if (defenderDefeatedEvent && (defender as any).factionId) {
-        const defenderFactionId = (defender as any).factionId;
+      if (defenderDefeatedEvent && defender.factionId) {
+        const defenderFactionId = defender.factionId;
         events.push(createEvent(state, action, 'FACTION_COMBAT_VICTORY', {
           victoryType: 'defeated_npc',
           defenderNpcId: defenderId,
@@ -451,7 +803,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
         }));
 
         // Auto-loot
-        const lootTableId = (defender as any).lootTable || 'common_npc';
+        const lootTableId = defender.lootTable || 'common_npc';
         const lootTable = LOOT_TABLES[lootTableId] || LOOT_TABLES['common_npc'];
         if (lootTable && Array.isArray(lootTable)) {
           const roll = Math.floor(random() * 100);
@@ -585,29 +937,94 @@ export function processAction(state: WorldState, action: Action): Event[] {
     }
 
     case 'REST': {
-      // Rest action: restore 10% HP per game hour spent resting, and 25% MP
+      // M44-T4: Enhanced REST with Chrono-Action time advancement
+      // Support for SHORT_REST (60 ticks = 1 hour) and LONG_REST (480 ticks = 8 hours)
+      const restType = action.payload?.restType || 'SHORT_REST'; // default: 1 hour
+      const tickAdvance = restType === 'LONG_REST' ? 480 : 60; // 8 hours or 1 hour
+      const hoursAdvanced = tickAdvance / 60;
+
+      // Calculate HP recovery based on duration
       const currentHp = state.player.hp || 100;
       const maxHp = state.player.maxHp || 100;
-      const hpPerRest = Math.ceil(maxHp * 0.1); // 10% per hour
-      const newHp = Math.min(maxHp, currentHp + hpPerRest);
-      const hpRestored = newHp - currentHp;
+      const hpRecoveryPercentPerHour = restType === 'LONG_REST' ? 0.125 : 0.05; // 100%/8h or 20%/1h
+      const hpPercentRestored = Math.min(1.0, hpRecoveryPercentPerHour * hoursAdvanced);
+      const hpRestored = Math.ceil(maxHp * hpPercentRestored);
+      const newHp = Math.min(maxHp, currentHp + hpRestored);
 
-      // Mana restoration during rest (25% per hour)
+      // Calculate MP recovery (faster than HP)
       const currentMp = state.player.mp ?? 0;
       const maxMp = state.player.maxMp ?? 0;
-      const mpPerRest = Math.ceil(maxMp * 0.25); // 25% per hour
-      const newMp = Math.min(maxMp, currentMp + mpPerRest);
-      const mpRestored = newMp - currentMp;
+      const mpRecoveryPercentPerHour = restType === 'LONG_REST' ? 0.25 : 0.125; // 100%/4h or 50%/1h
+      const mpPercentRestored = Math.min(1.0, mpRecoveryPercentPerHour * hoursAdvanced);
+      const mpRestored = Math.ceil(maxMp * mpPercentRestored);
+      const newMp = Math.min(maxMp, currentMp + mpRestored);
 
-      events.push(createEvent(state, action, 'PLAYER_REST', {
+      // M44-T2: Trigger faction skirmishes during the time jump
+      const factionEngine = getFactionWarfareEngine();
+      const locationIds = (state.locations || []).map((loc) => loc.id);
+      const skirmishes = factionEngine.processChronoActionSkirmishes(
+        locationIds,
+        tickAdvance,
+        (state.tick || 0),
+        state.seed
+      );
+
+      // Create individual FACTION_SKIRMISH events for each processed skirmish
+      for (const skirmish of skirmishes) {
+        events.push(createEvent(state, action, 'FACTION_SKIRMISH', {
+          locationId: skirmish.locationId,
+          aggressor: skirmish.aggressor,
+          defender: skirmish.defender,
+          outcome: skirmish.outcome,
+          influenceShift: skirmish.influenceShift,
+          casualties: skirmish.casualties
+        }));
+      }
+
+      // M44-T3: Synthesize quests from faction changes
+      const questSynthesis = getQuestSynthesisAI();
+      const newQuests: any[] = [];
+
+      for (const location of state.locations || []) {
+        const warZone = factionEngine.getWarZoneStatus(location.id);
+        const nearbyNpcs = (state.npcs || [])
+          .filter((npc) => npc.locationId === location.id)
+          .map((npc) => npc.id);
+
+        if (nearbyNpcs.length > 0) {
+          const generatedQuests = questSynthesis.synthesizeQuestsFromWarfare(
+            location.id,
+            warZone,
+            nearbyNpcs,
+            (state.tick || 0) + tickAdvance
+          );
+          newQuests.push(...generatedQuests);
+          for (const quest of generatedQuests) {
+            (questSynthesis as any).registerGeneratedQuest(quest);
+            events.push(createEvent(state, action, 'QUEST_DISCOVERED', { quest }));
+          }
+        }
+      }
+
+      // Generate the event
+      events.push(createEvent(state, action, 'CHRONO_ACTION_REST', {
+        restType,
+        ticksAdvanced: tickAdvance,
+        hoursAdvanced,
         hpRestored,
         newHp,
         maxHp,
         mpRestored,
         newMp,
         maxMp,
-        hoursCost: 1,
-        message: `Rested 1 hour. HP restored: ${hpRestored}, MP restored: ${mpRestored}`
+        skirmishesTriggered: skirmishes.length,
+        skirmishDetails: skirmishes.map((s) => ({
+          location: s.locationId,
+          outcome: s.outcome,
+          casualties: s.casualties,
+        })),
+        questsGenerated: newQuests.length,
+        message: `${restType === 'LONG_REST' ? 'Long rested' : 'Rested'} ${hoursAdvanced}h. HP +${hpRestored}, MP +${mpRestored}. ${skirmishes.length} faction skirmishes occurred nearby.`,
       }));
       break;
     }
@@ -622,8 +1039,71 @@ export function processAction(state: WorldState, action: Action): Event[] {
     }
 
     case 'WAIT': {
-      // WAIT action doesn't produce an event; worldEngine advances tick anyway
-      return [];
+      // M44-T4: Enhanced WAIT - similar to REST but no recovery
+      // WAIT is used for active observation/listening; time still passes
+      const tickAdvance = action.payload?.tickCount || 60; // default: 1 hour
+      const hoursAdvanced = tickAdvance / 60;
+
+      // M44-T2: Trigger faction skirmishes during the time jump
+      const factionEngine = getFactionWarfareEngine();
+      const locationIds = (state.locations || []).map((loc) => loc.id);
+      const skirmishes = factionEngine.processChronoActionSkirmishes(
+        locationIds,
+        tickAdvance,
+        (state.tick || 0),
+        state.seed
+      );
+
+      // Create individual FACTION_SKIRMISH events for each processed skirmish
+      for (const skirmish of skirmishes) {
+        events.push(createEvent(state, action, 'FACTION_SKIRMISH', {
+          locationId: skirmish.locationId,
+          aggressor: skirmish.aggressor,
+          defender: skirmish.defender,
+          outcome: skirmish.outcome,
+          influenceShift: skirmish.influenceShift,
+          casualties: skirmish.casualties
+        }));
+      }
+
+      // M44-T3: Synthesize quests from faction changes
+      const questSynthesis = getQuestSynthesisAI();
+      const newQuests: any[] = [];
+
+      for (const location of state.locations || []) {
+        const warZone = factionEngine.getWarZoneStatus(location.id);
+        const nearbyNpcs = (state.npcs || [])
+          .filter((npc) => npc.locationId === location.id)
+          .map((npc) => npc.id);
+
+        if (nearbyNpcs.length > 0) {
+          const generatedQuests = questSynthesis.synthesizeQuestsFromWarfare(
+            location.id,
+            warZone,
+            nearbyNpcs,
+            (state.tick || 0) + tickAdvance
+          );
+          newQuests.push(...generatedQuests);
+          for (const quest of generatedQuests) {
+            (questSynthesis as any).registerGeneratedQuest(quest);
+            events.push(createEvent(state, action, 'QUEST_DISCOVERED', { quest }));
+          }
+        }
+      }
+
+      events.push(createEvent(state, action, 'CHRONO_ACTION_WAIT', {
+        ticksAdvanced: tickAdvance,
+        hoursAdvanced,
+        skirmishesTriggered: skirmishes.length,
+        skirmishDetails: skirmishes.map((s) => ({
+          location: s.locationId,
+          outcome: s.outcome,
+          casualties: s.casualties,
+        })),
+        questsGenerated: newQuests.length,
+        message: `Waited ${hoursAdvanced}h. ${skirmishes.length} faction skirmishes occurred nearby. ${newQuests.length} new rumors heard.`,
+      }));
+      break;
     }
 
     case 'PICKUP_ITEM': {
@@ -722,7 +1202,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       gathered.forEach(item => {
         events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
           itemId: item.itemId,
-          quantity: (item as any).quantity || 1,
+          quantity: item.quantity || 1,
           source: 'gather',
           nodeId: node.id
         }));
@@ -825,6 +1305,76 @@ export function processAction(state: WorldState, action: Action): Event[] {
       // Item use - can trigger effects like healing
       events.push(createEvent(state, action, 'ITEM_USED', {
         itemId
+      }));
+      break;
+    }
+
+    case 'HARVEST_RESOURCE': {
+      // Phase 19: NPC resource harvesting from biome locations
+      const { locationId } = action.payload;
+      const location = state.locations.find(l => l.id === locationId);
+      
+      if (!location) {
+        events.push(createEvent(state, action, 'HARVEST_FAILED', {
+          reason: 'invalid-location'
+        }));
+        break;
+      }
+
+      // Determine biome type and loot table
+      const biomeType = location.biome || 'grassland';
+      const lootTableId = location.lootTableId || `biome_${biomeType}`;
+      
+      // Define biome loot tables
+      const biomeLootTables: Record<string, LootTableEntry[]> = {
+        'biome_forest': [
+          { itemId: 'wood_log', chance: 0.8, minQuantity: 2, maxQuantity: 5 },
+          { itemId: 'herb_sample', chance: 0.5, minQuantity: 1, maxQuantity: 3 },
+          { itemId: 'mushroom', chance: 0.3, minQuantity: 1, maxQuantity: 2 }
+        ],
+        'biome_grassland': [
+          { itemId: 'fiber_bundle', chance: 0.7, minQuantity: 2, maxQuantity: 4 },
+          { itemId: 'herb_sample', chance: 0.4, minQuantity: 1, maxQuantity: 2 },
+          { itemId: 'wildflower_seed', chance: 0.3, minQuantity: 1, maxQuantity: 1 }
+        ],
+        'biome_mountain': [
+          { itemId: 'stone_chunk', chance: 0.8, minQuantity: 3, maxQuantity: 6 },
+          { itemId: 'ore_iron', chance: 0.4, minQuantity: 1, maxQuantity: 2 },
+          { itemId: 'crystal_shard', chance: 0.2, minQuantity: 1, maxQuantity: 1 }
+        ],
+        'biome_water': [
+          { itemId: 'water_sample', chance: 0.9, minQuantity: 2, maxQuantity: 4 },
+          { itemId: 'shell_fragment', chance: 0.5, minQuantity: 1, maxQuantity: 3 },
+          { itemId: 'seaweed_bundle', chance: 0.4, minQuantity: 2, maxQuantity: 3 }
+        ]
+      };
+
+      // Get loot table for this biome
+      const lootTable = biomeLootTables[lootTableId] || biomeLootTables['biome_grassland'];
+      const harvestedItems = resolveLootTable(lootTable);
+
+      if (harvestedItems.length === 0) {
+        events.push(createEvent(state, action, 'HARVEST_FAILED', {
+          location: locationId,
+          biome: biomeType,
+          reason: 'no-resources'
+        }));
+        break;
+      }
+
+      // Add harvested items to player inventory
+      state.player.inventory = state.player.inventory || [];
+      harvestedItems.forEach(item => {
+        state.player.inventory!.push(item);
+      });
+
+      events.push(createEvent(state, action, 'RESOURCE_HARVESTED', {
+        location: locationId,
+        biome: biomeType,
+        items: harvestedItems.map(i => ({ 
+          itemId: i.itemId, 
+          quantity: isStackable(i) ? i.quantity : 1 
+        }))
       }));
       break;
     }
@@ -1078,7 +1628,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
     case 'EXIT_COMBAT': {
       events.push(createEvent(state, action, 'COMBAT_ENDED', {
         exitedAt: state.tick || 0,
-        combatDuration: ((state.tick || 0) - ((state.combatState?.initiator as any)?.startedAt || 0))
+        combatDuration: ((state.tick || 0) - (state.combatState?.startedAt || 0))
       }));
 
       events.push(createEvent(state, action, 'COMBAT_LOG_ENTRY', {
@@ -1114,7 +1664,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       // Find target (could be NPC or player)
       let target = state.npcs.find(n => n.id === targetId);
       if (!target && targetId === state.player.id) {
-        target = state.player as any;
+        target = state.player;
       }
 
       if (!target) {
@@ -1207,7 +1757,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       }
 
       // Check if location has spiritDensity
-      const spiritDensity = (location as any).spiritDensity ?? 0;
+      const spiritDensity = location?.spiritDensity ?? 0;
       if (spiritDensity <= 0) {
         events.push(createEvent(state, action, 'DRAIN_MANA_FAILED', {
           reason: 'Location has no mana',
@@ -1427,8 +1977,9 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const biome = getLocationBiome(state.player.location);
 
       // Get encounter table for current biome
-      const encounterTables = (encountersData as any).encounters;
-      const encounterTable = encounterTables[biome];
+      const loadedEncountersData = encountersData as EncountersDataFile;
+      const encounterTables = loadedEncountersData.encounters;
+      const encounterTable = encounterTables?.find(e => e.id === biome);
 
       if (!encounterTable) {
         events.push(createEvent(state, action, 'TRAVEL_TICK', {
@@ -1551,7 +2102,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       if (searchResult.success) {
         // Success! Discover a random hidden area
-        const hiddenAreas = (encountersData as any).hiddenAreas[currentLocation] || [];
+        const loadedEncountersData = encountersData as EncountersDataFile;
+        const hiddenAreas = loadedEncountersData.hiddenAreas?.[currentLocation] || [];
         if (hiddenAreas.length > 0) {
           const discoveredArea = hiddenAreas[Math.floor(random() * hiddenAreas.length)];
 
@@ -1592,7 +2144,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
         break;
       }
 
-      const rune = (runesData as any).runes?.find((r: any) => r.id === runeId);
+      const loadedRunesData = runesData as RunesDataFile;
+      const rune = loadedRunesData.runes?.find((r) => r.id === runeId);
       if (!rune) {
         events.push(createEvent(state, action, 'INFUSION_FAILED', {
           reason: 'Rune not found',
@@ -1837,6 +2390,706 @@ export function processAction(state: WorldState, action: Action): Event[] {
       break;
     }
 
+    // M44-E1: Buy Item with faction market pricing
+    case 'BUY_ITEM': {
+      const { itemId, quantity = 1, vendorLocationId } = action.payload;
+      if (!itemId) return [];
+
+      const item = ITEM_TEMPLATES[itemId];
+      if (!item) {
+        events.push(createEvent(state, action, 'PURCHASE_FAILED', {
+          reason: 'item-not-found',
+          itemId,
+          message: 'That item does not exist.'
+        }));
+        return events;
+      }
+
+      const basePrice = item.price || 100;
+      const vendorLocation = state.locations.find(loc => loc.id === vendorLocationId);
+      if (!vendorLocation) {
+        events.push(createEvent(state, action, 'PURCHASE_FAILED', {
+          reason: 'vendor-location-not-found',
+          message: 'Vendor location not found.'
+        }));
+        return events;
+      }
+
+      // M44-E1: Get faction controlling this location
+      const controllingFaction = getLocationControllingFaction(state, vendorLocationId);
+      const dominantFactionId = controllingFaction?.id || 'silver_flame';
+
+      // M44-E1: Calculate price with faction multiplier
+      const marketEngine = getMarketEngine();
+      const itemCategory = (item.category || 'common') as ItemCategory;
+      const priceMultiplier = marketEngine.getItemPriceMultiplier(itemCategory, dominantFactionId, state);
+      const finalUnitPrice = Math.ceil(basePrice * priceMultiplier);
+      const totalCost = finalUnitPrice * quantity;
+
+      // Check if player has enough gold
+      const playerGold = state.player.gold || 0;
+      if (playerGold < totalCost) {
+        events.push(createEvent(state, action, 'PURCHASE_FAILED', {
+          reason: 'insufficient-gold',
+          requiredGold: totalCost,
+          currentGold: playerGold,
+          shortage: totalCost - playerGold,
+          message: `You need ${totalCost}g but only have ${playerGold}g.`
+        }));
+        return events;
+      }
+
+      // Success! Deduct gold and add item
+      state.player.gold = playerGold - totalCost;
+
+      // Get price breakdown for display
+      const breakdown = marketEngine.getPriceBreakdown(itemCategory, basePrice, dominantFactionId);
+
+      events.push(createEvent(state, action, 'ITEM_PURCHASED', {
+        itemId,
+        itemName: item.name,
+        quantity,
+        unitPrice: finalUnitPrice,
+        totalCost,
+        dominantFactionId,
+        factionName: controllingFaction?.name || 'Unknown',
+        discount: Math.round((1 - (priceMultiplier || 1)) * 100),
+        message: `Purchased ${quantity}x ${item.name} for ${totalCost}g.`
+      }));
+
+      events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
+        itemId,
+        quantity,
+        source: 'purchase'
+      }));
+      break;
+    }
+
+    // M44-E1: Repair Equipment with faction cost modifiers
+    case 'REPAIR_EQUIPMENT': {
+      const { equipmentId, repairType = 'full' } = action.payload;
+      if (!equipmentId) return [];
+
+      const equipment = state.relics?.[equipmentId];
+      if (!equipment) {
+        events.push(createEvent(state, action, 'REPAIR_FAILED', {
+          reason: 'equipment-not-found',
+          message: 'Equipment not found in inventory.'
+        }));
+        return events;
+      }
+
+      // M44-E1: Get current location faction
+      const playerLocationId = state.player.location;
+      const controllingFaction = getLocationControllingFaction(state, playerLocationId);
+      const dominantFactionId = controllingFaction?.id || 'silver_flame';
+
+      // Calculate repair cost based on equipment rarity/condition
+      const baseCost = (equipment.sentienceLevel + 1) * 50; // Scale with power
+      const marketEngine = getMarketEngine();
+      
+      // Treat repair service as "common" with faction multiplier
+      const costMultiplier = marketEngine.getItemPriceMultiplier('common', dominantFactionId, state);
+      const finalCost = Math.ceil(baseCost * costMultiplier);
+
+      // Check if player has enough gold
+      const playerGold = state.player.gold || 0;
+      if (playerGold < finalCost) {
+        events.push(createEvent(state, action, 'REPAIR_FAILED', {
+          reason: 'insufficient-gold',
+          requiredGold: finalCost,
+          currentGold: playerGold,
+          message: `Repair costs ${finalCost}g. You only have ${playerGold}g.`
+        }));
+        return events;
+      }
+
+      // Success! Apply repair
+      state.player.gold = playerGold - finalCost;
+      
+      // Restore equipment durability (represented as reducing sentienceLevel temporary penalty)
+      const durabilityCost = equipment.totalComplexity || 0;
+      
+      events.push(createEvent(state, action, 'EQUIPMENT_REPAIRED', {
+        equipmentId,
+        equipmentName: equipment.name,
+        repairCost: finalCost,
+        dominantFactionId,
+        durabilityRestored: durabilityCost,
+        message: `${equipment.name} has been repaired for ${finalCost}g.`
+      }));
+      break;
+    }
+
+    // M44-E1: Upgrade Property with faction investment modifiers
+    case 'UPGRADE_PROPERTY': {
+      const { propertyId, upgradeType } = action.payload;
+      if (!propertyId || !upgradeType) return [];
+
+      // Note: Assumes properties exist in state (from M44-C3 propertyUpgradeEngine)
+      const properties = state.properties || {};
+      const property = properties[propertyId];
+
+      if (!property) {
+        events.push(createEvent(state, action, 'UPGRADE_FAILED', {
+          reason: 'property-not-found',
+          message: 'Property not found.'
+        }));
+        return events;
+      }
+
+      // M44-E1: Get faction effect on upgrades
+      const playerLocationId = state.player.location;
+      const controllingFaction = getLocationControllingFaction(state, playerLocationId);
+      const dominantFactionId = controllingFaction?.id || 'silver_flame';
+
+      // Calculate upgrade cost (based on upgrade type and current property level)
+      const baseCost = (property.level || 1) * 500; // Scales with upgrades
+      const marketEngine = getMarketEngine();
+      
+      // Treat upgrades as "luxury" investment (faction-dependent pricing)
+      const costMultiplier = marketEngine.getItemPriceMultiplier('luxury', dominantFactionId, state);
+      const finalCost = Math.ceil(baseCost * costMultiplier);
+
+      // Check player has enough gold
+      const playerGold = state.player.gold || 0;
+      if (playerGold < finalCost) {
+        events.push(createEvent(state, action, 'UPGRADE_FAILED', {
+          reason: 'insufficient-gold',
+          requiredGold: finalCost,
+          currentGold: playerGold,
+          message: `Upgrade costs ${finalCost}g. Shortage: ${finalCost - playerGold}g.`
+        }));
+        return events;
+      }
+
+      // Success! Apply upgrade
+      state.player.gold = playerGold - finalCost;
+      property.level = (property.level || 1) + 1;
+      property.lastUpgradeAt = state.tick || 0;
+
+      events.push(createEvent(state, action, 'PROPERTY_UPGRADED', {
+        propertyId,
+        propertyName: property.name,
+        upgradeType,
+        newLevel: property.level,
+        upgradeCost: finalCost,
+        dominantFactionId,
+        message: `${property.name} upgraded to level ${property.level}! Cost: ${finalCost}g.`
+      }));
+      break;
+    }
+
+    case 'INITIATE_ASCENSION': {
+      // Phase 13 Task 4: Initiate Ascension Protocol
+      // Validate requirements and prepare legacy for transcendence
+      
+      if (!state.player) {
+        events.push(createEvent(state, action, 'ASCENSION_FAILED', {
+          reason: 'player_not_found',
+          message: 'No player character to ascend.'
+        }));
+        break;
+      }
+
+      try {
+        const legacyEngine = getLegacyEngine();
+        if (!legacyEngine) {
+          events.push(createEvent(state, action, 'ASCENSION_FAILED', {
+            reason: 'legacy_engine_unavailable',
+            message: 'Legacy system unavailable for ascension.'
+          }));
+          break;
+        }
+
+        // Check ascension requirements
+        const playerMerit = state.player.merit ?? 0;
+        const playerResonance = (state.player as any).soulResonanceLevel ?? 0;
+        const completedQuests = state.player.questsCompleted?.length ?? 0;
+        const mythStatus = (state.player as any).mythStatus ?? 0;
+        
+        // Requirement: Resonance >= 50 OR completed major quest OR myth status >= 50
+        const meetsResonanceReq = playerResonance >= 50;
+        const meetsMeritReq = playerMerit >= 100;
+        const meetsMythReq = mythStatus >= 50;
+        const meetsQuestReq = completedQuests >= 5;
+        
+        if (!meetsResonanceReq && !meetsMeritReq && !meetsMythReq && !meetsQuestReq) {
+          events.push(createEvent(state, action, 'ASCENSION_BLOCKED', {
+            reason: 'insufficient_legacy',
+            resonance: playerResonance,
+            merit: playerMerit,
+            mythology: mythStatus,
+            quests: completedQuests,
+            message: 'Your character has not achieved sufficient legacy to ascend. Build more mythology or resonance.'
+          }));
+          break;
+        }
+
+        // Gather deeds and heirlooms from payload
+        const selectedDeeds = action.payload?.selectedDeeds || [];
+        const selectedHeirloom = action.payload?.selectedHeirloom;
+        const generationalParadox = state.generationalParadox ?? 0;
+
+        // Calculate ancestral legacy impact
+        const legacy: any = {
+          id: `ascend_${state.player.id}_${state.tick}`,
+          canonicalName: state.player.name,
+          bloodlineOrigin: state.bloodlineOrigin || 'unknown',
+          mythStatus: mythStatus,
+          deeds: selectedDeeds.length > 0 ? selectedDeeds : ['core_existence'],
+          factionInfluence: state.player.factionReputation || {},
+          inheritedPerks: state.player.abilities || [],
+          epochsLived: state.epochCount ?? 1,
+          totalGenerations: (state.metadata as any)?.totalGenerations ?? 1,
+          soulEchoCount: (state.player as any).soulEchoCount ?? 0,
+          finalWorldState: state.spiritDensity && state.spiritDensity > 50 ? 'improved' : 'neutral',
+          paradoxDebt: generationalParadox,
+          timestamp: Date.now(),
+          
+          // Phase 13: Ancestral mechanics
+          canonicalDeeds: selectedDeeds,
+          heirlooms: selectedHeirloom ? [{ itemId: selectedHeirloom }] : [],
+          ancestralBooms: calculateAncestralBoonsForAscension(mythStatus, selectedDeeds),
+          ancestralBlights: generationalParadox >= 150 
+            ? generateCursesFromParadox(generationalParadox)
+            : []
+        };
+
+        // Emit ascension initiated event (shows UI to player)
+        events.push(createEvent(state, action, 'ASCENSION_PROTOCOL_INITIATED', {
+          legacyId: legacy.id,
+          playerName: state.player.name,
+          mythStatus: mythStatus,
+          generationalParadox: generationalParadox,
+          selectedDeeds: selectedDeeds.length,
+          selectedHeirloom: selectedHeirloom ? 'selected' : 'none',
+          ancestralBoons: legacy.ancestralBooms.length,
+          ancestralBlights: legacy.ancestralBlights.length,
+          message: `${state.player.name} begins the Ascension Protocol. The veil between generations grows thin...`,
+          uiReady: true
+        }));
+
+        // Store prepared legacy for next phase
+        (state as any).pendingAscensionLegacy = legacy;
+
+      } catch (error) {
+        console.error('[Phase 13] Failed to initiate ascension:', error);
+        events.push(createEvent(state, action, 'ASCENSION_FAILED', {
+          reason: 'initiation_error',
+          error: String(error),
+          message: 'An error occurred while initiating ascension.'
+        }));
+      }
+      break;
+    }
+
+    case 'FINALIZE_TRANSCENDENCE': {
+      // Phase 13 Task 4: Finalize Transcendence and advance to next generation
+      
+      if (!state.player) {
+        events.push(createEvent(state, action, 'TRANSCENDENCE_FAILED', {
+          reason: 'player_not_found',
+          message: 'No player character to transcend.'
+        }));
+        break;
+      }
+
+      try {
+        const legacyEngine = getLegacyEngine();
+        if (!legacyEngine) {
+          events.push(createEvent(state, action, 'TRANSCENDENCE_FAILED', {
+            reason: 'legacy_engine_unavailable',
+            message: 'Legacy system unavailable for transcendence.'
+          }));
+          break;
+        }
+
+        // Retrieve prepared legacy
+        const ascendingLegacy = (state as any).pendingAscensionLegacy;
+        if (!ascendingLegacy) {
+          events.push(createEvent(state, action, 'TRANSCENDENCE_FAILED', {
+            reason: 'legacy_not_prepared',
+            message: 'Legacy was not properly prepared. Run INITIATE_ASCENSION first.'
+          }));
+          break;
+        }
+
+        // Step 1: Apply legacy to world state
+        const currentPlayer = state.player;
+        const ascensionLegacy: any = ascendingLegacy;
+        
+        // Store legacy in world metadata for next generation
+        if (!state.metadata) (state as any).metadata = {};
+        if (!(state.metadata as any).ancestralLegacies) {
+          (state.metadata as any).ancestralLegacies = [];
+        }
+        (state.metadata as any).ancestralLegacies.push(ascensionLegacy);
+
+        // Step 2: Transmit soul echoes
+        const soulEchoes = legacyEngine.transmitSoulEchoes(state, currentPlayer.name);
+        
+        // Step 3: Create historical chronicle summary
+        const epochTransitionData = {
+          precedingCharacter: {
+            name: currentPlayer.name,
+            mythStatus: (currentPlayer as any).mythStatus ?? 0,
+            canonicalDeeds: ascensionLegacy.canonicalDeeds,
+            factionLegacy: ascensionLegacy.factionInfluence
+          },
+          generationNumber: state.epochGenerationIndex ?? 1,
+          worldState: {
+            spiritDensity: state.spiritDensity ?? 50,
+            generationalParadox: state.generationalParadox ?? 0,
+            primaryFaction: (state.metadata as any)?.dominateFaction || 'none'
+          },
+          transcendenceTimestamp: Date.now()
+        };
+
+        // Step 4: Advance to next epoch (new generation)
+        let updatedState = { ...state };
+        try {
+          const chronicle = require('./chronicleEngine');
+          updatedState = chronicle.advanceToNextEpoch(state, soulEchoes);
+        } catch (epochError) {
+          console.warn('[Phase 13] Could not auto-advance epoch:', epochError);
+          // Continue even if epoch advancement fails
+        }
+
+        // Step 5: Emit transcendence completed event (triggers new character creation)
+        events.push(createEvent(state, action, 'TRANSCENDENCE_COMPLETE', {
+          precedingCharacterId: currentPlayer.id,
+          precedingCharacterName: currentPlayer.name,
+          legacyId: ascensionLegacy.id,
+          newGeneration: (state.epochGenerationIndex ?? 1) + 1,
+          soulEchoesTransmitted: soulEchoes.length,
+          epochTransitionData: epochTransitionData,
+          inheritancePayload: {
+            startingMerit: Math.floor(ascensionLegacy.mythStatus * 0.1),
+            inheritedFactionReputation: ascensionLegacy.factionInfluence,
+            startingHeirloom: ascensionLegacy.heirlooms?.[0]?.itemId,
+            ancestralBoons: ascensionLegacy.ancestralBooms,
+            ancestralBlights: ascensionLegacy.ancestralBlights,
+            knownDeeds: ascensionLegacy.canonicalDeeds
+          },
+          message: `${currentPlayer.name} ascends into legend. A new generation awakens with their blessing...`,
+          nextCharacterReady: true
+        }));
+
+        // Step 6: Emit soul echo manifestation for atmosphere
+        if (soulEchoes.length > 0) {
+          events.push(createEvent(state, action, 'SOUL_ECHOES_TRANSMITTED', {
+            count: soulEchoes.length,
+            transcendedCharacter: currentPlayer.name,
+            message: `The echoes of ${currentPlayer.name} ripple through the generations...`
+          }));
+        }
+
+        // Clean up pending legacy
+        delete (state as any).pendingAscensionLegacy;
+
+      } catch (error) {
+        console.error('[Phase 13] Failed to finalize transcendence:', error);
+        events.push(createEvent(state, action, 'TRANSCENDENCE_FAILED', {
+          reason: 'finalization_error',
+          error: String(error),
+          message: 'An error occurred while finalizing transcendence.'
+        }));
+      }
+      break;
+    }
+
+    case 'RESOLVE_APEX_CONVERGENCE': {
+      /**
+       * PHASE 14: Apex Convergence - The final narrative beat where the player resolves
+       * their encounter with the Apex Entity. Triggers WORLD_REBORN event.
+       * 
+       * Payload should include:
+       * - apexId: The Apex entity being resolved
+       * - outcome: 'victory' | 'compromise' | 'sacrifice'
+       * - playerChoice: narrative choice made by the player
+       */
+      const apexId = action.payload?.apexId;
+      const outcome = action.payload?.outcome || 'victory';
+      const playerChoice = action.payload?.playerChoice || '';
+
+      if (!apexId) {
+        events.push(createEvent(state, action, 'APEX_CONVERGENCE_FAILED', {
+          reason: 'no-apex-id',
+          message: 'No Apex entity specified for convergence.'
+        }));
+        return events;
+      }
+
+      // Calculate world transformation based on outcome
+      let worldRebornData: any = {
+        apexId,
+        outcome,
+        playerChoice,
+        mythStatusGained: 0,
+        paradoxResolved: 0,
+        factionShifts: {},
+        worldStateChanges: []
+      };
+
+      // Outcome-specific calculations
+      if (outcome === 'victory') {
+        // Player defeated the Apex - gain significant Myth Status
+        worldRebornData.mythStatusGained = Math.floor((state.player.mythStatus || 0) * 0.5) + 20;
+        worldRebornData.paradoxResolved = Math.min(state.player.generationalParadox || 0, 50);
+        worldRebornData.message = 'You have triumphed over the Apex. The world recognizes your legend.';
+        
+        // Victory affects faction power - heroes gain reputation
+        state.factions?.forEach((faction: any) => {
+          if (faction.ideologyAlignment === 'lawful' || faction.ideologyAlignment === 'neutral') {
+            worldRebornData.factionShifts[faction.id] = 5; // +5 power
+          }
+        });
+      } else if (outcome === 'compromise') {
+        // Player negotiated with the Apex - moderate gains
+        worldRebornData.mythStatusGained = Math.floor((state.player.mythStatus || 0) * 0.25) + 10;
+        worldRebornData.paradoxResolved = Math.floor((state.player.generationalParadox || 0) * 0.5);
+        worldRebornData.message = 'You have reached an accord with the Apex. The world shifts into a new balance.';
+        
+        // Compromise affects all factions equally
+        state.factions?.forEach((faction: any) => {
+          worldRebornData.factionShifts[faction.id] = 3; // +3 power
+        });
+      } else if (outcome === 'sacrifice') {
+        // Player sacrificed something important - philosophical victory
+        worldRebornData.mythStatusGained = (state.player.mythStatus || 0) * 0.75; // Lesser gain but permanent mark
+        worldRebornData.paradoxResolved = state.player.generationalParadox || 0; // All paradox resolved
+        worldRebornData.message = 'You have sacrificed greatly. The world will remember your choice.';
+        
+        // Sacrifice unlocks secret faction shifts
+        state.factions?.forEach((faction: any) => {
+          if (faction.ideologyAlignment === 'chaotic' || faction.ideologyAlignment === 'good') {
+            worldRebornData.factionShifts[faction.id] = 8; // +8 power for aligned factions
+          }
+        });
+      }
+
+      // Update player stats
+      state.player.mythStatus = (state.player.mythStatus || 0) + worldRebornData.mythStatusGained;
+      state.player.generationalParadox = Math.max(0, (state.player.generationalParadox || 0) - worldRebornData.paradoxResolved);
+
+      // Apply faction shifts
+      Object.entries(worldRebornData.factionShifts).forEach(([factionId, powerShift]) => {
+        const faction = state.factions?.find(f => f.id === factionId);
+        if (faction && typeof powerShift === 'number') {
+          faction.power = (faction.power || 0) + powerShift;
+        }
+      });
+
+      // Emit primary narrative event
+      events.push(createEvent(state, action, 'WORLD_REBORN', {
+        ...worldRebornData,
+        playerMythStatusBefore: state.player.mythStatus - worldRebornData.mythStatusGained,
+        playerMythStatusAfter: state.player.mythStatus,
+        timestamp: state.tick || 0
+      }));
+
+      // Emit atmospheric event if this is a major convergence
+      events.push(createEvent(state, action, 'APEX_CONVERGENCE_RESOLVED', {
+        narrativeContext: `The Apex fades from reality as you make your choice: "${playerChoice}"`,
+        worldStateShifted: true,
+        newEpochReady: outcome === 'victory' // Victory might trigger epoch transition
+      }));
+
+      break;
+    }
+
+    case 'PLANETARY_RESET': {
+      /**
+       * Phase 15: New Game+ (NG+) - Planetary Reset
+       * Triggered after 5th generation's Apex Convergence
+       * Resets world to Epoch I but with accumulated Legacy Perks and World Scars
+       * 
+       * Payload should include:
+       * - confirm: boolean (must be true to prevent accidental reset)
+       * - inheritPerks: boolean (whether to inherit ancestral perks)
+       * - keepScars: boolean (whether to preserve world scars from previous eras)
+       */
+      
+      const confirmed = action.payload?.confirm === true;
+      if (!confirmed) {
+        events.push(createEvent(state, action, 'PLANETARY_RESET_CANCELLED', {
+          reason: 'not-confirmed',
+          message: 'Planetary reset requires explicit confirmation.'
+        }));
+        break;
+      }
+
+      const inheritPerks = action.payload?.inheritPerks !== false; // Default true
+      const keepScars = action.payload?.keepScars !== false; // Default true
+
+      // Collect all ancestral legacies for inheritance
+      const ancestralLegacies = (state.metadata as any)?.ancestralLegacies || [];
+      const totalGenerations = ancestralLegacies.length + 1; // +1 for current generation
+      
+      // Calculate cumulative legacy benefits
+      const cumulativeMythStatus = ancestralLegacies.reduce((sum, leg) => sum + (leg.mythStatus || 0), 0);
+      const inheritedPerks = inheritPerks ? ancestralLegacies.flatMap(leg => leg.inheritedPerks || []) : [];
+      const inheritedFactionReputations: Record<string, number> = {};
+      
+      // Accumulate faction influence from all generations
+      ancestralLegacies.forEach(leg => {
+        Object.entries(leg.factionInfluence || {}).forEach(([factionId, rep]) => {
+          inheritedFactionReputations[factionId] = (inheritedFactionReputations[factionId] || 0) + (rep as number || 0);
+        });
+      });
+
+      // Prepare reset state: return to Epoch I with accumulated changes
+      const resetState = {
+        ...state,
+        epochGenerationIndex: totalGenerations, // Track we're on generation N+1
+        epochId: 'epoch_i_fracture', // Back to Epoch I
+        tick: 0,
+        hour: 6,
+        day: 1,
+        dayPhase: 'morning',
+        season: 'spring',
+        weather: 'clear',
+        
+        // Preserve world scars if keepScars is true
+        worldScars: keepScars ? state.worldScars : [],
+        
+        // Apply legacy perks to new character
+        player: {
+          ...state.player,
+          // Keep player name but reset stats
+          hp: state.player.maxHp || 100,
+          mp: state.player.maxMp || 0,
+          
+          // Inherit perks from ancestors
+          abilities: inheritPerks ? inheritedPerks : [],
+          
+          // Inherit reputation with factions
+          factionReputation: inheritedFactionReputations,
+          
+          // Reset generation counter for new playthrough
+          generationCount: 1,
+          
+          // But keep some memory of previous lives (meta)
+          _previousGenerations: totalGenerations - 1,
+          _cumulativeMythStatusFromLineage: cumulativeMythStatus
+        }
+      };
+
+      // Preserve heirloom caches for discovery
+      if (state.heirloomCaches) {
+        resetState.heirloomCaches = state.heirloomCaches;
+      }
+
+      // Emit primary reset event
+      events.push(createEvent(state, action, 'PLANETARY_RESET_INITIATED', {
+        previousGenerationCount: totalGenerations - 1,
+        newGenerationNumber: totalGenerations,
+        inheritedPerks: inheritedPerks.length,
+        inheritedFactionBonuses: Object.keys(inheritedFactionReputations).length,
+        worldScarsPreserved: keepScars ? (state.worldScars || []).length : 0,
+        message: `The planet resets. You awaken as a new incarnation, carrying the strength of ${totalGenerations - 1} ancestors.`
+      }));
+
+      // Emit atmospheric events for each preserved legacy
+      if (ancestralLegacies.length > 0) {
+        events.push(createEvent(state, action, 'ANCESTRAL_BLESSING_APPLIED', {
+          ancestorCount: ancestralLegacies.length,
+          cumulativeMythStatus,
+          ancestorNames: ancestralLegacies.map((leg: any) => leg.canonicalName),
+          message: `The spirits of ${ancestralLegacies.length} ancestors guide your new path. Their combined might flows through you.`
+        }));
+      }
+
+      // Emit world continuity event if scars are preserved
+      if (keepScars && state.worldScars && state.worldScars.length > 0) {
+        events.push(createEvent(state, action, 'WORLD_SCARS_PRESERVED', {
+          scarCount: state.worldScars.length,
+          scars: state.worldScars.map(s => s.type),
+          message: `The wounds of previous eras remain as testament to trials overcome. The world carries its history.`
+        }));
+      }
+
+      // Emit completion event
+      events.push(createEvent(state, action, 'PLANETARY_RESET_COMPLETE', {
+        newEpochId: 'epoch_i_fracture',
+        generationNumber: totalGenerations,
+        readyForNewPlaythrough: true,
+        timestamp: Date.now()
+      }));
+
+      break;
+    }
+
+    case 'DISMISS_TUTORIAL': {
+      // Phase 24 Task 4: Dismiss a tutorial overlay and mark milestone as acknowledged
+      const { milestoneId } = action.payload;
+      
+      if (!milestoneId) {
+        events.push(createEvent(state, action, 'TUTORIAL_DISMISS_FAILED', {
+          reason: 'No milestone ID provided',
+          message: 'Tutorial dismiss action requires a milestone ID.'
+        }));
+        break;
+      }
+
+      // Import tutorial functions
+      const {
+        triggerGuildJoinMilestone,
+        triggerRaidMilestone,
+        triggerParadoxWarningMilestone,
+        triggerHighDensitySyncMilestone
+      } = require('./tutorialEngine');
+
+      // Update tutorial state based on milestone
+      if (!state.player.tutorialProgress) {
+        events.push(createEvent(state, action, 'TUTORIAL_DISMISS_FAILED', {
+          reason: 'Tutorial state not initialized',
+          message: 'Player tutorial progress not found.'
+        }));
+        break;
+      }
+
+      const tutorialState = state.player.tutorialProgress;
+      
+      // Mark milestone as achieved
+      try {
+        switch (milestoneId) {
+          case 'first_guild_join':
+            triggerGuildJoinMilestone(tutorialState);
+            break;
+          case 'first_raid_enter':
+            triggerRaidMilestone(tutorialState);
+            break;
+          case 'paradox_warning':
+            triggerParadoxWarningMilestone(tutorialState);
+            break;
+          case 'high_density_sync':
+            triggerHighDensitySyncMilestone(tutorialState);
+            break;
+          default:
+            // Handle Tier 1-2 milestones if needed
+            if (tutorialState[milestoneId]) {
+              tutorialState[milestoneId].achieved = true;
+              tutorialState[milestoneId].achievedAtTick = state.tick || 0;
+            }
+        }
+
+        events.push(createEvent(state, action, 'TUTORIAL_DISMISSED', {
+          milestoneId,
+          achievedAt: state.tick || 0,
+          message: `Tutorial milestone "${milestoneId}" acknowledged.`
+        }));
+
+      } catch (error) {
+        events.push(createEvent(state, action, 'TUTORIAL_DISMISS_FAILED', {
+          reason: String(error),
+          message: 'Error dismissing tutorial milestone.'
+        }));
+      }
+      break;
+    }
+
   }
 
   // Death detection: if player HP reaches 0, emit PLAYER_DEFEATED
@@ -1848,4 +3101,269 @@ export function processAction(state: WorldState, action: Action): Event[] {
   }
 
   return events;
+}
+
+/**
+ * M56-T3: Validate action before execution
+ * Checks actor state, target validity, resource costs, and location constraints
+ * Returns {valid, errorMessage} tuple
+ */
+export function validateAction(action: Action, state: WorldState): { valid: boolean; errorMessage?: string } {
+  // Check 1: Actor is alive and not in invalid state
+  const actor = state.player;
+  if (!actor) {
+    return { valid: false, errorMessage: 'Player character not found' };
+  }
+
+  if ((actor.hp ?? 0) <= 0) {
+    return { valid: false, errorMessage: 'Actor is dead and cannot act' };
+  }
+
+  // Check 2: Target exists (if applicable)
+  const targetId = action.payload?.targetId;
+  if (targetId && targetId !== state.player.id) {
+    const target = state.npcs.find(n => n.id === targetId);
+    if (!target) {
+      return { valid: false, errorMessage: `Target ${targetId} not found` };
+    }
+  }
+
+  // Check 3: Resource costs (mana, stamina, inventory space)
+  const actionType = action.type;
+  let resourceCost = 0;
+
+  if (actionType === 'CAST_SPELL') {
+    const spellId = action.payload?.spellId;
+    const spell = getSpellById(spellId);
+    resourceCost = spell?.manaCost || 10;
+    if ((state.player.mp ?? 0) < resourceCost) {
+      return { valid: false, errorMessage: `Insufficient mana. Requires ${resourceCost}, have ${state.player.mp ?? 0}` };
+    }
+  } else if (actionType === 'CRAFT_ITEM') {
+    const recipeId = action.payload?.recipeId;
+    const recipe = RECIPES[recipeId];
+    if (!recipe) {
+      return { valid: false, errorMessage: `Recipe ${recipeId} not found` };
+    }
+    
+    // Check material availability
+    const inventory = state.player.inventory || [];
+    const validation = validateRecipe(inventory, recipe);
+    if (!validation.valid) {
+      return { valid: false, errorMessage: `Missing materials: ${validation.missingMaterials?.join(', ') || 'unknown'}` };
+    }
+  }
+
+  // Check 4: Action valid for location/time of day
+  if (actionType === 'PERFORM_RITUAL') {
+    const altar = findNearestAltar(state, state.player.location);
+    if (!altar) {
+      return { valid: false, errorMessage: 'No Essence Altar at this location. Rituals require an altar.' };
+    }
+  }
+
+  if (actionType === 'START_INVESTIGATION') {
+    // Investigations can happen at any location but require cost
+    const goldItem = state.player.inventory?.find((item: any) => item.itemId === 'gold') as any;
+    const playerGold = goldItem?.quantity || 0;
+    if (playerGold < 50) {
+      return { valid: false, errorMessage: `Investigation requires 50 Gold, you have ${playerGold}` };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * M56-T3: Resolve action outcome with dice rolls, stat modifiers, and environment effects
+ * Returns {success, damageDealt, reputationDelta, logs}
+ */
+export function resolveActionOutcome(
+  action: Action,
+  state: WorldState,
+  diceRoll?: number
+): { 
+  success: boolean; 
+  damageDealt?: number; 
+  reputationDelta?: number;
+  logs: string[];
+} {
+  const logs: string[] = [];
+  const roll = diceRoll ?? Math.floor(random() * 20) + 1;
+  logs.push(`Rolled d20: ${roll}`);
+
+  const actor = state.player;
+  const actionType = action.type;
+
+  if (actionType === 'ATTACK') {
+    const targetId = action.payload?.targetId;
+    const target = state.npcs.find(n => n.id === targetId);
+    if (!target) {
+      return { success: false, logs: [...logs, 'Target not found'] };
+    }
+
+    // Calculate attack modifier (STR-based)
+    const strModifier = Math.floor((actor.stats?.str || 10) / 3);
+    const weaponBonus = 2; // Base weapon bonus
+    const environmentalModifier = getEnvironmentalModifier(state, 'combat');
+    const totalModifier = strModifier + weaponBonus + environmentalModifier;
+
+    logs.push(`STR modifier: +${strModifier}, Weapon: +${weaponBonus}, Environment: ${environmentalModifier >= 0 ? '+' : ''}${environmentalModifier}`);
+
+    // Target AC = 10 + target AGI modifier
+    const targetAC = 10 + Math.floor((target.stats?.agi || 10) / 5);
+    const attackTotal = roll + totalModifier;
+
+    logs.push(`Attack total: ${roll} + ${totalModifier} = ${attackTotal} vs AC ${targetAC}`);
+
+    if (attackTotal >= targetAC) {
+      // Hit! Roll damage
+      const damageDice = 1; // 1d8 base
+      const damageRoll = Math.floor(random() * 8) + 1;
+      const damageModifier = Math.floor((actor.stats?.str || 10) / 4);
+      const baseDamage = damageRoll + damageModifier;
+
+      logs.push(`Damage roll: 1d8 (${damageRoll}) + STR (${damageModifier}) = ${baseDamage} total`);
+
+      return {
+        success: true,
+        damageDealt: baseDamage,
+        reputationDelta: -5, // Attacking reduces rep
+        logs
+      };
+    } else {
+      logs.push('Attack missed!');
+      return { success: false, logs };
+    }
+  }
+
+  if (actionType === 'PERSUADE' || actionType === 'DECEIVE' || actionType === 'CHARM') {
+    const targetId = action.payload?.targetId;
+    const target = state.npcs.find(n => n.id === targetId);
+    if (!target) {
+      return { success: false, logs: [...logs, 'Target not found'] };
+    }
+
+    // Calculate social DC based on NPC disposition
+    const baseDC = 10 + (target.resistance ?? 0);
+    
+    // Apply CHA modifier
+    const chaModifier = Math.floor((actor.stats?.cha || 10) / 3);
+    const actionModifier = actionType === 'PERSUADE' ? 2 : (actionType === 'CHARM' ? 1 : -1); // Lying is risky
+    const totalModifier = chaModifier + actionModifier;
+
+    logs.push(`CHA modifier: +${chaModifier}, Action modifier: ${actionModifier > 0 ? '+' : ''}${actionModifier}`);
+
+    const socialTotal = roll + totalModifier;
+    logs.push(`Social check: ${roll} + ${totalModifier} = ${socialTotal} vs DC ${baseDC}`);
+
+    if (socialTotal >= baseDC) {
+      const repGain = actionType === 'PERSUADE' ? 10 : 15; // Charm/Deceive gain more
+      return {
+        success: true,
+        reputationDelta: repGain,
+        logs: [...logs, `${actionType} succeeded! NPC response is favorable.`]
+      };
+    } else {
+      return {
+        success: false,
+        reputationDelta: actionType === 'DECEIVE' ? -10 : -5, // Failing to deceive hurts more
+        logs: [...logs, `${actionType} failed. NPC sees through your attempt.`]
+      };
+    }
+  }
+
+  // Default success for unimplemented action types
+  return { success: true, logs };
+}
+
+/**
+ * M56-T3: Skill check system with difficulty tiers
+ * DC tiers: 5 (trivial), 10 (easy), 15 (medium), 20 (hard), 25 (nearly impossible)
+ * Returns {success, passMargin, skillXpGain}
+ */
+export function resolveSkillCheck(
+  actor: any,
+  skill: string,
+  difficulty: number,
+  diceRoll?: number
+): {
+  success: boolean;
+  passMargin: number;
+  skillXpGain: number;
+  logs: string[];
+} {
+  const logs: string[] = [];
+  const roll = diceRoll ?? Math.floor(random() * 20) + 1;
+  logs.push(`Skill check [${skill}]: d20 = ${roll}`);
+
+  // Get skill bonus based on actor stats (simplified - real system uses skill XP)
+  const skillBonusMap: Record<string, number> = {
+    'acrobatics': Math.floor((actor.stats?.agi || 10) / 3),
+    'arcana': Math.floor((actor.stats?.int || 10) / 3),
+    'athletics': Math.floor((actor.stats?.str || 10) / 3),
+    'deception': Math.floor((actor.stats?.cha || 10) / 3),
+    'investigation': Math.floor((actor.stats?.int || 10) / 3),
+    'perception': Math.floor((actor.stats?.wis || actor.stats?.int || 10) / 3),
+    'persuasion': Math.floor((actor.stats?.cha || 10) / 3),
+    'sleight_of_hand': Math.floor((actor.stats?.agi || 10) / 3),
+    'stealth': Math.floor((actor.stats?.agi || 10) / 3),
+    'survival': Math.floor((actor.stats?.wis || 10) / 3),
+    'crafting': Math.floor((actor.stats?.int || 10) / 3),
+    'medicine': Math.floor((actor.stats?.wis || 10) / 3)
+  };
+
+  const skillBonus = skillBonusMap[skill] || 0;
+  const totalRoll = roll + skillBonus;
+  const passMargin = totalRoll - difficulty;
+
+  logs.push(`${skill} bonus: +${skillBonus}, total: ${totalRoll} vs DC ${difficulty}`);
+
+  const success = totalRoll >= difficulty;
+
+  // Calculate XP gain (higher difficulty = more XP)
+  let skillXpGain = 0;
+  if (success) {
+    skillXpGain = Math.max(5, difficulty - 5); // 5 XP minimum, scales with difficulty
+    logs.push(`Success! Gained ${skillXpGain} skill XP. (Margin: +${passMargin})`);
+  } else {
+    skillXpGain = Math.ceil((difficulty - 5) / 2); // Half XP for failures
+    logs.push(`Failed by ${Math.abs(passMargin)}. Gained ${skillXpGain} skill XP anyway (learning).`);
+  }
+
+  return {
+    success,
+    passMargin,
+    skillXpGain,
+    logs
+  };
+}
+
+/**
+ * Get environmental modifier for actions (weather, time of day, location)
+ */
+function getEnvironmentalModifier(state: WorldState, actionType: string): number {
+  let modifier = 0;
+
+  // Weather effects
+  if (state.weather === 'rain') modifier -= 1; // Slippery
+  if (state.weather === 'storm') modifier -= 2;
+  if (state.weather === 'clear') modifier += 1; // Visibility bonus
+
+  // Time of day effects
+  if (state.dayPhase === 'night' && actionType === 'investigation') modifier -= 1;
+  if (state.dayPhase === 'night' && actionType === 'stealth') modifier += 1; // Darkness helps
+
+  // Location effects  
+  const currentLocation = state.locations.find(l => l.id === state.player.location);
+  if (currentLocation?.biome === 'mountain' && actionType === 'climbing') modifier += 2;
+  if (currentLocation?.biome === 'forest' && actionType === 'stealth') modifier += 1;
+  if (currentLocation?.biome === 'water' && actionType === 'swimming') modifier += 1;
+
+  return modifier;
+}
+
+// Export for use in worldEngine
+export function completeAction(state: WorldState, action: Action): Event[] {
+  return processAction(state, action);
 }

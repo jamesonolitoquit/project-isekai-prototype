@@ -532,7 +532,10 @@ export function importSessionRegistry(data: any): SessionRegistry {
     activePlayers: data.activePlayers,
     spectators: data.spectators,
     lastSyncTick: data.lastSyncTick,
-    conflictLog: data.conflictLog
+    conflictLog: data.conflictLog,
+    currentEpoch: data.currentEpoch || 1,
+    epochEventQueue: data.epochEventQueue || [],
+    epochHistory: data.epochHistory || []
   };
 
   return registry;
@@ -1464,7 +1467,7 @@ export function epochConsensus(
 /**
  * M42 Task 1: Record a peer's vote for epoch consensus
  */
-export function recordEpochVote(
+export function recordEpochConsensusVote(
   registry: SessionRegistry,
   clientId: string,
   vote: 1 | 2 | 3
@@ -1502,6 +1505,424 @@ export function getEpochConsensusHealth(registry: SessionRegistry): {
     queuedEvents: registry.epochEventQueue.length,
     consensusActive: registry.epochConsensusInProgress ?? false,
     votesRecorded: registry.epochConsensusVotes?.size ?? 0
+  };
+}
+
+/**
+ * Phase 18 Task 1: Soul Echo Sync Support
+ * Represents a broadcasted soul echo from another player
+ */
+export interface SoulEchoSyncEvent {
+  eventId: string;
+  timestamp: number;
+  sourceClientId: string;              // Player who discovered the echo
+  soulEcho: any;                        // SoulEcho object (import from soulEchoNetworkEngine)
+  sessionId: string;
+  isCanonical: boolean;                 // True if this is a canonical (world-wide) echo
+  targetSessionId?: string;             // Specific session this is for (if not broadcast)
+}
+
+/**
+ * Phase 18 Task 1: P2P Registry - Track soul echo sync state
+ */
+export interface P2PSoulEchoSync {
+  registry: SessionRegistry;
+  discoveredEchos: Map<string, SoulEchoSyncEvent>;    // echoId → event
+  incomingQueue: SoulEchoSyncEvent[];                 // Pending sync events
+  syncHistory: Array<{ echoId: string; sourceClient: string; timestamp: number }>;
+  lastSyncTick: number;
+}
+
+/**
+ * Phase 18 Task 1: Create a P2P soul echo sync tracker
+ */
+export function createP2PSoulEchoSync(registry: SessionRegistry): P2PSoulEchoSync {
+  return {
+    registry,
+    discoveredEchos: new Map(),
+    incomingQueue: [],
+    syncHistory: [],
+    lastSyncTick: Date.now()
+  };
+}
+
+/**
+ * Phase 18 Task 1: Broadcast a soul echo to other players
+ * Returns notification message for target players
+ */
+export function broadcastSoulEcho(
+  sync: P2PSoulEchoSync,
+  echo: any,                    // SoulEcho object
+  sourceClientId: string,
+  isCanonical: boolean = false,
+  targetSessionId?: string
+): string {
+  const event: SoulEchoSyncEvent = {
+    eventId: `sync-${echo.echoId}-${Date.now()}`,
+    timestamp: Date.now(),
+    sourceClientId,
+    soulEcho: echo,
+    sessionId: sync.registry.config.sessionId,
+    isCanonical,
+    targetSessionId
+  };
+
+  sync.discoveredEchos.set(echo.echoId, event);
+  sync.syncHistory.push({
+    echoId: echo.echoId,
+    sourceClient: sourceClientId,
+    timestamp: event.timestamp
+  });
+
+  // Return whisper notification message for other players
+  const sourcePlayer = sync.registry.peers.get(sourceClientId);
+  const playerName = sourcePlayer?.playerName || 'an unknown explorer';
+
+  return `✨ ${playerName} whispers: "I've discovered a connection in history... ${echo.semanticBridge}"`;
+}
+
+/**
+ * Phase 18 Task 1: Merge incoming soul echo from another player
+ * Deduplicates and timestamps incoming echoes
+ */
+export function mergeSoulEchos(
+  sync: P2PSoulEchoSync,
+  incomingEcho: SoulEchoSyncEvent
+): { merged: boolean; reason: string } {
+  // Check if we already have this echo
+  const existing = sync.discoveredEchos.get(incomingEcho.soulEcho.echoId);
+
+  if (existing) {
+    // Already have this echo
+    return {
+      merged: false,
+      reason: 'Echo already known to this session'
+    };
+  }
+
+  // Add to queue for processing
+  sync.incomingQueue.push(incomingEcho);
+  sync.discoveredEchos.set(incomingEcho.soulEcho.echoId, incomingEcho);
+
+  return {
+    merged: true,
+    reason: `Echo from ${incomingEcho.sourceClientId} merged into session`
+  };
+}
+
+/**
+ * Phase 18 Task 1: Process queued soul echo syncs
+ * Called each server tick to integrate pending echos
+ */
+export function processSoulEchoQueue(
+  sync: P2PSoulEchoSync,
+  maxPerTick: number = 5
+): number {
+  let processed = 0;
+
+  // Process up to maxPerTick echoes per tick
+  while (sync.incomingQueue.length > 0 && processed < maxPerTick) {
+    const event = sync.incomingQueue.shift();
+    if (!event) break;
+
+    // Timestamp for deduplication
+    if (!event.soulEcho.timestamp) {
+      event.soulEcho.timestamp = event.timestamp;
+    }
+
+    processed++;
+  }
+
+  sync.lastSyncTick = Date.now();
+  return processed;
+}
+
+/**
+ * Phase 18 Task 1: Get sync health metrics
+ */
+export function getSoulEchoSyncHealth(sync: P2PSoulEchoSync): {
+  totalEchos: number;
+  queuedEchos: number;
+  syncHistoryLength: number;
+  lastSyncAge: number;
+  canonicalEchos: number;
+} {
+  const canonicalCount = Array.from(sync.discoveredEchos.values()).filter(e => e.isCanonical).length;
+
+  return {
+    totalEchos: sync.discoveredEchos.size,
+    queuedEchos: sync.incomingQueue.length,
+    syncHistoryLength: sync.syncHistory.length,
+    lastSyncAge: Date.now() - sync.lastSyncTick,
+    canonicalEchos: canonicalCount
+  };
+}
+
+/**
+ * ============================================================================
+ * M58 Task 2: State Synchronization Protocol
+ * ============================================================================
+ * 
+ * Implements eventual consistency for shared world state across concurrent players.
+ * Uses WorldStateDiff packages to synchronize incremental changes.
+ */
+
+/**
+ * Mutation log entry - atomic unit of world change
+ */
+export interface MutationLogEntry {
+  mutationId: string;
+  tick: number;
+  clientId: string;
+  timestamp: number;
+  type: 'NPC_UPDATE' | 'LOCATION_UPDATE' | 'ITEM_CREATE' | 'ITEM_DESTROY' | 'PLAYER_ACTION' | 'QUEST_UPDATE' | 'EVENT';
+  targetId: string;
+  targetType: 'NPC' | 'LOCATION' | 'ITEM' | 'QUEST' | 'EVENT';
+  changes: Record<string, any>;
+  conflictResolution?: 'preferred' | 'rollback' | 'merged';
+}
+
+/**
+ * Incremental world state diff for P2P synchronization
+ */
+export interface WorldStateDiff {
+  tick: number;
+  clientId: string; // Which player made the change
+  mutations: MutationLogEntry[];
+  timestamp: number; // Server-side timestamp for ordering
+  checksum: string; // SHA-256 of world state after applying diff
+  sequenceId: number; // For deduplication
+}
+
+/**
+ * State synchronization context
+ */
+export interface StateSyncContext {
+  lastAppliedDiffId: Map<string, number>; // Per-client deduplication
+  diffQueue: WorldStateDiff[];
+  conflictLog: Array<{
+    tick: number;
+    clientA: string;
+    clientB: string;
+    mutation: MutationLogEntry;
+    resolution: 'clientA_priority' | 'clientB_priority' | 'merged' | 'rolled_back';
+    reason: string;
+  }>;
+  stateChecksums: Map<number, string>; // tick → checksum for integrity validation
+  lastReconciliationTick: number;
+  reconciliationInterval: number; // How often to force full state sync (in ticks)
+}
+
+/**
+ * Create new state sync context
+ */
+export function createStateSyncContext(): StateSyncContext {
+  return {
+    lastAppliedDiffId: new Map(),
+    diffQueue: [],
+    conflictLog: [],
+    stateChecksums: new Map(),
+    lastReconciliationTick: 0,
+    reconciliationInterval: 50, // Reconcile every 50 ticks
+  };
+}
+
+/**
+ * Validate if a diff is a duplicate (already applied)
+ */
+function isDuplicateDiff(
+  context: StateSyncContext,
+  clientId: string,
+  sequenceId: number
+): boolean {
+  const lastSeq = context.lastAppliedDiffId.get(clientId) ?? -1;
+  return sequenceId <= lastSeq;
+}
+
+/**
+ * Check if two mutations would conflict
+ */
+function mutationsConflict(
+  mutA: MutationLogEntry,
+  mutB: MutationLogEntry
+): boolean {
+  // Same target = potential conflict
+  if (mutA.targetId === mutB.targetId && mutA.targetType === mutB.targetType) {
+    // Same type of mutation on same target = conflict
+    return mutA.type === mutB.type && mutA.tick === mutB.tick;
+  }
+  return false;
+}
+
+/**
+ * Merge incoming world state diff into local state
+ */
+export function mergeIncomingDiff(
+  context: StateSyncContext,
+  localState: WorldState,
+  incomingDiff: WorldStateDiff
+): { success: boolean; conflict: boolean; conflicts?: any[] } {
+  // Check for duplicate
+  if (isDuplicateDiff(context, incomingDiff.clientId, incomingDiff.sequenceId)) {
+    return { success: false, conflict: false };
+  }
+
+  const conflicts: any[] = [];
+
+  // Check each mutation against local state for conflicts
+  for (const mutation of incomingDiff.mutations) {
+    // Look for recent mutations on same target
+    const recentDiffs = context.diffQueue
+      .filter(d => d.tick >= incomingDiff.tick - 10) // Last 10 ticks
+      .flatMap(d => d.mutations);
+
+    for (const recentMut of recentDiffs) {
+      if (mutationsConflict(mutation, recentMut)) {
+        // Record conflict
+        conflicts.push({
+          tick: incomingDiff.tick,
+          incoming: mutation,
+          existing: recentMut,
+          resolution: incomingDiff.clientId < recentMut.clientId ? 'incoming_wins' : 'existing_wins'
+        });
+
+        // Apply conflict resolution based on client priority (FIFO)
+        if (incomingDiff.clientId >= recentMut.clientId) {
+          // Existing mutation wins, skip incoming
+          continue;
+        }
+      }
+    }
+
+    // Apply mutation to local state
+    applyMutationToState(localState, mutation);
+  }
+
+  // Add diff to queue (ordered by tick)
+  context.diffQueue.push(incomingDiff);
+  context.diffQueue.sort((a, b) => a.tick - b.tick);
+
+  // Update deduplication tracker
+  context.lastAppliedDiffId.set(incomingDiff.clientId, incomingDiff.sequenceId);
+
+  // Store checksum for reconciliation
+  context.stateChecksums.set(incomingDiff.tick, incomingDiff.checksum);
+
+  // Log conflicts
+  for (const conflict of conflicts) {
+    context.conflictLog.push({
+      tick: conflict.tick,
+      clientA: conflict.incoming.clientId,
+      clientB: conflict.existing.clientId,
+      mutation: conflict.incoming,
+      resolution: conflict.resolution === 'incoming_wins' ? 'clientA_priority' : 'clientB_priority',
+      reason: `Mutation conflict on ${conflict.incoming.targetType} ${conflict.incoming.targetId}`
+    });
+  }
+
+  return { success: true, conflict: conflicts.length > 0, conflicts };
+}
+
+/**
+ * Apply a single mutation to world state
+ */
+function applyMutationToState(state: WorldState, mutation: MutationLogEntry): void {
+  try {
+    switch (mutation.targetType) {
+      case 'NPC':
+        const npc = state.npcs?.find(n => n.id === mutation.targetId);
+        if (npc) {
+          Object.assign(npc, mutation.changes);
+        }
+        break;
+
+      case 'LOCATION':
+        const location = state.locations?.find(l => l.id === mutation.targetId);
+        if (location) {
+          Object.assign(location, mutation.changes);
+        }
+        break;
+
+      case 'ITEM':
+        const item = state.player?.inventory?.find(i => i.itemId === mutation.targetId);
+        if (item) {
+          Object.assign(item, mutation.changes);
+        }
+        break;
+
+      case 'QUEST':
+        const quest = state.quests?.find(q => q.id === mutation.targetId);
+        if (quest) {
+          Object.assign(quest, mutation.changes);
+        }
+        break;
+
+      case 'EVENT':
+        // Add event to chronicle
+        if (!state.chronicle) state.chronicle = { events: [] };
+        state.chronicle.events.push({
+          kind: 'MUTATION_EVENT',
+          tick: mutation.tick,
+          data: mutation.changes,
+          timestamp: mutation.timestamp
+        });
+        break;
+    }
+  } catch (error) {
+    console.error('[StateSyncContext] Failed to apply mutation:', error);
+  }
+}
+
+/**
+ * Check if state hashes match (for integrity validation)
+ */
+export function validateStateChecksum(
+  context: StateSyncContext,
+  tick: number,
+  checksum: string
+): boolean {
+  const expected = context.stateChecksums.get(tick);
+  if (!expected) {
+    // No checksum recorded, assume valid
+    return true;
+  }
+  return expected === checksum;
+}
+
+/**
+ * Force full state reconciliation (every N ticks)
+ */
+export function shouldReconcile(
+  context: StateSyncContext,
+  currentTick: number
+): boolean {
+  return currentTick - context.lastReconciliationTick >= context.reconciliationInterval;
+}
+
+/**
+ * Mark reconciliation as completed
+ */
+export function markReconciliationComplete(
+  context: StateSyncContext,
+  currentTick: number
+): void {
+  context.lastReconciliationTick = currentTick;
+}
+
+/**
+ * Get synchronization health metrics
+ */
+export function getSyncStats(context: StateSyncContext): {
+  queuedDiffs: number;
+  conflictCount: number;
+  lastReconciliation: number;
+  checksumTrackingSize: number;
+} {
+  return {
+    queuedDiffs: context.diffQueue.length,
+    conflictCount: context.conflictLog.length,
+    lastReconciliation: context.lastReconciliationTick,
+    checksumTrackingSize: context.stateChecksums.size,
   };
 }
 

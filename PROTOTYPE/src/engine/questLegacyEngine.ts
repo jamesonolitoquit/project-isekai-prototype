@@ -229,3 +229,255 @@ export function calculateRedemptionBonus(
     specialPerk
   };
 }
+// ============================================================================
+// PHASE 30: ANCESTRAL GRAVE SPAWNING - ECHOES OF HISTORY
+// ============================================================================
+
+/**
+ * Ancestral Grave NPC: Physical manifestation of an ancestor's death site
+ * Phase 30 Task 2: Spawn as interactive ghost NPCs at failure locations
+ */
+export interface AncestralGrave {
+  id: string;
+  ancestorName: string;
+  ancestorMythStatus: number;
+  graveLocation: string;
+  graveCoordinates?: { x: number; y: number };
+  deathCause: string;
+  generationsPassed: number;
+  npcEchoId: string;  // Reference to spawned NPC
+  questsAvailable: string[];  // Linked redemption quests
+  discoveredBy: string[];  // Player IDs who found it
+  isActive: boolean;
+}
+
+/**
+ * Spawn an Ancestral Grave NPC at a failure location
+ * Creates a ghost/echo NPC that the player can interact with
+ * 
+ * @param failure - AncestralFailure describing where ancestor died
+ * @param ancestor - LegacyImpact with ancestor's full history
+ * @param locationId - World location ID where grave should spawn
+ * @param seed - Random seed for grave generation
+ * @returns Ancestral Grave definition and associated quest IDs
+ */
+export function spawnAncestralGrave(
+  failure: AncestralFailure,
+  ancestor: LegacyImpact,
+  locationId: string,
+  seed: number
+): { grave: AncestralGrave; linkedQuestIds: string[] } {
+  const rng = new SeededRng(seed);
+  
+  const graveId = `grave_${ancestor.canonicalName.replace(/\s+/g, '_')}_${locationId}`;
+  const npcEchoId = `echo_${graveId}`;
+  
+  // Create grave definition
+  const grave: AncestralGrave = {
+    id: graveId,
+    ancestorName: ancestor.canonicalName,
+    ancestorMythStatus: ancestor.mythStatus,
+    graveLocation: locationId,
+    graveCoordinates: {
+      x: rng.nextInt(0, 100),
+      y: rng.nextInt(0, 100)
+    },
+    deathCause: failure.failureReason,
+    generationsPassed: ancestor.epochsLived || 1,
+    npcEchoId,
+    questsAvailable: [],
+    discoveredBy: [],
+    isActive: true
+  };
+  
+  // Create associated redemption quest
+  const redemptionQuest = generateRedemptionQuest(failure, 'Descendant', seed);
+  grave.questsAvailable.push(redemptionQuest.id);
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(
+      `[AncestralGrave] Spawned grave for ${ancestor.canonicalName} at ${locationId} with quest ${redemptionQuest.id}`
+    );
+  }
+  
+  return {
+    grave,
+    linkedQuestIds: [redemptionQuest.id]
+  };
+}
+
+/**
+ * Convert an Ancestral Grave into an NPC that players can interact with
+ * The NPC serves as a "ghost" or "echo" of the ancestor
+ * 
+ * @param grave - AncestralGrave to convert to NPC
+ * @param seed - Random seed for NPC generation
+ * @returns NPC representation of the ancestral grave
+ */
+export function createAncestralGraveNPC(
+  grave: AncestralGrave,
+  seed: number
+): NPC {
+  const rng = new SeededRng(seed);
+  
+  const echoNpc: NPC = {
+    id: grave.npcEchoId,
+    name: `Echo of ${grave.ancestorName}`,
+    displayName: `${grave.ancestorName}'s Ghost`,
+    description: `The spectral form of your ancestor. They died attempting: "${grave.deathCause}"`,
+    location: grave.graveLocation,
+    status: 'active',
+    factionRole: 'guide',  // Ghosts guide descendants
+    importance: grave.ancestorMythStatus > 70 ? 'legendary' : 'major',
+    personality: {
+      combat: 'avoidant',  // Ghosts don't fight
+      social: 'melancholy',
+      cooperation: 'helpful'  // Helps descendants complete their quests
+    },
+    stats: {
+      str: 0,  // Ghosts have no physical stats
+      agi: 0,
+      int: grave.ancestorMythStatus,  // Knowledge-based stat
+      cha: Math.max(10, grave.ancestorMythStatus / 2),  // Charisma based on legacy
+      end: 0,
+      luk: 0
+    },
+    currentHp: 100,  // Ghosts don't die
+    maxHp: 100,
+    abilities: ['speak', 'guide', 'provide_quest'],
+    factionId: 'ancestral_legacy',
+    reputation: 0,  // Neutrality
+    isUnique: true,
+    isEcho: true,  // Mark as echo/ghost
+    echoOf: grave.ancestorName,
+    linkedGraveId: grave.id,
+    dialogueOverrides: {
+      greeting: `I am the echo of ${grave.ancestorName}. My quest remains unfinished...`,
+      onQuestAccept: `Thank you, descendant. Finish what I could not.`,
+      onQuestComplete: `You have honored my memory. Our bloodline grows stronger.`
+    }
+  };
+  
+  return echoNpc;
+}
+
+/**
+ * Generate all ancestral graves for the current player based on their heritage
+ * Called on world initialization to populate graves
+ * 
+ * @param legacyImpacts - Array of previous generation legacies
+ * @param currentLocationIds - Available location IDs in world
+ * @param worldSeed - World seed for reproducible generation
+ * @returns Array of graves to spawn and their linked quests
+ */
+export function generateAllAncestralGraves(
+  legacyImpacts: LegacyImpact[],
+  currentLocationIds: string[],
+  worldSeed: number
+): Array<{ grave: AncestralGrave; linkedQuestIds: string[]; npc: NPC }> {
+  const graves: Array<{ grave: AncestralGrave; linkedQuestIds: string[]; npc: NPC }> = [];
+  
+  if (legacyImpacts.length === 0) {
+    return graves;
+  }
+  
+  const failures = extractAncestralFailures(legacyImpacts);
+  
+  // Spawn graves for significant ancestors (myth status > 40)
+  legacyImpacts.forEach((ancestor, ancestorIdx) => {
+    if (ancestor.mythStatus < 40) {
+      return;  // Skip low-myth ancestors
+    }
+    
+    // Find failures related to this ancestor
+    const ancestorFailures = failures.filter(f => f.ancestorName === ancestor.canonicalName);
+    
+    ancestorFailures.forEach((failure, failureIdx) => {
+      // Select a location from available locations (hash-based for reproducibility)
+      const locationIdx = (ancestorIdx * 1000 + failureIdx) % currentLocationIds.length;
+      const graveLocation = currentLocationIds[locationIdx];
+      
+      const graveSeed = worldSeed + ancestorIdx * 10000 + failureIdx * 100;
+      
+      const { grave, linkedQuestIds } = spawnAncestralGrave(
+        failure,
+        ancestor,
+        graveLocation,
+        graveSeed
+      );
+      
+      const npc = createAncestralGraveNPC(grave, graveSeed);
+      
+      graves.push({
+        grave,
+        linkedQuestIds,
+        npc
+      });
+    });
+  });
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[AncestralGraves] Generated ${graves.length} ancestral graves from ${legacyImpacts.length} ancestors`);
+  }
+  
+  return graves;
+}
+
+/**
+ * Check if a location has ancestral graves and return them
+ * Used during navigation to trigger grave discovery
+ * 
+ * @param locationId - Location to check
+ * @param allGraves - Array of all spawned graves
+ * @returns Graves at this location
+ */
+export function getGravesAtLocation(
+  locationId: string,
+  allGraves: AncestralGrave[]
+): AncestralGrave[] {
+  return allGraves.filter(g => g.graveLocation === locationId && g.isActive);
+}
+
+/**
+ * Mark a grave as discovered by a player
+ * Triggers grave discovery narrative event
+ * 
+ * @param grave - Grave that was discovered
+ * @param playerId - Player who discovered it
+ * @returns Updated grave with discovery recorded
+ */
+export function discoverAncestralGrave(
+  grave: AncestralGrave,
+  playerId: string
+): AncestralGrave {
+  if (!grave.discoveredBy.includes(playerId)) {
+    grave.discoveredBy.push(playerId);
+  }
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[AncestralGrave] ${playerId} discovered grave of ${grave.ancestorName}`);
+  }
+  
+  return grave;
+}
+
+/**
+ * Deactivate a grave after its associated quests are completed
+ * Optional: can keep graves active for repeated visits
+ * 
+ * @param grave - Grave to deactivate
+ * @param reason - Why the grave is being deactivated
+ * @returns Updated grave
+ */
+export function deactivateAncestralGrave(
+  grave: AncestralGrave,
+  reason: string = 'quests_completed'
+): AncestralGrave {
+  grave.isActive = false;
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[AncestralGrave] Deactivated ${grave.ancestorName}'s grave: ${reason}`);
+  }
+  
+  return grave;
+}

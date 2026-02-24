@@ -1,0 +1,214 @@
+/**
+ * BETA Phase 1: Atmospheric Filter Animations
+ * 
+ * CSS animations for paradox-induced glitch effects that render
+ * based on paradoxLevel intensity.
+ */
+
+/* Mild Glitch: Subtle position shifts (25-50 paradox range) */
+@keyframes glitch-mild {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-2px, -2px);
+  }
+  40% {
+    transform: translate(-1px, 1px);
+  }
+  60% {
+    transform: translate(1px, -1px);
+  }
+  80% {
+    transform: translate(2px, 1px);
+  }
+}
+
+/* Moderate Glitch: Increased distortion + color fringing (50-75 paradox range) */
+@keyframes glitch-moderate {
+  0%, 100% {
+    transform: translate(0, 0);
+    clip-path: inset(0);
+  }
+  10% {
+    transform: translate(-3px, -3px);
+    clip-path: inset(0 0 90% 0);
+  }
+  20% {
+    transform: translate(-2px, 2px);
+    clip-path: inset(0 0 75% 0);
+  }
+  30% {
+    transform: translate(2px, -2px);
+    clip-path: inset(0 0 85% 0);
+  }
+  40% {
+    transform: translate(1px, 3px);
+    clip-path: inset(0 0 70% 0);
+  }
+  50% {
+    transform: translate(-1px, -1px);
+    clip-path: inset(0);
+  }
+  60% {
+    transform: translate(3px, 1px);
+    clip-path: inset(0 0 80% 0);
+  }
+  70% {
+    transform: translate(-2px, 2px);
+    clip-path: inset(0 0 75% 0);
+  }
+  80% {
+    transform: translate(2px, -3px);
+    clip-path: inset(0 0 88% 0);
+  }
+  90% {
+    transform: translate(-1px, 1px);
+    clip-path: inset(0);
+  }
+}
+
+/* Severe Glitch: Heavy reality fracture (75-100 paradox range) */
+@keyframes glitch-severe {
+  0%, 100% {
+    transform: translate(0, 0);
+    clip-path: inset(0);
+    opacity: 1;
+  }
+  5% {
+    transform: translate(-6px, -6px);
+    clip-path: inset(0 0 60% 0);
+    opacity: 0.75;
+  }
+  10% {
+    transform: translate(-4px, 4px);
+    clip-path: inset(0 0 35% 0);
+    opacity: 0.9;
+  }
+  15% {
+    transform: translate(4px, -4px);
+    clip-path: inset(0 0 55% 0);
+    opacity: 0.8;
+  }
+  20% {
+    transform: translate(3px, 3px);
+    clip-path: inset(0 0 40% 0);
+    opacity: 0.85;
+  }
+  25% {
+    transform: translate(-5px, 2px);
+    clip-path: inset(0 0 65% 0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translate(2px, -5px);
+    clip-path: inset(0);
+    opacity: 1;
+  }
+  35% {
+    transform: translate(-3px, -3px);
+    clip-path: inset(0 0 50% 0);
+    opacity: 0.8;
+  }
+  40% {
+    transform: translate(5px, 1px);
+    clip-path: inset(0 0 45% 0);
+    opacity: 0.75;
+  }
+  45% {
+    transform: translate(-2px, 4px);
+    clip-path: inset(0 0 60% 0);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate(1px, -2px);
+    clip-path: inset(0);
+    opacity: 1;
+  }
+  55% {
+    transform: translate(-4px, 3px);
+    clip-path: inset(0 0 70% 0);
+    opacity: 0.75;
+  }
+  60% {
+    transform: translate(4px, -2px);
+    clip-path: inset(0 0 40% 0);
+    opacity: 0.85;
+  }
+  65% {
+    transform: translate(-2px, -4px);
+    clip-path: inset(0 0 55% 0);
+    opacity: 0.8;
+  }
+  70% {
+    transform: translate(3px, 2px);
+    clip-path: inset(0 0 35% 0);
+    opacity: 0.9;
+  }
+  75% {
+    transform: translate(-5px, -3px);
+    clip-path: inset(0 0 65% 0);
+    opacity: 0.7;
+  }
+  80% {
+    transform: translate(2px, 5px);
+    clip-path: inset(0);
+    opacity: 1;
+  }
+  85% {
+    transform: translate(-3px, 1px);
+    clip-path: inset(0 0 50% 0);
+    opacity: 0.8;
+  }
+  90% {
+    transform: translate(1px, -3px);
+    clip-path: inset(0 0 60% 0);
+    opacity: 0.85;
+  }
+  95% {
+    transform: translate(-4px, 2px);
+    clip-path: inset(0 0 45% 0);
+    opacity: 0.75;
+  }
+}
+
+/* Apply glitch animations based on class */
+.glitch-mild {
+  animation: glitch-mild 0.4s infinite;
+}
+
+.glitch-moderate {
+  animation: glitch-moderate 0.3s infinite;
+}
+
+.glitch-severe {
+  animation: glitch-severe 0.25s infinite;
+}
+
+/* Optional: Add chromatic aberration effect layers */
+@keyframes chromatic-shift {
+  0%, 100% {
+    text-shadow: 0 0 rgba(255, 0, 0, 0);
+  }
+  50% {
+    text-shadow: -2px 0 rgba(255, 0, 0, 0.5), 2px 0 rgba(0, 0, 255, 0.5);
+  }
+}
+
+.chromatic-aberration {
+  animation: chromatic-shift 0.1s infinite;
+}
+
+/* Fade/Pulse effect for higher paradox */
+@keyframes reality-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.reality-pulse {
+  animation: reality-pulse 0.8s infinite;
+}

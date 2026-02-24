@@ -115,9 +115,9 @@ const DiceAltar: React.FC<DiceAltarProps> = ({
               finalRoll,
               context.targetValue,
               success ? 'success' : 'failure',
-              worldState.player?.currentLocation || 'unknown',
-              worldState.currentWeather || 'clear',
-              worldState.currentEpoch || 'epoch_i',
+              worldState.player?.location || 'unknown',
+              worldState.weather || 'clear',
+              worldState.epochId || 'epoch_i',
               {
                 actionType: context.actionType,
                 actionName: context.actionName,
@@ -405,11 +405,7 @@ const DiceAltar: React.FC<DiceAltarProps> = ({
       {result && (
         <div
           style={{
-            animation: 'fadeIn 0.5s ease-in',
-            '@keyframes fadeIn': {
-              from: { opacity: 0 },
-              to: { opacity: 1 }
-            }
+            animation: 'fadeIn 0.5s ease-in'
           }}
         >
           <div

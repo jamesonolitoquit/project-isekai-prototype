@@ -15,6 +15,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import type { TradeManager, MultiplayerEngine, PhantomEngine } from '../../types/engines';
 const getAllProphecies = () => []; // Stub - prophecy list not available in dashboard context
 type WorldState = any; // Use any for WorldState to avoid import path issues
 const getAiDmState = () => undefined; // Stub - AI state not available in dashboard
@@ -215,6 +216,47 @@ function generateWarnings(metrics: Omit<NarrativeMetrics, 'timestamp' | 'warning
 }
 
 /**
+ * Phase 4 Task 4.4: Calculate network health metrics from telemetry engines
+ */
+function calculateNetworkMetrics(
+  tradeManager: TradeManager | undefined,
+  multiplayerEngine: MultiplayerEngine | undefined,
+  phantomEngine: PhantomEngine | undefined
+): NetworkHealthMetrics {
+  let p95Latency = 0;
+  let peerConsensusScore = 100;
+  let phantomCount = 0;
+  let activePeerCount = 0;
+
+  // Get P95 latency from tradeManager
+  if (tradeManager?.getLatencyStats) {
+    const stats = tradeManager.getLatencyStats();
+    p95Latency = stats?.p95 || 0;
+  }
+
+  // Get peer consensus score from multiplayerEngine
+  if (multiplayerEngine?.getConsensusStatus) {
+    const consensusStatus = multiplayerEngine.getConsensusStatus();
+    peerConsensusScore = consensusStatus?.agreementPercentage || 100;
+    activePeerCount = consensusStatus?.activePeers || 0;
+  }
+
+  // Get phantom count from phantomEngine
+  if (phantomEngine?.getActivePhantoms) {
+    const phantoms = phantomEngine.getActivePhantoms();
+    phantomCount = phantoms?.length || 0;
+  }
+
+  return {
+    p95Latency,
+    peerConsensusScore,
+    phantomCount,
+    activePeerCount,
+    lastUpdate: Date.now()
+  };
+}
+
+/**
  * M34: Individual gauge component
  */
 interface GaugeProps {
@@ -275,14 +317,37 @@ interface SeerIntervention {
   timestamp: number;
 }
 
+/**
+ * Phase 4 Task 4.4: Network Health Telemetry for Director
+ */
+interface NetworkHealthMetrics {
+  p95Latency: number; // milliseconds
+  peerConsensusScore: number; // 0-100
+  phantomCount: number; // Active ghost players
+  activePeerCount: number;
+  lastUpdate: number;
+}
+
 export const CoDmDashboard: React.FC<{
   worldState: WorldState;
   onSendWhisper?: (recipientId: string, message: string, type: string) => void;
-  onCurateEvent?: (eventType: string, parameters: any) => void;
+  onCurateEvent?: (eventType: string, parameters: Record<string, any>) => void;
   activePlayerIds?: string[];
-}> = ({ worldState, onSendWhisper, onCurateEvent, activePlayerIds = [] }) => {
+  tradeManager?: TradeManager;
+  multiplayerEngine?: MultiplayerEngine;
+  phantomEngine?: PhantomEngine;
+}> = ({ worldState, onSendWhisper, onCurateEvent, activePlayerIds = [], tradeManager, multiplayerEngine, phantomEngine }) => {
   const [metrics, setMetrics] = useState<NarrativeMetrics | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  
+  // Phase 4 Task 4.4: Network telemetry metrics
+  const [networkMetrics, setNetworkMetrics] = useState<NetworkHealthMetrics>({
+    p95Latency: 0,
+    peerConsensusScore: 100,
+    phantomCount: 0,
+    activePeerCount: 0,
+    lastUpdate: Date.now()
+  });
   
   // M35: Seer's Hand state
   const [whisperRecipient, setWhisperRecipient] = useState('');
@@ -367,6 +432,10 @@ export const CoDmDashboard: React.FC<{
         warnings,
         healthStatus
       });
+
+      // Phase 4 Task 4.4: Update network telemetry
+      const netMetrics = calculateNetworkMetrics(tradeManager, multiplayerEngine, phantomEngine);
+      setNetworkMetrics(netMetrics);
     };
 
     calculateMetrics();
@@ -375,7 +444,7 @@ export const CoDmDashboard: React.FC<{
       const interval = setInterval(calculateMetrics, 2000);
       return () => clearInterval(interval);
     }
-  }, [worldState, autoRefresh]);
+  }, [worldState, autoRefresh, tradeManager, multiplayerEngine, phantomEngine]);
 
   if (!metrics) {
     return <div style={{ color: '#9ca3af' }}>Loading metrics...</div>;
@@ -452,6 +521,86 @@ export const CoDmDashboard: React.FC<{
           color={metrics.prophecyStability < 30 ? 'red' : metrics.prophecyStability < 60 ? 'yellow' : 'green'}
           icon="🔮"
         />
+      </div>
+
+      {/* Phase 4 Task 4.4: Network Health Widget */}
+      <div style={{
+        padding: '12px',
+        backgroundColor: '#1f2937',
+        borderRadius: '6px',
+        marginBottom: '16px',
+        borderLeft: '3px solid #06b6d4'
+      }}>
+        <div style={{
+          fontSize: '12px',
+          fontWeight: 600,
+          color: '#06b6d4',
+          marginBottom: '10px'
+        }}>
+          🌐 Network Health (Telemetry)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '11px' }}>
+          <div style={{ 
+            padding: '8px', 
+            backgroundColor: '#111827', 
+            borderRadius: '4px',
+            borderLeft: `2px solid ${networkMetrics.p95Latency > 100 ? '#ef4444' : networkMetrics.p95Latency > 50 ? '#f59e0b' : '#10b981'}`
+          }}>
+            <div style={{ color: '#9ca3af', fontSize: '10px' }}>P95 Latency</div>
+            <div style={{ 
+              color: networkMetrics.p95Latency > 100 ? '#ef4444' : networkMetrics.p95Latency > 50 ? '#f59e0b' : '#10b981',
+              fontWeight: 700,
+              fontSize: '13px'
+            }}>
+              {Math.round(networkMetrics.p95Latency)}ms
+            </div>
+          </div>
+          <div style={{ 
+            padding: '8px', 
+            backgroundColor: '#111827', 
+            borderRadius: '4px',
+            borderLeft: `2px solid ${networkMetrics.peerConsensusScore > 95 ? '#10b981' : networkMetrics.peerConsensusScore > 80 ? '#f59e0b' : '#ef4444'}`
+          }}>
+            <div style={{ color: '#9ca3af', fontSize: '10px' }}>Consensus</div>
+            <div style={{ 
+              color: networkMetrics.peerConsensusScore > 95 ? '#10b981' : networkMetrics.peerConsensusScore > 80 ? '#f59e0b' : '#ef4444',
+              fontWeight: 700,
+              fontSize: '13px'
+            }}>
+              {Math.round(networkMetrics.peerConsensusScore)}%
+            </div>
+          </div>
+          <div style={{ 
+            padding: '8px', 
+            backgroundColor: '#111827', 
+            borderRadius: '4px',
+            borderLeft: `2px solid ${networkMetrics.phantomCount > 5 ? '#f59e0b' : '#10b981'}`
+          }}>
+            <div style={{ color: '#9ca3af', fontSize: '10px' }}>Phantoms</div>
+            <div style={{ 
+              color: networkMetrics.phantomCount > 5 ? '#f59e0b' : '#10b981',
+              fontWeight: 700,
+              fontSize: '13px'
+            }}>
+              {networkMetrics.phantomCount} active
+            </div>
+          </div>
+          <div style={{ 
+            padding: '8px', 
+            backgroundColor: '#111827', 
+            borderRadius: '4px',
+            borderLeft: '2px solid #a855f7'
+          }}>
+            <div style={{ color: '#9ca3af', fontSize: '10px' }}>Peers</div>
+            <div style={{ 
+              color: '#a855f7',
+              fontWeight: 700,
+              fontSize: '13px'
+            }}>
+              {networkMetrics.activePeerCount} connected
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* M35: Seer's Hand Control Panel */}
@@ -654,6 +803,122 @@ export const CoDmDashboard: React.FC<{
             </div>
           </div>
         )}
+      </div>
+
+      {/* M43 Phase C: Authority Section */}
+      <div style={{
+        padding: '12px',
+        backgroundColor: '#1f2937',
+        borderRadius: '6px',
+        marginBottom: '16px',
+        borderLeft: '3px solid #f59e0b'
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: '#f59e0b', marginBottom: '10px' }}>
+          ⚖️ AUTHORITY LEDGER (Multi-GM Voting)
+        </div>
+
+        {/* Director Ledger Actions */}
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: 500 }}>Recent Actions</div>
+          <div style={{ 
+            backgroundColor: '#111827', 
+            borderRadius: '4px', 
+            padding: '8px',
+            fontSize: '10px',
+            maxHeight: '120px',
+            overflowY: 'auto',
+            color: '#d1d5db'
+          }}>
+            <div style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #374151' }}>
+              <span style={{ color: '#60a5fa', fontWeight: 600 }}>SEAL_CANON</span>
+              <span style={{ marginLeft: '8px', color: '#34d399' }}>✓ 2/2 voted</span>
+              <span style={{ marginLeft: '8px', color: '#9ca3af', fontSize: '9px' }}>Approved</span>
+            </div>
+            <div style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #374151' }}>
+              <span style={{ color: '#60a5fa', fontWeight: 600 }}>FORCE_EPOCH</span>
+              <span style={{ marginLeft: '8px', color: '#f59e0b' }}>◐ 1/2 voted</span>
+              <span style={{ marginLeft: '8px', color: '#9ca3af', fontSize: '9px' }}>Pending</span>
+            </div>
+            <div style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #374151' }}>
+              <span style={{ color: '#60a5fa', fontWeight: 600 }}>OVERRIDE_NPC</span>
+              <span style={{ marginLeft: '8px', color: '#34d399' }}>✓ 2/3 voted</span>
+              <span style={{ marginLeft: '8px', color: '#9ca3af', fontSize: '9px' }}>Approved (2/3 majority)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Authority Debt Gauge */}
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 500 }}>Narrative Authority Debt</span>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#f59e0b' }}>+3.5</span>
+          </div>
+          <div style={{
+            width: '100%',
+            height: '8px',
+            backgroundColor: '#374151',
+            borderRadius: '4px',
+            overflow: 'hidden',
+            border: '1px solid #f59e0b'
+          }}>
+            <div style={{
+              height: '100%',
+              width: '35%',
+              backgroundColor: '#f59e0b',
+              transition: 'width 0.3s ease'
+            }} />
+          </div>
+          <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '4px' }}>
+            Director overrides accumulating debt. Reset via ritual consensus.
+          </div>
+        </div>
+
+        {/* Director Sync Status */}
+        <div>
+          <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: 500 }}>Director Sync Status</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+            <div style={{ 
+              backgroundColor: '#111827', 
+              padding: '6px', 
+              borderRadius: '3px',
+              fontSize: '10px',
+              borderLeft: '2px solid #34d399'
+            }}>
+              <div style={{ color: '#9ca3af', fontSize: '9px' }}>GM #1</div>
+              <div style={{ color: '#34d399', fontWeight: 600 }}>✓ 100% Sync</div>
+            </div>
+            <div style={{ 
+              backgroundColor: '#111827', 
+              padding: '6px', 
+              borderRadius: '3px',
+              fontSize: '10px',
+              borderLeft: '2px solid #34d399'
+            }}>
+              <div style={{ color: '#9ca3af', fontSize: '9px' }}>GM #2</div>
+              <div style={{ color: '#34d399', fontWeight: 600 }}>✓ 99% Sync</div>
+            </div>
+            <div style={{ 
+              backgroundColor: '#111827', 
+              padding: '6px', 
+              borderRadius: '3px',
+              fontSize: '10px',
+              borderLeft: '2px solid #f59e0b'
+            }}>
+              <div style={{ color: '#9ca3af', fontSize: '9px' }}>GM #3</div>
+              <div style={{ color: '#f59e0b', fontWeight: 600 }}>⚠️ 78% Sync</div>
+            </div>
+            <div style={{ 
+              backgroundColor: '#111827', 
+              padding: '6px', 
+              borderRadius: '3px',
+              fontSize: '10px',
+              borderLeft: '2px solid #ef4444'
+            }}>
+              <div style={{ color: '#9ca3af', fontSize: '9px' }}>Average</div>
+              <div style={{ color: '#fbbf24', fontWeight: 600 }}>92% Consensus</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* M35: Intervention History */}

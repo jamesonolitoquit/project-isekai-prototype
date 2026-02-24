@@ -35,7 +35,7 @@ const OracleView: React.FC<OracleViewProps> = ({ state, isDeveloperMode = false 
     
     // Build visual prompt context
     const playerLocation = state.locations?.find((l: any) => l.id === state.player.location);
-    const hour = (state as any).hour ?? 12;
+    const hour = state.hour ?? 12;
     
     const getDayPhase = () => {
       if (hour >= 6 && hour < 12) return 'morning';
@@ -45,8 +45,8 @@ const OracleView: React.FC<OracleViewProps> = ({ state, isDeveloperMode = false 
     };
     
     const visualContext = {
-      weather: (state as any).weather?.type ?? 'clear',
-      season: (state as any).season ?? 'spring',
+      weather: state.weather ?? 'clear',
+      season: state.season ?? 'spring',
       time: `hour-${hour}`,
       dayPhase: getDayPhase(),
       location: playerLocation || { id: 'unknown', name: 'Unknown', biome: 'forest' as const, features: [], connected: [] }
@@ -58,7 +58,7 @@ const OracleView: React.FC<OracleViewProps> = ({ state, isDeveloperMode = false 
       atmospheric,
       visual,
       generatedAt: Date.now(),
-      seed: (state as any).seed?.toString() ?? 'unknown'
+      seed: state.seed?.toString() ?? 'unknown'
     };
 
     // Keep last 10 generations in history for reference
@@ -68,8 +68,8 @@ const OracleView: React.FC<OracleViewProps> = ({ state, isDeveloperMode = false 
   }, [
     state.tick,
     state.player.location,
-    (state as any).hour,
-    (state as any).weather
+    state.hour,
+    state.weather
   ]);
 
   const styles = {
@@ -186,7 +186,7 @@ const OracleView: React.FC<OracleViewProps> = ({ state, isDeveloperMode = false 
 
   const playerLocation = state.locations?.find((l: any) => l.id === state.player.location);
   const locationName = playerLocation?.name ?? 'Unknown';
-  const hour = (state as any).hour ?? 12;
+  const hour = state.hour ?? 12;
 
   return (
     <div style={styles.container}>

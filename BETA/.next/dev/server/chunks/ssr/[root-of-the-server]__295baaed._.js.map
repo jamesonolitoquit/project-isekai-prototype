@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/Jaoce/OneDrive/Documents/GitHub/project-isekai-v2/BETA/pages/index.tsx"],"sourcesContent":["import React from \"react\";\n\nexport default function HomePage() {\n  return (\n    <div>\n      <h1>BETA Website is Running!</h1>\n      <p>The Next.js development server is working. Runtime issues can now be investigated.</p>\n    </div>\n  );\n}\n\nexport const dynamic = 'force-dynamic'; // [M48-A4: Disable static generation for interactive page]\n"],"names":[],"mappings":";;;;;;;;AAEe,SAAS;IACtB,qBACE,qKAAC;;0BACC,qKAAC;0BAAG;;;;;;0BACJ,qKAAC;0BAAE;;;;;;;;;;;;AAGT;AAEO,MAAM,UAAU,iBAAiB,2DAA2D"}}]
+}

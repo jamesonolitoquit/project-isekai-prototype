@@ -28,7 +28,8 @@ export type MacroEventType =
   | 'faction_collapse'
   | 'resource_abundance'
   | 'celestial_event'
-  | 'magical_storm';
+  | 'magical_storm'
+  | 'social_outburst'; // Phase 25 Task 3: Global social chaos event
 
 /**
  * M37: Global effect modifier that persists across regions
@@ -111,7 +112,7 @@ export function getDefaultMacroEventTriggers(worldState: WorldState): MacroEvent
       description: 'Religious factions clash in holy war',
       triggerCondition: (state: WorldState) => {
         // Trigger if many religious factions exist
-        return (state as any)._factionMetadata?.religious_count > 2;
+        return (state._factionMetadata?.religious_count as number | undefined ?? 0) > 2;
       },
       severity: 75,
       durationTicks: 300,
@@ -128,7 +129,7 @@ export function getDefaultMacroEventTriggers(worldState: WorldState): MacroEvent
       description: 'Magic fades from the world',
       triggerCondition: (state: WorldState) => {
         // Trigger if many magic nodes have been depleted
-        const magicLocations = (state.locations || []).filter(l => (l as any).magicNode);
+        const magicLocations = (state.locations || []).filter(l => l.magicNode);
         return magicLocations.length > 0;
       },
       severity: 50,
@@ -145,7 +146,7 @@ export function getDefaultMacroEventTriggers(worldState: WorldState): MacroEvent
       description: 'Nature itself becomes twisted and hostile',
       triggerCondition: (state: WorldState) => {
         // Trigger if heavy environmental damage detected
-        const corruptedLocations = (state.locations || []).filter(l => (l as any)._glitchLevel > 50);
+        const corruptedLocations = (state.locations || []).filter(l => (l._glitchLevel ?? 0) > 50);
         return corruptedLocations.length > 5;
       },
       severity: 55,
@@ -163,7 +164,7 @@ export function getDefaultMacroEventTriggers(worldState: WorldState): MacroEvent
       description: 'Reality fractures, revealing other dimensions',
       triggerCondition: (state: WorldState) => {
         // Trigger if paradox events accumulated
-        const paradoxEvents = ((state as any)._eventHistory || []).filter((e: any) => e.type === 'paradox');
+        const paradoxEvents = (state._eventHistory || []).filter((e) => e.type === 'paradox');
         return paradoxEvents.length > 10;
       },
       severity: 80,
@@ -181,7 +182,7 @@ export function getDefaultMacroEventTriggers(worldState: WorldState): MacroEvent
       description: 'Multiple prophecies manifest at once',
       triggerCondition: (state: WorldState) => {
         // Trigger if many prophecies have been made
-        const prophecies = ((state as any)._prophecies || []).filter((p: any) => !p.fulfilled);
+        const prophecies = (state._prophecies || []).filter((p) => !(p as Record<string, unknown>).fulfilled);
         return prophecies.length > 3;
       },
       severity: 65,
@@ -189,6 +190,37 @@ export function getDefaultMacroEventTriggers(worldState: WorldState): MacroEvent
       baseProbability: 0.025,
       effectProperties: {
         conflictChance: 0.4,
+      },
+    },
+    {
+      id: 'trigger-social-outburst',
+      type: 'social_outburst',
+      name: 'The Great Discord',
+      description: 'Global social tension erupts into widespread conflict and betrayal',
+      triggerCondition: (state: WorldState) => {
+        // Phase 25 Task 3: Trigger if GST > 0.85 for sustained period
+        // Check if GST has been high recently (last 300 ticks)
+        const currentGst = state.socialTension ?? 0;
+        if (currentGst < 0.85) {
+          return false;
+        }
+        
+        // Track sustained high tension through event history
+        const recentEvents = (state._eventHistory || []).slice(-300);
+        const highTensionEvents = recentEvents.filter(e => 
+          (e as Record<string, unknown>).type === 'gst_elevated'
+        );
+        
+        // Require at least 200 ticks of elevated tension
+        return highTensionEvents.length > 200;
+      },
+      severity: 85,
+      durationTicks: 500,
+      baseProbability: 0.02,
+      effectProperties: {
+        conflictChance: 0.8,   // 80% chance of combat
+        moraleDelta: -50,      // Major morale penalty
+        npcMortalityMultiplier: 1.5, // Combat-related deaths
       },
     },
   ];
@@ -241,9 +273,9 @@ export function createMacroEventEffect(
     severity: trigger.severity,
     affectedBiomes,
     effectProperties: trigger.effectProperties,
-    startsAt: worldState.currentTick || 0,
+    startsAt: worldState.tick || 0,
     durationTicks: trigger.durationTicks,
-    expiresAt: (worldState.currentTick || 0) + trigger.durationTicks,
+    expiresAt: (worldState.tick || 0) + trigger.durationTicks,
     isActive: true,
   };
 }
@@ -264,7 +296,7 @@ export function applyMacroEventEffects(
   const eventLog: MacroEventHistoryEntry[] = [];
 
   // Filter active effects
-  const activeNow = activeEffects.filter(e => e.isActive && e.expiresAt > (worldState.currentTick || 0));
+  const activeNow = activeEffects.filter(e => e.isActive && e.expiresAt > (worldState.tick || 0));
 
   for (const effect of activeNow) {
     let regionsAffected = 0;
@@ -296,13 +328,13 @@ export function applyMacroEventEffects(
       // Reduce magic resource availability
       const efficiency = effect.effectProperties.manaEfficiencyMultiplier;
       modifiedState.locations = (modifiedState.locations || []).map(loc => {
-        if ((loc as any).magicNode) {
-          const loot = (loc as any).lootTableId;
+        if (loc.magicNode) {
+          const loot = loc.lootTableId;
           economicImpact += Math.floor(100 * (1 - efficiency));
           regionsAffected++;
           return {
             ...loc,
-            _magicFade: (loc as any)._magicFade ? (loc as any)._magicFade + effect.severity : effect.severity,
+            _magicFade: (loc._magicFade ?? 0) + effect.severity,
           };
         }
         return loc;
@@ -317,12 +349,12 @@ export function applyMacroEventEffects(
       // Reduce global resources
       const multiplier = effect.effectProperties.resourceMultiplier;
       modifiedState.locations = (modifiedState.locations || []).map(loc => {
-        const loot = (loc as any).lootTableId;
+        const loot = loc.lootTableId;
         economicImpact += Math.floor(100 * (1 - multiplier) * effect.severity / 100);
         regionsAffected++;
         return {
           ...loc,
-          _resourceDepletion: (loc as any)._resourceDepletion ? (loc as any)._resourceDepletion + 1 : 1,
+          _resourceDepletion: (loc._resourceDepletion ?? 0) + 1,
         };
       });
 
@@ -334,7 +366,7 @@ export function applyMacroEventEffects(
     // Log the event
     eventLog.push({
       timestamp: Date.now(),
-      tick: worldState.currentTick || 0,
+      tick: worldState.tick || 0,
       eventType: effect.type,
       severity: effect.severity,
       affectedRegions: regionsAffected,
@@ -418,7 +450,7 @@ export function processMacroEventTick(
   }
 
   // Update active effects
-  newEffects = updateActiveMacroEffects(newEffects, worldState.currentTick || 0);
+  newEffects = updateActiveMacroEffects(newEffects, worldState.tick || 0);
 
   // Apply effects to world state
   const { modifiedState, appliedEffects, eventLog } = applyMacroEventEffects(worldState, newEffects);

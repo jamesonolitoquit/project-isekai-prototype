@@ -2,6 +2,7 @@ import type { WorldState } from './worldEngine';
 import type { Event } from '../events/mutationLog';
 import { canonicalize } from '../events/mutationLog';
 import { random } from './prng';
+import { compactEventLog } from './eventCompactionEngine';
 
 /**
  * Simple SHA-256-like hash using TypeScript (for browser compatibility)
@@ -76,6 +77,12 @@ export interface GameSave {
   eventLog: Event[];
   checksum: string;
   eventHashChain?: string; // Final hash of the complete chain
+  compactionMetadata?: {  // M50-A2: Event compaction metadata
+    isCompacted: boolean;
+    originalEventCount?: number;
+    compactedEventCount?: number;
+    reductionRatio?: number;  // Percentage
+  };
 }
 
 // In-memory save storage (would be localStorage or DB in production)
@@ -140,15 +147,39 @@ export function verifySaveIntegrity(save: GameSave): { valid: boolean; reason?: 
 
 /**
  * Create a save from current world state
+ * @param compactEvents - M50-A2: If true, compact event log before saving
  */
 export function createSave(
   name: string,
   currentState: WorldState,
   eventLog: Event[],
   worldInstanceId: string,
-  tick: number
+  tick: number,
+  compactEvents: boolean = false
 ): GameSave {
   const saveId = `save_${Date.now()}_${Math.floor(random() * 0xffffff).toString(16)}`;
+  
+  // M50-A2: Optional event log compaction
+  let eventLogToSave = structuredClone(eventLog);
+  let compactionMetadata: GameSave['compactionMetadata'] | undefined;
+  
+  if (compactEvents && eventLog.length > 100) {  // Only compact if event log is substantial
+    const originalCount = eventLogToSave.length;
+    eventLogToSave = compactEventLog(eventLogToSave, 24);  // Group approximately daily
+    const newCount = eventLogToSave.length;
+    const reductionRatio = Math.round(((originalCount - newCount) / originalCount) * 10000) / 100;
+    
+    compactionMetadata = {
+      isCompacted: true,
+      originalEventCount: originalCount,
+      compactedEventCount: newCount,
+      reductionRatio
+    };
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Save] Event log compacted: ${originalCount} → ${newCount} events (-${reductionRatio}%)`);
+    }
+  }
 
   const save: Omit<GameSave, 'checksum' | 'eventHashChain'> = {
     id: saveId,
@@ -157,7 +188,8 @@ export function createSave(
     timestamp: Date.now(),
     tick,
     stateSnapshot: structuredClone(currentState),
-    eventLog: structuredClone(eventLog)
+    eventLog: eventLogToSave,
+    compactionMetadata
   };
 
   const checksum = createSaveChecksum(save);

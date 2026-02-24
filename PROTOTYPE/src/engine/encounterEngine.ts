@@ -17,8 +17,8 @@ import { random } from './prng';
 export interface Encounter {
   id: string;
   name: string;
-  type: 'combat' | 'social' | 'item' | 'environmental' | 'mixed';
-  rarity: 'common' | 'rare' | 'epic';
+  type: 'combat' | 'social' | 'item' | 'environmental' | 'mixed' | 'apex';
+  rarity: 'common' | 'rare' | 'epic' | 'apex';
   biome: string[];  // biomes where this can appear
   timeOfDay?: ('night' | 'morning' | 'afternoon' | 'evening')[];
   description: string;
@@ -335,29 +335,35 @@ export function getLocationBiome(locationId: string): string {
  */
 export function calculateTravelDistance(
   fromLocationId: string,
-  toLocationId: string
+  toLocationId: string,
+  travelMatrix?: Record<string, Record<string, number>>
 ): number {
-  // Simple distance matrix (in a real game, might be calculated from map coords)
+  // If a dynamic travel matrix is provided (from world template), use it first
+  if (travelMatrix && travelMatrix[fromLocationId] && travelMatrix[fromLocationId][toLocationId]) {
+    return travelMatrix[fromLocationId][toLocationId];
+  }
+
+  // Fallback to static distance matrix (prototype legacy)
   const distanceMap: Record<string, Record<string, number>> = {
     'eldergrove-village': {
-      'luminara-grand-market': 3,
-      'forge-summit': 4,
-      'moonwell-shrine': 2,
-      'thornwood-depths': 3,
-      'frozen-lake': 5,
-      'abyss-edge': 8
+      'luminara-grand-market': 120, // Ticks are now minutes (2h)
+      'forge-summit': 180,
+      'moonwell-shrine': 90,
+      'thornwood-depths': 150,
+      'frozen-lake': 240,
+      'abyss-edge': 360
     },
     'forge-summit': {
-      'eldergrove-village': 4,
-      'frozen-lake': 2,
-      'thornwood-depths': 3,
-      'abyss-edge': 6
+      'eldergrove-village': 180,
+      'frozen-lake': 60,
+      'thornwood-depths': 120,
+      'abyss-edge': 300
     },
     'thornwood-depths': {
-      'eldergrove-village': 3,
-      'moonwell-shrine': 2,
-      'forge-summit': 3,
-      'abyss-edge': 4
+      'eldergrove-village': 150,
+      'moonwell-shrine': 60,
+      'forge-summit': 120,
+      'abyss-edge': 180
     }
   };
 
@@ -438,4 +444,260 @@ export function performSearchCheck(
     dc: difficulty,
     margin: modifiedRoll - difficulty
   };
+}
+
+/**
+ * PHASE 14: Apex Entity Definition
+ * Mega-bosses that react to generationalParadox and player legitimacy
+ */
+export interface ApexEntity {
+  id: string;
+  name: string;
+  title: string;  // e.g., "The Void's Echo"
+  description: string;
+  encounterStages: ApexEncounterStage[];
+  currentStage: number;
+  baseLevel: number;
+  paradoxResonance: number;  // 0-100, increases with generationalParadox
+  defeatedBefore: boolean;
+  lastEncounterTick?: number;
+}
+
+export interface ApexEncounterStage {
+  stage: number;
+  name: string;
+  hpThreshold: number;  // % of full HP to trigger phase shift
+  abilities: ApexAbility[];
+  description: string;
+  environmentalEffect?: string;
+}
+
+export interface ApexAbility {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: number;  // DC to dodge or resist
+  mythStatusRequirement?: number;  // Player must have this much Myth Status to avoid worst effects
+  paradoxScaling: number;  // Damage/effect scales with generationalParadox
+}
+
+/**
+ * M57-A1: Calculate Apex entity's power level based on player's generational paradox
+ * Higher paradox = stronger Apex manifestation
+ */
+export function calculateApexPower(
+  state: WorldState,
+  baseLevel: number,
+  generationalParadox: number
+): { level: number; resonance: number; stageModifier: number } {
+  // Paradox increases Apex power by up to 50%
+  const paradoxMult = 1 + (Math.min(generationalParadox, 100) / 100) * 0.5;
+  const adjustedLevel = Math.floor(baseLevel * paradoxMult);
+
+  // Resonance reflects how "real" the Apex feels (higher = more dangerous)
+  const resonance = Math.min(100, generationalParadox + 20);
+
+  // Stage modifier: paradox unlocks additional phases
+  const stageModifier = Math.floor(generationalParadox / 35);  // 0-2 extra stages at max paradox
+
+  return { level: adjustedLevel, resonance, stageModifier };
+}
+
+/**
+ * M57-A2: Determine Apex stage shift based on player's Deeds and Myth Status
+ * Player legitimacy affects how aggressive the Apex behaves
+ */
+export function calculateApexPhaseShift(
+  state: WorldState,
+  apex: ApexEntity,
+  playerDeeds: string[],
+  playerMythStatus: number,
+  currentHpPercent: number
+): { stageTransition: boolean; newStage: number; narrativeShift: string } {
+  // Base HP threshold for next stage
+  const baseThreshold = 75 - apex.currentStage * 20;
+
+  // Player legitimacy reduces Apex aggression
+  const legitimacyBonus = playerMythStatus * 0.5;
+  const adjustedThreshold = baseThreshold - legitimacyBonus;
+
+  let narrativeShift = '';
+  let shouldTransition = false;
+  let newStage = apex.currentStage;
+
+  // Check if Apex should shift based on HP
+  if (currentHpPercent <= adjustedThreshold && apex.currentStage < apex.encounterStages.length - 1) {
+    shouldTransition = true;
+    newStage = apex.currentStage + 1;
+
+    // Narrative varies based on player's deed performance
+    if (playerDeeds.length > 5) {
+      narrativeShift = 'The Apex recognizes your legend and escalates with ancient fury.';
+    } else if (playerDeeds.length > 0) {
+      narrativeShift = 'The Apex adapts to your threat, revealing new powers.';
+    } else {
+      narrativeShift = 'The Apex senses weakness and presses the advantage.';
+    }
+  }
+
+  return {
+    stageTransition: shouldTransition,
+    newStage,
+    narrativeShift
+  };
+}
+
+/**
+ * M57-A3: Generate Apex entity encounter
+ * Creates a mega-boss customized to player's current progression
+ */
+export function generateApexEncounter(
+  state: WorldState,
+  apexTemplateId: string,
+  generationalParadox: number,
+  playerDeeds: string[],
+  playerMythStatus: number
+): ApexEntity {
+  // Base Apex templates
+  const apexTemplates: Record<string, Partial<ApexEntity>> = {
+    'void-echo': {
+      name: 'The Void\'s Echo',
+      title: 'Manifestation of Chaos',
+      description: 'A twisted reflection of cosmic entropy, speaking in fractured memories.',
+      baseLevel: 20,
+      encounterStages: [
+        {
+          stage: 0,
+          name: 'Awakening',
+          hpThreshold: 75,
+          abilities: [
+            {
+              id: 'void-strike',
+              name: 'Void Strike',
+              description: 'Reality splinters around you',
+              difficulty: 18,
+              paradoxScaling: 1.2
+            },
+            {
+              id: 'paradox-echo',
+              name: 'Paradox Echo',
+              description: 'Echoes of your past actions manifest as attacks',
+              difficulty: 20,
+              mythStatusRequirement: 5,
+              paradoxScaling: 0.8
+            }
+          ],
+          environmentalEffect: 'Reality warps and flickers'
+        },
+        {
+          stage: 1,
+          name: 'Escalation',
+          hpThreshold: 40,
+          abilities: [
+            {
+              id: 'void-rupture',
+              name: 'Void Rupture',
+              description: 'Tearing a rift in space itself',
+              difficulty: 22,
+              mythStatusRequirement: 10,
+              paradoxScaling: 1.4
+            }
+          ],
+          environmentalEffect: 'The world becomes unstable'
+        },
+        {
+          stage: 2,
+          name: 'Convergence',
+          hpThreshold: 0,
+          abilities: [
+            {
+              id: 'apex-convergence',
+              name: 'Apex Convergence',
+              description: 'All paradox focuses through one devastating blow',
+              difficulty: 25,
+              mythStatusRequirement: 20,
+              paradoxScaling: 2.0
+            }
+          ],
+          environmentalEffect: 'Reality collapses inward'
+        }
+      ]
+    },
+    'the-architect': {
+      name: 'The Architect',
+      title: 'Builder of Fates',
+      description: 'An entity that shapes destinies through intricate patterns.',
+      baseLevel: 22,
+      encounterStages: [
+        {
+          stage: 0,
+          name: 'Design Phase',
+          hpThreshold: 70,
+          abilities: [
+            {
+              id: 'geometric-assault',
+              name: 'Geometric Assault',
+              description: 'Intricate patterns that maim and confuse',
+              difficulty: 19,
+              paradoxScaling: 1.0
+            }
+          ],
+          environmentalEffect: 'Patterns of light surround you'
+        }
+      ]
+    }
+  };
+
+  const template = apexTemplates[apexTemplateId];
+  if (!template) {
+    throw new Error(`Unknown Apex template: ${apexTemplateId}`);
+  }
+
+  const { level, resonance, stageModifier } = calculateApexPower(state, template.baseLevel || 20, generationalParadox);
+
+  const apex: ApexEntity = {
+    id: `apex-${apexTemplateId}-${state.tick || 0}`,
+    name: template.name || 'Unknown Apex',
+    title: template.title || '',
+    description: template.description || '',
+    encounterStages: template.encounterStages || [],
+    currentStage: 0,
+    baseLevel: level,
+    paradoxResonance: resonance,
+    defeatedBefore: false
+  };
+
+  return apex;
+}
+
+/**
+ * M57-A4: Resolve an Apex ability roll (damage/effect with paradox scaling)
+ */
+export function resolveApexAbility(
+  ability: ApexAbility,
+  playerMythStatus: number,
+  generationalParadox: number,
+  playerDefenseRoll: number
+): { isHit: boolean; damage: number; narrativeEffect: string } {
+  // Paradox scales the ability power
+  const paradoxMult = 1 + (generationalParadox / 100) * ability.paradoxScaling;
+  const baseDamage = 10 + Math.floor(random() * 20);
+  const scaledDamage = Math.floor(baseDamage * paradoxMult);
+
+  // Player's Myth Status can mitigate damage
+  const mythMitigation = playerMythStatus * 0.3;
+  const finalDamage = Math.max(1, scaledDamage - mythMitigation);
+
+  // If ability has myth requirement, Myth Status grants dodge chance
+  let isHit = playerDefenseRoll < ability.difficulty;
+  if (ability.mythStatusRequirement && playerMythStatus >= ability.mythStatusRequirement) {
+    // Myth Status gives 20% dodge bonus
+    isHit = playerDefenseRoll < (ability.difficulty - 4);
+  }
+
+  const narrativeEffect = isHit
+    ? `${ability.name} connects! ${finalDamage.toFixed(0)} damage taken.`
+    : `${ability.name} narrowly misses due to your legend's protection.`;
+
+  return { isHit, damage: isHit ? finalDamage : 0, narrativeEffect };
 }

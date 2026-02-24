@@ -404,8 +404,8 @@ export function generateGlitchMapLayer(
   state: WorldState,
   epoch: number
 ): GlitchMapLayer {
-  const contentMutations = (state.mutationLog || []).filter(m => m.type === 'contentMutation').length;
-  const paradoxes = (state.temporalParadoxes || []).length;
+  const contentMutations = 0; // TODO: Implement mutation log tracking
+  const paradoxes = 0; // TODO: Implement temporal paradoxes tracking
 
   const glitchIntensity = getEpochGlitchIntensity(epoch, contentMutations, paradoxes);
   const renderMode = getRenderMode(epoch, glitchIntensity);
@@ -413,26 +413,27 @@ export function generateGlitchMapLayer(
   // Generate corruption patches at paradox locations
   const corruptionPatches: CorruptionPatch[] = [];
 
-  if (state.temporalParadoxes && state.temporalParadoxes.length > 0) {
-    for (let i = 0; i < Math.min(state.temporalParadoxes.length, 10); i++) {
-      const paradox = state.temporalParadoxes[i];
-      const location = state.locations.find(l => l.id === (paradox as any).locationId);
+  // TODO: Implement temporal paradoxes tracking
+  // if (state.temporalParadoxes && state.temporalParadoxes.length > 0) {
+  //   for (let i = 0; i < Math.min(state.temporalParadoxes.length, 10); i++) {
+  //     const paradox = state.temporalParadoxes[i];
+  //     const location = state.locations.find(l => l.id === (paradox as any).locationId);
 
-      if (location && location.x !== undefined && location.y !== undefined) {
-        const glitchType = ['pixelate', 'chromatic', 'timefold', 'void'][i % 4] as any;
+  //     if (location && location.x !== undefined && location.y !== undefined) {
+  //       const glitchType = ['pixelate', 'chromatic', 'timefold', 'void'][i % 4] as any;
 
-        corruptionPatches.push({
-          id: `corruption_${i}`,
-          x: location.x,
-          y: location.y,
-          radius: 50 + (glitchIntensity * 0.5),
-          corruptionLevel: Math.min(glitchIntensity + 20, 100),
-          biomeAffected: location.biome || 'forest',
-          glitchType
-        });
-      }
-    }
-  }
+  //       corruptionPatches.push({
+  //         id: `corruption_${i}`,
+  //         x: location.x,
+  //         y: location.y,
+  //         radius: 50 + (glitchIntensity * 0.5),
+  //         corruptionLevel: Math.min(glitchIntensity + 20, 100),
+  //         biomeAffected: location.biome || 'forest',
+  //         glitchType
+  //       });
+  //     }
+  //   }
+  // }
 
   // Scanline frequency increases with glitch intensity
   const scanlineFrequency = (glitchIntensity / 100) * 60 + 10; // 10-70 Hz

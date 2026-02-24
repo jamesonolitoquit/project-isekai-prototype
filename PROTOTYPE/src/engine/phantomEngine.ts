@@ -265,9 +265,9 @@ function updatePhantomFrame(engine: PhantomEngineState, phantom: PhantomEntity, 
   }
 
   // Apply animation/emote
-  let animation = frame.animation;
+  let animation: 'walk' | 'run' | 'idle' | 'interact' | 'attack' | 'emote' | 'cast' | 'defend' = frame.animation;
   if (phantom.currentAction && now - phantom.activeWhen < phantom.currentAction.durationMs) {
-    animation = phantom.currentAction.actionName as any;
+    animation = (phantom.currentAction.actionName as any) || 'idle';
   }
 
   // Update ECS entity
@@ -332,14 +332,14 @@ export function anonymizeSessionLog(
       x: m.x,
       y: m.y,
       z: m.z,
-      direction: (m.dir as any) || 'idle',
-      animation: (m.anim as any) || 'idle',
+      direction: (m.dir || 'idle') as 'north' | 'south' | 'east' | 'west' | 'idle',
+      animation: (m.anim || 'idle') as 'walk' | 'run' | 'idle' | 'interact',
       speed: m.speed || 0
     })),
     actionEvents: actions.map((a, idx) => ({
       frameIndex: idx,
       timestamp: a.ts,
-      actionType: (a.type as any) || 'emote',
+      actionType: (a.type || 'emote') as string,
       actionName: a.name,
       targetPos: a.targetX ? { x: a.targetX, y: a.targetY ?? 0, z: a.targetZ ?? 0 } : undefined,
       durationMs: a.durationMs
@@ -432,4 +432,163 @@ export function isPhantomEntity(entityId: string): boolean {
  */
 export function getPhantomInfo(engine: PhantomEngineState, phantomId: string): PhantomEntity | null {
   return engine.phantoms.get(phantomId) || null;
+}
+
+// ============================================================================
+// M43 PHASE C ADDITION: PHANTOM DETECTION & DIRECTOR REPUTATION
+// ============================================================================
+
+/**
+ * Director phantom score (data drift detection)
+ * M43 Phase C: Detect if a Director's world state diverges from peers
+ */
+export interface DirectorPhantomScore {
+  directorId: string;
+  directorName: string;
+  phantomScore: number;              // 0-1, where 1.0 = high drift risk
+  lastHashCheck: number;             // When last validation occurred
+  calculatedWorldHash: string;       // Local hash of world state
+  reportedHashes: Map<string, string>; // Other directors' reported hashes
+  driftEvents: Array<{
+    timestamp: number;
+    type: 'drift_detected' | 'hash_mismatch' | 'event_divergence';
+    description: string;
+  }>;
+  votingPower: number;               // 1.0 = full vote, reduced if phantom score high
+}
+
+/**
+ * Calculate phantom score for a director
+ * Detects data drift by comparing world hashes
+ */
+export function calculatePhantomScore(
+  directorId: string,
+  localWorldHash: string,
+  peerReports: Map<string, string>
+): { score: number; driftDetected: boolean; mismatchCount: number } {
+  if (peerReports.size === 0) {
+    // No peer data to compare
+    return { score: 0, driftDetected: false, mismatchCount: 0 };
+  }
+
+  // Find most common hash (consensus)
+  const hashFrequency = new Map<string, number>();
+  for (const hash of peerReports.values()) {
+    hashFrequency.set(hash, (hashFrequency.get(hash) ?? 0) + 1);
+  }
+
+  const consensusHash = Array.from(hashFrequency.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  if (!consensusHash) {
+    return { score: 0, driftDetected: false, mismatchCount: 0 };
+  }
+
+  // Check if this director's hash matches consensus
+  const isOutOfSync = localWorldHash !== consensusHash;
+  const mismatchCount = Array.from(peerReports.values()).filter(h => h !== localWorldHash).length;
+  const totalPeers = peerReports.size;
+  const mismatchRatio = mismatchCount / totalPeers;
+
+  // Score: 0 = synced, 1.0 = completely diverged
+  const score = isOutOfSync ? Math.min(mismatchRatio * 1.2, 1.0) : 0;
+
+  console.log(
+    `[PhantomDetection] Director ${directorId}: score=${score.toFixed(3)}, ` +
+    `consensus=${consensusHash.slice(0, 8)}..., local=${localWorldHash.slice(0, 8)}..., ` +
+    `mismatches=${mismatchCount}/${totalPeers}`
+  );
+
+  return {
+    score,
+    driftDetected: isOutOfSync,
+    mismatchCount
+  };
+}
+
+/**
+ * Calculate world state hash for phantom detection
+ * Deterministic hash of critical world properties
+ */
+export function calculateWorldStateHash(worldState: any): string {
+  // Hash key properties of world state (tick, epoch, entity count)
+  const hashInput = JSON.stringify({
+    tick: worldState.tick,
+    epoch: worldState.currentEpoch,
+    entityCount: worldState.entities?.length ?? 0,
+    eventLogLength: worldState.eventLog?.length ?? 0,
+    fragmentCount: worldState.fragmentRegistry?.fragments?.size ?? 0,
+    // Add more properties as needed for comprehensive detection
+  });
+
+  return simpleHash(hashInput);
+}
+
+/**
+ * Simple 32-bit hash function for world state
+ */
+function simpleHash(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32-bit
+  }
+  return Math.abs(hash).toString(16).padStart(8, '0');
+}
+
+/**
+ * Update director phantom score based on drift
+ */
+export function updateDirectorPhantomScore(
+  score: DirectorPhantomScore,
+  driftDetected: boolean,
+  driftDescription?: string
+): void {
+  if (driftDetected) {
+    score.phantomScore = Math.min(score.phantomScore + 0.15, 1.0);
+    score.driftEvents.push({
+      timestamp: Date.now(),
+      type: 'drift_detected',
+      description: driftDescription ?? 'World state divergence detected'
+    });
+    console.warn(`[PhantomDetection] Drift flagged for ${score.directorId}: ${driftDescription}`);
+  } else {
+    // Gradually reduce phantom score if synced
+    score.phantomScore = Math.max(score.phantomScore - 0.05, 0);
+  }
+
+  // Adjust voting power based on phantom score
+  score.votingPower = 1.0 - (score.phantomScore * 0.5); // 50% power reduction at max drift
+
+  score.lastHashCheck = Date.now();
+}
+
+/**
+ * Check if director is "phantom" (too much drift)
+ * GMs with high phantom score can't vote on sealed actions
+ */
+export function isDirectorPhantom(score: DirectorPhantomScore, threshold: number = 0.7): boolean {
+  return score.phantomScore >= threshold;
+}
+
+/**
+ * Get phantom detection status for dashboard
+ */
+export function getPhantomDetectionStatus(
+  directors: DirectorPhantomScore[]
+): {
+  synced: number;
+  drifted: number;
+  criticalDrift: number;
+  averageScore: number;
+} {
+  const driftedDirectors = directors.filter(d => d.phantomScore > 0.3);
+  const criticalDirectors = directors.filter(d => isDirectorPhantom(d));
+
+  return {
+    synced: directors.length - driftedDirectors.length,
+    drifted: driftedDirectors.length,
+    criticalDrift: criticalDirectors.length,
+    averageScore: directors.reduce((sum, d) => sum + d.phantomScore, 0) / Math.max(directors.length, 1)
+  };
 }

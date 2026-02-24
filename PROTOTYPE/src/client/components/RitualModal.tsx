@@ -15,7 +15,26 @@
 
 import React, { useState } from 'react';
 import DiceAltarModal from './DiceAltarModal';
-import type { DiceModifier, RollResult } from '../engine/diceAltarEngine';
+// import type { DiceModifier, RollResult } from '../engine/diceAltarEngine';
+
+// Temporary type definitions
+interface DiceModifier {
+  source: string;
+  value: number;
+  icon?: string;
+  description?: string;
+}
+
+interface RollResult {
+  roll: number;
+  modifiers: DiceModifier[];
+  total: number;
+  dc: number;
+  passed: boolean;
+  isCritical: boolean;
+  isFumble: boolean;
+  margin: number;
+}
 import '../styles/ritual-modal.css';
 
 // ============================================================================
@@ -398,7 +417,8 @@ const RitualModal: React.FC<RitualModalProps> = ({
       modifiers.push({
         source: 'Sanctified Location',
         value: 3,
-        icon: '🏛️'
+        icon: '🏛️',
+        description: 'Ritual performed in hallowed ground'
       });
     }
 
@@ -407,7 +427,8 @@ const RitualModal: React.FC<RitualModalProps> = ({
       modifiers.push({
         source: `Group (${state.selectedParticipants.length})`,
         value: groupBonus,
-        icon: '👥'
+        icon: '👥',
+        description: `Bonus from ${state.selectedParticipants.length} participants`
       });
     }
 
@@ -418,7 +439,8 @@ const RitualModal: React.FC<RitualModalProps> = ({
       modifiers.push({
         source: 'Belief Mismatch',
         value: -2,
-        icon: '⚠️'
+        icon: '⚠️',
+        description: 'Penalty from conflicting beliefs among participants'
       });
     }
 
@@ -427,7 +449,8 @@ const RitualModal: React.FC<RitualModalProps> = ({
       modifiers.push({
         source: `Sacrifices (${sacrifices})`,
         value: 2 * sacrifices,
-        icon: '⚡'
+        icon: '⚡',
+        description: `Bonus from ${sacrifices} willing sacrifice(s)`
       });
     }
 

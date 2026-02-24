@@ -7,10 +7,41 @@ interface ExpandedAncestor {
   bloodlineId: string;
 }
 
-export default function ChronicleArchive() {
+interface DeltaEntry {
+  deltaId: string;
+  epochNumber: number;
+  epochId: string;
+  timestamp: number;
+  factionShiftCount: number;
+  locationChangeCount: number;
+  npcChangeCount: number;
+  eventLogLines: number;
+}
+
+interface ChronicleData {
+  sessionId: string;
+  totalDeltas: number;
+  deltas: DeltaEntry[];
+}
+
+interface ChronicleArchiveProps {
+  isOpen: boolean;
+  onClose: () => void;
+  state: any;
+  sessionId?: string;
+}
+
+export default function ChronicleArchive({ isOpen, onClose, state, sessionId }: ChronicleArchiveProps) {
   const [bloodlines, setBloodlines] = useState<Record<string, any>>({});
   const [selectedBloodline, setSelectedBloodline] = useState<string | null>(null);
   const [expandedAncestors, setExpandedAncestors] = useState<Set<string>>(new Set());
+  
+  // Phase 15: Chronicle delta data
+  const [chronicleData, setChronicleData] = useState<ChronicleData | null>(null);
+  const [selectedDelta, setSelectedDelta] = useState<DeltaEntry | null>(null);
+  const [deltaLoading, setDeltaLoading] = useState(false);
+  const [deltaError, setDeltaError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'bloodlines' | 'deltas'>('bloodlines');
 
   useEffect(() => {
     const allBloodlines = getAllBloodlines();
@@ -19,6 +50,35 @@ export default function ChronicleArchive() {
       setSelectedBloodline(Object.keys(allBloodlines)[0]);
     }
   }, []);
+
+  // Phase 15: Fetch chronicle deltas from server
+  useEffect(() => {
+    if (!sessionId || !isOpen || viewMode !== 'deltas') return;
+
+    const fetchChronicleDeltas = async () => {
+      try {
+        setDeltaLoading(true);
+        const response = await fetch(`/api/chronicle/delta/${sessionId}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch chronicle deltas: ${response.statusText}`);
+        }
+
+        const data: ChronicleData = await response.json();
+        setChronicleData(data);
+        
+        if (data.deltas && data.deltas.length > 0) {
+          setSelectedDelta(data.deltas[0]);
+        }
+      } catch (err) {
+        setDeltaError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setDeltaLoading(false);
+      }
+    };
+
+    fetchChronicleDeltas();
+  }, [sessionId, isOpen, viewMode]);
 
   const toggleAncestorExpanded = (id: string) => {
     const newExpanded = new Set(expandedAncestors);
@@ -46,11 +106,166 @@ export default function ChronicleArchive() {
     return 'Obscure';
   };
 
-  const currentBloodline = selectedBloodline ? bloodlines[selectedBloodline] : null;
+  if (!isOpen) return null;
+
+  const renderDeltasView = () => (
+    <div style={{
+      flex: 1,
+      overflowY: 'auto',
+      padding: 32,
+      backgroundImage: 'linear-gradient(135deg, rgba(212, 175, 55, 0.03) 0%, rgba(212, 175, 55, 0) 100%)',
+    }}>
+      <h1 style={{
+        fontSize: 36,
+        margin: '0 0 8px 0',
+        color: '#d4af37',
+        fontWeight: 'normal',
+        textShadow: '0 0 10px rgba(212, 175, 55, 0.3)',
+      }}>
+        📜 Ascension Tree
+      </h1>
+      <div style={{ fontSize: 14, color: '#999', marginBottom: 24 }}>
+        Historical divergence points across {chronicleData?.totalDeltas || 0} epoch{chronicleData?.totalDeltas !== 1 ? 's' : ''}
+      </div>
+
+      {deltaLoading ? (
+        <div style={{ color: '#999', padding: 32, textAlign: 'center' }}>
+          Loading chronicle archive...
+        </div>
+      ) : deltaError ? (
+        <div style={{ color: '#ff6b6b', padding: 32, textAlign: 'center', backgroundColor: 'rgba(200, 30, 30, 0.1)', borderRadius: 8 }}>
+          Error: {deltaError}
+        </div>
+      ) : chronicleData && chronicleData.deltas && chronicleData.deltas.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Timeline visualization */}
+          <div style={{
+            padding: 20,
+            backgroundColor: 'rgba(212, 175, 55, 0.05)',
+            borderRadius: 8,
+            border: '1px solid rgba(212, 175, 55, 0.15)',
+          }}>
+            <h3 style={{ color: '#d4af37', margin: '0 0 16px 0', fontSize: 14 }}>
+              EPOCH PROGRESSION
+            </h3>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}>
+              {chronicleData.deltas.map((delta, idx) => (
+                <React.Fragment key={delta.deltaId}>
+                  <button
+                    onClick={() => setSelectedDelta(delta)}
+                    style={{
+                      padding: '10px 16px',
+                      backgroundColor: selectedDelta?.deltaId === delta.deltaId ? '#d4af37' : 'rgba(212, 175, 55, 0.1)',
+                      border: selectedDelta?.deltaId === delta.deltaId ? '2px solid #d4af37' : '1px solid #666',
+                      color: selectedDelta?.deltaId === delta.deltaId ? '#000' : '#d4af37',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      transition: 'all 0.3s ease',
+                    }}
+                  >
+                    Epoch {delta.epochNumber}
+                  </button>
+                  {idx < chronicleData.deltas.length - 1 && (
+                    <div style={{ color: '#666', fontSize: 16 }}>→</div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          {/* Selected delta details */}
+          {selectedDelta && (
+            <div style={{
+              padding: 20,
+              backgroundColor: 'rgba(212, 175, 55, 0.08)',
+              borderLeft: '4px solid #d4af37',
+              borderRadius: 8,
+            }}>
+              <h3 style={{ color: '#d4af37', margin: '0 0 16px 0', fontSize: 16 }}>
+                🎯 {selectedDelta.epochId}
+              </h3>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                gap: 16,
+              }}>
+                <div>
+                  <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>FACTION SHIFTS</div>
+                  <div style={{ fontSize: 20, color: '#90ee90', fontWeight: 'bold' }}>
+                    {selectedDelta.factionShiftCount}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>LOCATION CHANGES</div>
+                  <div style={{ fontSize: 20, color: '#87CEEB', fontWeight: 'bold' }}>
+                    {selectedDelta.locationChangeCount}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>NPC CHANGES</div>
+                  <div style={{ fontSize: 20, color: '#FFB6C1', fontWeight: 'bold' }}>
+                    {selectedDelta.npcChangeCount}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>TOTAL DIVERGENCES</div>
+                  <div style={{ fontSize: 20, color: '#FFD700', fontWeight: 'bold' }}>
+                    {selectedDelta.factionShiftCount + selectedDelta.locationChangeCount + selectedDelta.npcChangeCount}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, color: '#999', fontSize: 11 }}>
+                ⏰ {new Date(selectedDelta.timestamp).toLocaleString()}
+              </div>
+            </div>
+          )}
+
+          {/* Divergence points detail */}
+          <div style={{
+            padding: 20,
+            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            borderRadius: 8,
+          }}>
+            <h3 style={{ color: '#d4af37', margin: '0 0 12px 0', fontSize: 14 }}>
+              HISTORICAL RECORD
+            </h3>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              fontSize: 12,
+              color: '#ccc',
+              lineHeight: 1.6,
+            }}>
+              <div>• <span style={{ color: '#90ee90' }}>Faction Power Shifts:</span> Ancestral influence on political factions</div>
+              <div>• <span style={{ color: '#87CEEB' }}>Location Changes:</span> Environmental mutations and biome shifts</div>
+              <div>• <span style={{ color: '#FFB6C1' }}>NPC State Changes:</span> Deaths, relocations, and title changes</div>
+              <div style={{ marginTop: 8, color: '#999', fontSize: 11 }}>
+                Total divergence points: {selectedDelta ? selectedDelta.factionShiftCount + selectedDelta.locationChangeCount + selectedDelta.npcChangeCount : 0}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ color: '#666', padding: 32, textAlign: 'center' }}>
+          No chronicle deltas recorded yet.
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{
       display: 'flex',
+      flexDirection: 'column',
       height: '100%',
       backgroundColor: '#1a1a1a',
       color: '#e0e0e0',
@@ -59,9 +274,60 @@ export default function ChronicleArchive() {
       overflow: 'hidden',
       boxShadow: '0 0 20px rgba(212, 175, 55, 0.2)',
     }}>
-      {/* Sidebar with Bloodline List */}
+      {/* Tab Navigation */}
       <div style={{
-        width: '250px',
+        display: 'flex',
+        backgroundColor: '#0f0f0f',
+        borderBottom: '2px solid #d4af37',
+        gap: 0,
+      }}>
+        <button
+          onClick={() => setViewMode('bloodlines')}
+          style={{
+            flex: 1,
+            padding: 12,
+            backgroundColor: viewMode === 'bloodlines' ? '#2a2a2a' : 'transparent',
+            border: 'none',
+            borderBottom: viewMode === 'bloodlines' ? '3px solid #d4af37' : 'none',
+            color: viewMode === 'bloodlines' ? '#d4af37' : '#999',
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: viewMode === 'bloodlines' ? 'bold' : 'normal',
+            transition: 'all 0.3s ease',
+          }}
+        >
+          👨‍👩‍👧‍👦 Bloodline Registry
+        </button>
+        <button
+          onClick={() => setViewMode('deltas')}
+          style={{
+            flex: 1,
+            padding: 12,
+            backgroundColor: viewMode === 'deltas' ? '#2a2a2a' : 'transparent',
+            border: 'none',
+            borderBottom: viewMode === 'deltas' ? '3px solid #d4af37' : 'none',
+            color: viewMode === 'deltas' ? '#d4af37' : '#999',
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: viewMode === 'deltas' ? 'bold' : 'normal',
+            transition: 'all 0.3s ease',
+          }}
+        >
+          📜 Ascension Tree
+        </button>
+      </div>
+
+      {/* Content Area */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {viewMode === 'deltas' ? (
+          // Delta view
+          renderDeltasView()
+        ) : (
+          // Bloodlines view (original layout)
+          <>
+            {/* Sidebar with Bloodline List */}
+            <div style={{
+              width: '250px',
         backgroundColor: '#0f0f0f',
         borderRight: '2px solid #d4af37',
         overflowY: 'auto',
@@ -352,7 +618,7 @@ export default function ChronicleArchive() {
                           }}
                         >
                           <div>
-                            <div style{{
+                            <div style={{
                               fontSize: 18,
                               fontWeight: 'bold',
                               color: mythColor,

@@ -4,6 +4,10 @@ import { calculateWorldTension } from '../../engine/chronosLedgerEngine';
 
 interface FactionPanelProps {
   state?: any;
+  // M52-C1: Strategic commands
+  playerMerit?: number;
+  selectedFaction?: string;
+  onIssueFactionCommand?: (factionId: string, command: 'CONQUEST' | 'ESPIONAGE' | 'ISOLATIONISM') => void;
 }
 
 interface DisplayFaction {
@@ -26,9 +30,15 @@ interface DisplayRelationship {
 /**
  * FactionPanel Component - displays factions, relationships, reputation, and political news
  * Part of Phase 11 (The Weight of Influence) - allows players to track political dynamics
+ * M52-C1: Adds War Room tab for strategic faction commands
  */
-export default function FactionPanel({ state }: FactionPanelProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'details' | 'relationships' | 'news' | 'resonance'>('overview');
+export default function FactionPanel({ 
+  state,
+  playerMerit = 0,
+  selectedFaction,
+  onIssueFactionCommand
+}: FactionPanelProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'details' | 'relationships' | 'news' | 'resonance' | 'warRoom'>('overview');
   
   const factions = state?.factions || [];
   const factionReputation = state?.player?.factionReputation || {};
@@ -155,7 +165,7 @@ export default function FactionPanel({ state }: FactionPanelProps) {
       
       {/* Tab Navigation */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #333' }}>
-        {(['overview', 'details', 'relationships', 'resonance', 'news'] as const).map((tab) => (
+        {(['overview', 'details', 'relationships', 'resonance', 'warRoom', 'news'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -175,6 +185,7 @@ export default function FactionPanel({ state }: FactionPanelProps) {
             {tab === 'details' && 'Your Reputation'}
             {tab === 'relationships' && 'Alliances'}
             {tab === 'resonance' && `Resonance (${Math.ceil(worldTension / 25)})`}
+            {tab === 'warRoom' && '⚔️ War Room'}
             {tab === 'news' && 'Recent Events'}
           </button>
         ))}
@@ -310,6 +321,103 @@ export default function FactionPanel({ state }: FactionPanelProps) {
                     </div>
                   ) : null;
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* M52-C1: War Room - Strategic Faction Commands */}
+        {activeTab === 'warRoom' && (
+          <div>
+            <div style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#2a1a3a', borderRadius: '6px' }}>
+              <h3 style={{ margin: '0 0 8px 0', color: '#FFB933', fontSize: '14px' }}>Strategic Command Center</h3>
+              <div style={{ fontSize: '12px', color: '#bbb', marginBottom: '8px' }}>
+                Current Merit: <span style={{ color: '#a8d5a8', fontWeight: 'bold' }}>{playerMerit}</span> / 50 Required per command
+              </div>
+              <div style={{ fontSize: '11px', color: '#888' }}>
+                Issue strategic directives to allied factions (50+ reputation)
+              </div>
+            </div>
+
+            {displayFactions.length === 0 ? (
+              <p style={{ color: '#aaa', fontSize: '12px' }}>No factions discovered yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {displayFactions.filter(f => f.playerReputation >= 50).length === 0 ? (
+                  <p style={{ color: '#aaa', fontSize: '12px', fontStyle: 'italic' }}>
+                    Build reputation with factions (50+) to issue commands
+                  </p>
+                ) : (
+                  displayFactions.map((faction) => {
+                    const canCommand = faction.playerReputation >= 50 && playerMerit >= 50;
+                    return faction.playerReputation >= 50 ? (
+                      <div
+                        key={faction.id}
+                        style={{
+                          backgroundColor: '#2a1a3a',
+                          padding: '12px',
+                          borderRadius: '6px',
+                          borderLeft: `3px solid ${faction.attitude === 'allied' ? '#4CAF50' : '#FFB933'}`
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold', color: '#FFB933', marginBottom: '8px' }}>
+                          {faction.name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#bbb', marginBottom: '8px' }}>
+                          Reputation: {faction.playerReputation} | Status: {faction.attitude === 'allied' ? '✓ Allied' : '— Neutral'}
+                        </div>
+
+                        {/* Strategy Buttons */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr 1fr',
+                          gap: '6px'
+                        }}>
+                          {([
+                            { name: 'CONQUEST', icon: '⚔️', desc: 'Expand territory & combat' },
+                            { name: 'ESPIONAGE', icon: '👁️', desc: 'Gather intelligence' },
+                            { name: 'ISOLATIONISM', icon: '🏰', desc: 'Defend & fortify' }
+                          ] as const).map((strategy) => (
+                            <button
+                              key={strategy.name}
+                              onClick={() => {
+                                if (onIssueFactionCommand && canCommand) {
+                                  onIssueFactionCommand(faction.id, strategy.name);
+                                }
+                              }}
+                              disabled={!canCommand}
+                              style={{
+                                padding: '8px',
+                                backgroundColor: canCommand ? 'rgba(168, 213, 168, 0.15)' : 'rgba(100, 100, 100, 0.1)',
+                                border: canCommand ? '1px solid #a8d5a8' : '1px solid #555',
+                                borderRadius: '4px',
+                                color: canCommand ? '#a8d5a8' : '#666',
+                                cursor: canCommand ? 'pointer' : 'not-allowed',
+                                fontSize: '10px',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (canCommand) {
+                                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(168, 213, 168, 0.25)';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (canCommand) {
+                                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(168, 213, 168, 0.15)';
+                                }
+                              }}
+                              title={!canCommand ? 'Requires 50 Merit' : `${strategy.desc} - Costs 50 Merit`}
+                            >
+                              <div>{strategy.icon}</div>
+                              <div>{strategy.name}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })
+                )}
               </div>
             )}
           </div>

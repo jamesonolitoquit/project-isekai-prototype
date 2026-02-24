@@ -44,6 +44,8 @@ export interface Relic {
   lore: string;
   lastSpokeAt?: number; // Timestamp of last dialogue
   rebellionCounter: number; // Tracks how many times it's rebelled
+  // Phase 29 Task 3: Causality Stabilization
+  causalityStabilizer?: number; // 0-100: strength of paradox debt reduction effect
 }
 
 /**
@@ -570,3 +572,370 @@ export function canAwakeningTrigger(
 
   return (currentTick - lastAwakeningTick) >= cooldownTicks; // Cooldown
 }
+
+/**
+ * Phase 15: Calculate accumulated corruption for a heirloom item
+ * Tracks hiddenCorruption that grows across multiple generations
+ * Items reaching 75+ corruption transform into "Weapon of Sin" or "Relic of Virtue"
+ * 
+ * @param item The heirloom item to evaluate
+ * @param generationCount How many generations this item has passed through
+ * @param bloodlineDeeds The deeds accomplished through the bloodline
+ * @returns Corruption tracking data and potential transformation status
+ */
+export function calculateHiddenCorruption(
+  item: any, // UniqueItem with corruption metadata
+  generationCount: number,
+  bloodlineDeeds?: string[],
+  previousCorruptionLevel: number = 0
+): {
+  hiddenCorruption: number;
+  corruptionPercentage: number;
+  transformationStatus: 'stable' | 'degrading' | 'transformed';
+  mechanicalEffect?: string;
+  narrativeEffect?: string;
+} {
+  // Base corruption: 5 per generation
+  let corruption = previousCorruptionLevel + (generationCount * 5);
+
+  // Corruption increases if bloodline has committed "sin" deeds
+  const sinDeeds = bloodlineDeeds?.filter(d => 
+    d.toLowerCase().includes('betrayed') || 
+    d.toLowerCase().includes('corrupted') || 
+    d.toLowerCase().includes('sacrificed') ||
+    d.toLowerCase().includes('twisted')
+  ) || [];
+  
+  corruption += sinDeeds.length * 15;
+
+  // Cap at 100
+  corruption = Math.min(100, corruption);
+
+  // Determine status and potential transformation
+  let transformationStatus: 'stable' | 'degrading' | 'transformed' = 'stable';
+  let mechanicalEffect: string | undefined;
+  let narrativeEffect: string | undefined;
+
+  if (corruption < 30) {
+    transformationStatus = 'stable';
+    narrativeEffect = 'The item remains pure, untouched by corruption.';
+  } else if (corruption < 75) {
+    transformationStatus = 'degrading';
+    narrativeEffect = 'Shadows creep across the item. Its purpose wavers.';
+  } else {
+    transformationStatus = 'transformed';
+    
+    // Determine transformation type based on deed alignment
+    const virtueDeeds = bloodlineDeeds?.filter(d => 
+      d.toLowerCase().includes('saved') || 
+      d.toLowerCase().includes('blessed') || 
+      d.toLowerCase().includes('cleansed') ||
+      d.toLowerCase().includes('restored')
+    ) || [];
+
+    if (virtueDeeds.length > sinDeeds.length) {
+      // Relic of Virtue path
+      mechanicalEffect = 'Life Steal: Gain HP equal to 20% of damage dealt';
+      narrativeEffect = `${item.name} has transformed into a Relic of Virtue. It glows with healing light from generations of righteous deeds.`;
+    } else {
+      // Weapon of Sin path
+      mechanicalEffect = 'Paradox Pulse: Inflict temporal damage on enemies, scaling with your generationalParadox';
+      narrativeEffect = `${item.name} has transformed into a Weapon of Sin. Dark energy crackles along its edge, fed by accumulated corruption.`;
+    }
+  }
+
+  return {
+    hiddenCorruption: corruption,
+    corruptionPercentage: Math.round(corruption),
+    transformationStatus,
+    mechanicalEffect,
+    narrativeEffect
+  };
+}
+
+/**
+ * Phase 15: Track multi-item corruption cascades
+ * When heirlooms are stored together, corruption can spread between them
+ * 
+ * @param items Array of heirloom items in inventory
+ * @param generationCount Current generation
+ * @returns Updated items with corruption recalculated
+ */
+export function propagateCorruptionAcrossHeirlooms(
+  items: any[], // UniqueItem[]
+  generationCount: number
+): any[] {
+  if (items.length < 2) return items; // No cascade with single item
+
+  // Find max corruption level
+  const maxCorruption = Math.max(
+    ...items.map(i => (i.metadata?.hiddenCorruption || 0))
+  );
+
+  // Apply partial corruption spread to nearby items (cascade effect)
+  return items.map(item => {
+    const itemCorruption = item.metadata?.hiddenCorruption || 0;
+    
+    // If this item has low corruption but others are high, it absorbs some
+    if (itemCorruption < maxCorruption) {
+      const cascadeAmount = Math.floor((maxCorruption - itemCorruption) * 0.15); // 15% spread per generation
+      const newCorruption = Math.min(100, itemCorruption + cascadeAmount);
+      
+      return {
+        ...item,
+        metadata: {
+          ...item.metadata,
+          hiddenCorruption: newCorruption,
+          corruptionCascadeApplied: true
+        }
+      };
+    }
+    
+    return item;
+  });
+}
+
+/**
+ * Phase 15: Apply heirloom corruption transformation to item
+ * When corruption >= 75, the item's mechanical effects permanently change
+ * 
+ * @param item The heirloom to transform
+ * @param corruptionData Data from calculateHiddenCorruption()
+ * @returns Transformed item with new effects and stat modifications
+ */
+export function applyCorruptionTransformation(
+  item: any, // UniqueItem
+  corruptionData: {
+    hiddenCorruption: number;
+    transformationStatus: 'stable' | 'degrading' | 'transformed';
+    mechanicalEffect?: string;
+    narrativeEffect?: string;
+  }
+): any {
+  const transformedItem = { ...item };
+
+  if (corruptionData.transformationStatus !== 'transformed') {
+    return transformedItem;
+  }
+
+  // Apply permanent stat modifications based on corruption type
+  const isSin = corruptionData.mechanicalEffect?.includes('Paradox Pulse');
+
+  if (isSin) {
+    // Weapon of Sin: +STR, -CHA
+    transformedItem.metadata = {
+      ...item.metadata,
+      transformedIntoWeaponOfSin: true,
+      corruptionLevel: corruptionData.hiddenCorruption,
+      statModifiers: {
+        str: (item.metadata?.statModifiers?.str || 0) + 3,
+        cha: (item.metadata?.statModifiers?.cha || 0) - 2
+      }
+    };
+  } else {
+    // Relic of Virtue: +CHA, +INT, special healing mechanic
+    transformedItem.metadata = {
+      ...item.metadata,
+      transformedIntoRelicOfVirtue: true,
+      corruptionLevel: corruptionData.hiddenCorruption,
+      statModifiers: {
+        cha: (item.metadata?.statModifiers?.cha || 0) + 2,
+        int: (item.metadata?.statModifiers?.int || 0) + 2,
+        healingBonus: 20 // % of damage as healing
+      }
+    };
+  }
+
+  // Store the transformation narrative
+  transformedItem.narrativeEffects = {
+    ...item.narrativeEffects,
+    corruptionTransformation: corruptionData.narrativeEffect
+  };
+
+  return transformedItem;
+}
+
+/**
+ * Phase 15: Validate heirloom for multi-generational inheritance
+ * Checks if item corruption would exceed safe limits for inheritance
+ * 
+ * @param item The heirloom item
+ * @param nextGenerationCount The number of generations it will live through
+ * @returns Inheritance viability assessment
+ */
+export function validateHeirloomForInheritance(
+  item: any, // UniqueItem
+  nextGenerationCount: number
+): {
+  isViable: boolean;
+  warningLevel: 'safe' | 'caution' | 'danger' | 'impossible';
+  projectedCorruption: number;
+  recommendation: string;
+} {
+  const currentCorruption = item.metadata?.hiddenCorruption || 0;
+  const projectedCorruption = Math.min(100, currentCorruption + (nextGenerationCount * 5));
+
+  let warningLevel: 'safe' | 'caution' | 'danger' | 'impossible' = 'safe';
+  let recommendation = 'This heirloom is stable for inheritance.';
+
+  if (projectedCorruption >= 95) {
+    warningLevel = 'impossible';
+    recommendation = 'This heirloom has reached critical corruption and cannot be safely inherited. Consider letting it rest in the Chronicles.';
+  } else if (projectedCorruption >= 85) {
+    warningLevel = 'danger';
+    recommendation = 'This heirloom is approaching transformation. One more generation risks catastrophic change.';
+  } else if (projectedCorruption >= 75) {
+    warningLevel = 'caution';
+    recommendation = 'This heirloom will transform in the next generation. Decide whether to accept its new nature or retire it.';
+  }
+
+  return {
+    isViable: warningLevel !== 'impossible',
+    warningLevel,
+    projectedCorruption,
+    recommendation
+  };
+}
+
+/**
+ * Phase 29 Task 3: Calculate paradox debt reduction from carried stabilizer relic
+ * If player carries a causality stabilizer relic, reduces paradoxDebt accumulation
+ * from actions in their current region by the relic's strength percentage
+ */
+export function calculateCausalityStabilizerEffect(
+  relic: Relic | null,
+  baseParadoxDebtAccumulation: number,
+  playerLocation: string
+): {
+  reducedDebt: number;
+  reductionPercent: number;
+  stabilizationActive: boolean;
+  relicName: string;
+} {
+  if (!relic || !relic.causalityStabilizer || relic.causalityStabilizer <= 0) {
+    return {
+      reducedDebt: baseParadoxDebtAccumulation,
+      reductionPercent: 0,
+      stabilizationActive: false,
+      relicName: 'None'
+    };
+  }
+
+  // Calculate reduction: causalityStabilizer is 0-100 representing percentage reduction
+  // E.g., causalityStabilizer of 25 = 25% reduction in paradox debt
+  const reductionPercent = Math.min(relic.causalityStabilizer, 100);
+  const reductionAmount = baseParadoxDebtAccumulation * (reductionPercent / 100);
+  const reducedDebt = baseParadoxDebtAccumulation - reductionAmount;
+
+  return {
+    reducedDebt: Math.max(0, reducedDebt),
+    reductionPercent,
+    stabilizationActive: true,
+    relicName: relic.name
+  };
+}
+
+/**
+ * Phase 29 Task 3: Create the legendary "Chronos Hourglass" relic
+ * Reward for completing Phase 28's "World Delta" achievements
+ * Strong causality stabilizer (75% paradox debt reduction)
+ */
+export function createChronosHourglassRelic(): Relic {
+  return {
+    id: 'chronos-hourglass-legendary',
+    templateId: 'chronos_hourglass',
+    name: 'Chronos Hourglass',
+    ownerId: undefined, // Not yet bound
+    sentienceLevel: 4, // Fully aware sentience
+    runicSlots: [
+      {
+        slotId: 'slot-1',
+        runeId: 'lux-ar', // Temporal essence infused with light
+        socketType: 'soul',
+        stability: 95 // Very stable
+      },
+      {
+        slotId: 'slot-2',
+        runeId: 'clarity', // Enhanced perception of time
+        socketType: 'essence',
+        stability: 90
+      },
+      {
+        slotId: 'slot-3',
+        runeId: undefined, // Empty slot for customization
+        socketType: 'power',
+        stability: 85
+      }
+    ],
+    boundSoulStrain: 25, // Moderate cost to unbind
+    isBound: false,
+    totalComplexity: 24, // Quite complex
+    description:
+      'An ancient hourglass that shimmers with temporal energy. Sand flows both forward and backward, representing the relentless march of causality and the echoes of time.',
+    baseBonus: {
+      int: 5,
+      wisdom: 4,
+      max_mana: 50 // Temporal magic is mana-intensive
+    },
+    lore:
+      'Forged in the First Age when the boundaries between moments were thin, the Chronos Hourglass has served as both a tool of divination and a weapon against the encroachment of paradox. Its wielder gains dominion over the texture of causality itself, able to smooth the rough edges of diverging timelines.',
+    rebellionCounter: 0,
+    // Phase 29 Task 3: Causality Stabilizer
+    causalityStabilizer: 75 // 75% reduction in paradox debt accumulation (very powerful!)
+  };
+}
+
+/**
+ * Phase 29 Task 3: Check if player carrying a stabilizer relic
+ * Used by actionPipeline to apply paradox debt reduction
+ */
+export function getPlayerStabilizerRelic(
+  playerInventory: any[], // InventoryItem[]
+  allRelics: Map<string, Relic>
+): Relic | null {
+  // Find the first equipped/carried relic with causalityStabilizer
+  for (const item of playerInventory) {
+    if (item.kind === 'unique' && item.metadata?.relicId) {
+      const relicId = item.metadata.relicId;
+      const relic = allRelics.get(relicId);
+      if (relic && relic.causalityStabilizer && relic.causalityStabilizer > 0) {
+        return relic;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Phase 29 Task 3: Generate dialogue for Chronos Hourglass when paradox is high
+ */
+export function generateChronosHourglassDialogue(
+  paradoxLevel: number
+): string {
+  const dialogues: Record<string, string[]> = {
+    low: [
+      'Time flows peacefully. The hourglass rests quietly in your hands.',
+      'Sands settle gently. Causality is in balance.'
+    ],
+    moderate: [
+      'The sands begin to swirl... whispers of diverging timelines...',
+      'I sense temporal distortions. Your reality frays at the edges.'
+    ],
+    high: [
+      'TIME FRACTURES! The hourglass GLOWS with desperate urgency! "I cannot hold back the rift much longer!"',
+      'SAND FLOWS BACKWARD AND FORWARD SIMULTANEOUSLY! "Reality tears! We must act NOW!"'
+    ]
+  };
+
+  let level: 'low' | 'moderate' | 'high' = 'low';
+  if (paradoxLevel > 75) {
+    level = 'high';
+  } else if (paradoxLevel > 40) {
+    level = 'moderate';
+  }
+
+  const options = dialogues[level];
+  return options[Math.floor(random() * options.length)];
+}
+
+

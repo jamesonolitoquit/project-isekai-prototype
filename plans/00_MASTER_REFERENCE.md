@@ -2,8 +2,8 @@
 
 > **Status:** ACTIVE
 > **Category:** CORE-DESIGN
-> **Updated:** February 16, 2026
-> **Version:** 1.2.0
+> **Updated:** February 22, 2026
+> **Version:** 1.3.0
 
 ---
 
@@ -43,18 +43,18 @@
 | Event Ledger | mutationLog.ts | Hardened (~98% coverage) | PROTO |
 | World Engine | worldEngine.ts | Core working (tick, actions, save/load) | PROTO |
 | Action Pipeline | actionPipeline.ts | Stub | PROTO |
-| Canon Journal | canonJournal.ts | Stub | PROTO |
-| Constraint Validator | constraintValidator.ts | Stub | PROTO |
+| Canon Journal | canonJournal.ts | Hardened (M57 committed) | PROTO |
+| Constraint Validator | constraintValidator.ts | Hardened (M57 committed) | PROTO |
 | State Rebuilder | stateRebuilder.ts | Stub | PROTO |
-| Server | Express | Stub | PROTO |
+| Server | Express | Hardened (M57 committed) | PROTO |
 | World Template | luxfier-world.json | Minimal stub | PROTO |
 | World Schema | luxfier-world.schema.json | Missing | PROTO |
-| AI DM Engine | aiDmEngine.ts | Not started | ALPHA |
-| Procedural Engine | proceduralEngine.ts | Not started | ALPHA |
+| AI DM Engine | aiDmEngine.ts | Working (M55 BYOK) | ALPHA |
+| Procedural Engine | proceduralEngine.ts | In Progress (M55 Social) | ALPHA |
 | Analytics Engine | analyticsEngine.ts | Not started | ALPHA |
-| Template Editor | templateEditor.ts | Not started | ALPHA |
-| Asset Generator | assetGenerator.ts | Not started | ALPHA |
-| Multiplayer Engine | multiplayerEngine.ts | Not started | BETA |
+| Template Editor | templateEditor.ts | In Progress (M55 Architect) | ALPHA |
+| Asset Generator | assetGenerator.ts | Working | ALPHA |
+| Multiplayer Engine | multiplayerEngine.ts | Hardened (M57 P2P core) | BETA |
 
 ### Key Patterns
 
@@ -63,6 +63,7 @@
 - **Dev/Kernel API split** — different surfaces depending on dev flag
 - **Copy-on-write** — state cloned via structuredClone before exposure
 - **Deterministic simulation** — weather, season, day phase derived from tick count
+- **AI Strategy (M55)** — Multi-provider Gemini/Groq/Ollama with BYOK (Bring Your Own Key) for scale and Template Fallbacks for resilience.
 
 ---
 
@@ -98,6 +99,7 @@
 | 25 | [`25_SEED_NPC_CLERGY_LEADERS.md`](design/25_SEED_NPC_CLERGY_LEADERS.md) | SQL Seed | Clergy, heretical leaders, monarchs |
 | 26 | [`26_SEED_LOCATIONS_SUBAREAS.md`](design/26_SEED_LOCATIONS_SUBAREAS.md) | SQL Seed | 34 locations, parent references |
 | 27 | [`27_SEED_GAMEPLAY_SYSTEMS.md`](design/27_SEED_GAMEPLAY_SYSTEMS.md) | SQL Seed | Belief, Quest, Encounter, Inventory seeds |
+| 28 | [`28_CHRONO_ACTION_PIPELINE.md`](design/28_CHRONO_ACTION_PIPELINE.md) | XI.32 | Action-driven time model, tick costs |
 
 ### 3.2 Milestones & Roadmaps (`plans/milestones/`)
 | Milestone | File | One-Line Summary |
@@ -107,6 +109,8 @@
 | **M42** | [`42_ROADMAP.md`](milestones/42_ROADMAP.md) | M42 Strategic Overview |
 | **M42** | [`M42_TASK_LIST.md`](milestones/M42_TASK_LIST.md) | Sprint tasks and subtasks |
 | **M42** | [`M42_QUICK_START.md`](milestones/M42_QUICK_START.md) | 15-min developer guide |
+| **M54** | [`54_RESTORATION_MEMORY.md`](milestones/54_RESTORATION_MEMORY.md) | Restoration & Living Memory (AI) - COMPLETED |
+| **M55** | [`55_PROSPERITY_WHISPERS.md`](milestones/55_PROSPERITY_WHISPERS.md) | Scalable AI & Social Autonomy - ACTIVE |
 
 ### 3.3 Implementation History (`plans/implementation/`)
 - Includes technical logs for Combat, Audio, and specific Milestone summaries.

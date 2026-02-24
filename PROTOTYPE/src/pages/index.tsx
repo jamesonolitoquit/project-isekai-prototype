@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { createWorldController, createInitialWorld } from "../engine/public";
+import { createWorldController, createInitialWorld, WorldControllerInstance, WorldControllerDevApi } from "../engine/worldEngine";
 import BetaApplication from "../client/components/BetaApplication";
 import SeasonPanel from "../client/components/SeasonPanel";
 import WeatherPanel from "../client/components/WeatherPanel";
@@ -24,18 +24,22 @@ import FactionPanel from "../client/components/FactionPanel";
 import { ArtifactForge } from "../client/components/ArtifactForge";
 import MorphingStation from "../client/components/MorphingStation";
 import ParadoxIndicator from "../client/components/ParadoxIndicator";
-import TravelProgress from "../client/components/TravelProgress";
+import PerceptionGlitchOverlay from "../client/components/PerceptionGlitchOverlay";
+// import TravelProgress from "../client/components/TravelProgress";
 import Codex from "../client/components/Codex";
 import GlobalHeader from "../client/components/GlobalHeader";
 import DiceAltar from "../client/components/DiceAltar";
 import LegacyOracle from "../client/dev/LegacyOracle";
 import ChronicleArchive from "../client/components/ChronicleArchive";
 import ChronicleScroll from "../client/components/ChronicleScroll";
+import LandingPage from "../client/components/LandingPage";
+import ChronicleMap from "../client/components/ChronicleMap";
+import EnhancedDialogPanel from "../client/components/EnhancedDialogPanel";
 
 export default function HomePage() {
   const [useBetaUI, setUseBetaUI] = useState(false);
   const [devDockOpen, setDevDockOpen] = useState(false);
-  const [controller, setController] = useState<any | null>(null);
+  const [controller, setController] = useState<WorldControllerInstance | null>(null);
   const [state, setState] = useState<any | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [isDevMode, setIsDevMode] = useState(false);
@@ -45,10 +49,60 @@ export default function HomePage() {
   const [showChronicleArchive, setShowChronicleArchive] = useState(false);
   const [activeTab, setActiveTab] = useState<'world' | 'combat' | 'politics' | 'arcane' | 'codex'>('world');
   
+  // M42 PHASE 3: LANDING PAGE STATE
+  const [hasEnteredIsekai, setHasEnteredIsekai] = useState(false);
+  const [characterName, setCharacterName] = useState<string | null>(null);
+  const [characterArchetype, setCharacterArchetype] = useState<string | null>(null);
+  
   // BETA: DiceAltar state management
   const [showDiceAltar, setShowDiceAltar] = useState(false);
   const [diceRollContext, setDiceRollContext] = useState<any | null>(null);
   const [pendingAction, setPendingAction] = useState<any | null>(null);
+
+  /**
+   * M42 PHASE 3 TASK 6: Landing Page Handler
+   * Called when player completes "Identifying Vessel" ritual
+   */
+  const handleEnterIsekai = (name: string, archetype: string) => {
+    console.log('[index.tsx] handleEnterIsekai called with', { name, archetype });
+    setCharacterName(name);
+    setCharacterArchetype(archetype);
+    setHasEnteredIsekai(true);
+    
+    console.log('[index.tsx] Creating world controller...');
+    // Initialize world controller on entry
+    const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
+    
+    try {
+      const c = createWorldController(undefined, isDev);
+      console.log('[index.tsx] World controller created:', c ? 'success' : 'null');
+      setController(c);
+      
+      let unsub: (() => void) | null = null;
+      let pollId: NodeJS.Timeout | null = null;
+      
+      // Check if controller supports subscribe (DevApi has it, KernelApi doesn't)
+      if ('subscribe' in c && typeof c.subscribe === 'function') {
+        console.log('[index.tsx] Setting up subscription to controller');
+        unsub = c.subscribe((s) => setState(s));
+      } else {
+        console.log('[index.tsx] Controller does not support subscribe, using polling');
+        // Poll for state updates when subscribe is not available
+        pollId = setInterval(() => {
+          try { setState(c.getState()); } catch (e) { console.error('[index.tsx] Poll error:', e); }
+        }, 200);
+      }
+      
+      // Check if controller supports start (DevApi has it, KernelApi doesn't)
+      if ('start' in c && typeof c.start === 'function') {
+        console.log('[index.tsx] Starting controller');
+        (c as WorldControllerDevApi).start();
+      }
+      setEvents([]);
+    } catch (error) {
+      console.error('[index.tsx] Error in handleEnterIsekai:', error);
+    }
+  };
 
   // useEffect(() => {
   //   const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
@@ -80,22 +134,28 @@ export default function HomePage() {
   const loadTemplateIntoController = (tpl: any) => {
     // stop existing controller and create a new one from the provided template
     if (controller) {
-      try { if ((controller as any).stop) (controller as any).stop(); } catch (e) {}
+      try { 
+        if ('stop' in controller && typeof controller.stop === 'function') {
+          (controller as WorldControllerDevApi).stop();
+        }
+      } catch (e) {}
     }
     // create initial state from template and instantiate a controller with it
     const initial = createInitialWorld(`world-${Date.now()}`, tpl);
     const isDev = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1');
     const c = createWorldController(initial, isDev);
     setController(c);
-    if ((c as any).subscribe) {
-      const unsub = (c as any).subscribe((s: any) => setState(s));
+    if ('subscribe' in c && typeof c.subscribe === 'function') {
+      const unsub = (c as WorldControllerDevApi).subscribe((s) => setState(s));
     } else {
       // start a poll for state updates
-      const id = setInterval(() => { try { setState((c as any).getState()); } catch (e) {} }, 200);
+      const id = setInterval(() => { try { setState(c.getState()); } catch (e) {} }, 200);
       // clear when switching templates
       setTimeout(() => clearInterval(id), 0);
     }
-    if ((c as any).start) (c as any).start();
+    if ('start' in c && typeof c.start === 'function') {
+      (c as WorldControllerDevApi).start();
+    }
     setEvents([]);
     // ensure we clean up previous subscription when next load happens
     // (we rely on component unmount cleanup to stop the controller)
@@ -389,50 +449,64 @@ export default function HomePage() {
   };
 
   return (
-    <div 
-      className="app-root omni-hud"
-      style={{
-        filter: getEpochFilters(),
-        transition: 'filter 0.8s ease-in-out',
-        willChange: 'filter',
-        backfaceVisibility: 'hidden',
-        WebkitBackfaceVisibility: 'hidden',
-        WebkitPerspective: 1000,
-        perspective: 1000
-      }}
-    >
-      {/* Global Paradox Indicator Overlay */}
-      {state && <ParadoxIndicator state={state} />}
-
-      {/* Global Travel Progress Overlay */}
-      {state && <TravelProgress state={state} />}
-
-      {/* M38 TASK 1: BETA UI TOGGLE */}
-      {!state?.needsCharacterCreation && (
-        <button
-          onClick={() => setUseBetaUI(!useBetaUI)}
-          style={{
-            position: 'fixed',
-            bottom: 16,
-            right: 16,
-            zIndex: 999,
-            padding: '8px 16px',
-            backgroundColor: useBetaUI ? '#00cc00' : '#4f2783',
-            color: useBetaUI ? '#000' : '#c084fc',
-            border: `2px solid ${useBetaUI ? '#00ff00' : '#c084fc'}`,
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 'bold'
-          }}
-        >
-          {useBetaUI ? '✓ BETA UI' : 'BETA UI'}
-        </button>
+    <>
+      {/* M42 PHASE 3 TASK 6: LANDING PAGE - "THE RITUAL THRESHOLD" */}
+      {!hasEnteredIsekai && (
+        <LandingPage 
+          onEnter={handleEnterIsekai}
+          isLoading={!controller}
+        />
       )}
 
-      {/* M38 TASK 1: BETA APPLICATION - Unified UI for M35-M37 Integration */}
-      {useBetaUI && state && controller && !state?.needsCharacterCreation && (
-        <BetaApplication
+      {/* MAIN APPLICATION - Shown after landing page completed */}
+      {hasEnteredIsekai && (
+        <div 
+          className="app-root omni-hud"
+          style={{
+            filter: getEpochFilters(),
+            transition: 'filter 0.8s ease-in-out',
+            willChange: 'filter',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            WebkitPerspective: 1000,
+            perspective: 1000
+          }}
+        >
+          {/* M47-B1: Perception Glitch Overlay - Reality distortion effects based on chaos score */}
+          {state && <PerceptionGlitchOverlay appState={state} />}
+
+          {/* Global Paradox Indicator Overlay */}
+          {state && <ParadoxIndicator state={state} />}
+
+          {/* Global Travel Progress Overlay */}
+          {/* {state && <TravelProgress state={state} />} */}
+
+          {/* M38 TASK 1: BETA UI TOGGLE */}
+          {!state?.needsCharacterCreation && (
+            <button
+              onClick={() => setUseBetaUI(!useBetaUI)}
+              style={{
+                position: 'fixed',
+                bottom: 16,
+                right: 16,
+                zIndex: 999,
+                padding: '8px 16px',
+                backgroundColor: useBetaUI ? '#00cc00' : '#4f2783',
+                color: useBetaUI ? '#000' : '#c084fc',
+                border: `2px solid ${useBetaUI ? '#00ff00' : '#c084fc'}`,
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}
+            >
+              {useBetaUI ? '✓ BETA UI' : 'BETA UI'}
+            </button>
+          )}
+
+          {/* M38 TASK 1: BETA APPLICATION - Unified UI for M35-M37 Integration */}
+          {useBetaUI && state && controller && !state?.needsCharacterCreation && (
+            <BetaApplication
           initialState={state}
           controller={controller}
           isMultiplayer={false}
@@ -585,6 +659,20 @@ export default function HomePage() {
                       <DialogPanel state={state} onChoose={doDialogChoice} />
                     </div>
                     <div className="context-panels">
+                      {/* M47-D1: Chronicle Map - World Fragment Visualization */}
+                      <ChronicleMap 
+                        worldState={state} 
+                        onLocationSelect={(locId) => doMove(locId)}
+                        showLegend={true}
+                        useAbsolutePositioning={true}
+                      />
+                      {/* M47-E1: Enhanced Dialog Panel - Sensory Cues */}
+                      <EnhancedDialogPanel
+                        dialogue={state?.dialogueHistory || []}
+                        playerPerceptionLevel={state?.player?.perception || 50}
+                        enableGoalVisibility={true}
+                        showOracleView={false}
+                      />
                       <QuestPanel state={state} />
                       <PlayerState state={state} />
                       {showInventory && (
@@ -915,6 +1003,8 @@ export default function HomePage() {
 
       <ParticleVisualizer state={state} />
       <AudioVisualizer state={state} />
-    </div>
+        </div>
+      )}
+    </>
   );
 }

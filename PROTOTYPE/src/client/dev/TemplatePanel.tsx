@@ -9,7 +9,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { templateStorageManager } from '../../engine/templateStorage';
+// import { templateStorageManager } from '../../engine/templateStorage';
+
+// Temporary implementation
+const templateStorageManager = {
+  listTemplates: () => [],
+  getTemplate: (id: string) => null,
+  saveTemplate: (template: any) => {},
+  deleteTemplate: (id: string) => {},
+  getAllTemplateIds: () => [],
+  loadTemplate: (id: string) => null,
+  getStorageStats: () => ({ totalTemplates: 0, totalSizeBytes: 0 }),
+};
 import type { UserTemplate } from '../../engine/templateEditor';
 
 interface TemplatePanelProps {

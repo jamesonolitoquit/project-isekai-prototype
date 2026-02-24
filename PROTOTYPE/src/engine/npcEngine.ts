@@ -1,6 +1,8 @@
 import type { WorldState, NPC } from './worldEngine';
 import { random } from './prng';
 import { generateNpcPrompt, parseNpcResponse, callLlmApi, type DialogueContext as AiDialogueContext, type NpcKnowledgeScope, type LlmConfig } from './aiDmEngine';
+import { getGoalOrientedPlanner, type NpcPersonality } from './goalOrientedPlannerEngine';
+import { EconomicCycle, getEconomicSynthesisEngine } from './economicSynthesisEngine';
 
 export interface DialogueContext {
   weather: 'clear' | 'snow' | 'rain';
@@ -9,13 +11,23 @@ export interface DialogueContext {
   dayPhase: 'night' | 'morning' | 'afternoon' | 'evening';
   reputation: number;
   questHistory: { questId: string; status: 'completed' | 'in_progress' | 'failed' }[];
+  // Phase 28 Task 3: Economic and world state awareness for situational dialogue
+  currentEconomicCycle?: 'BOOM' | 'STABLE' | 'RECESSION';
+  economyScore?: number;
+  activeAnomalies?: Array<{ id: string; type: string; locationId: string; severity: number }>;
+  recentOutbursts?: Array<{ id: string; description: string; severity: number; tick: number }>;
+  paradoxLevel?: number;
+  socialTension?: number;
 }
 
 export interface DialogueOption {
   id: string;
   text: string;
   requiresQuestStatus?: string;
-  consequence?: 'quest_start' | 'reputation_change' | 'item_give';
+  consequence?: 'quest_start' | 'reputation_change' | 'item_give' | 'social_scar';
+  itemId?: string; // For item_give consequences
+  sentiment?: number; // M44: -1.0 to +1.0
+  impact?: number; // M44: 0.0 to 1.0
 }
 
 export interface DialogueNode {
@@ -94,7 +106,7 @@ export async function synthesizeNpcDialogue(
 
     // Call LLM API with configuration (provider defaults to 'openai', can be overridden)
     const llmConfig: LlmConfig = {
-      provider: (process.env.LLM_PROVIDER as any) || 'openai',
+      provider: (process.env.LLM_PROVIDER as 'openai' | 'claude' | 'mock') || 'openai',
       apiKey: process.env.LLM_API_KEY || process.env.OPENAI_API_KEY,
       model: process.env.LLM_MODEL || 'gpt-4-turbo-preview',
       temperature: 0.8,
@@ -121,7 +133,7 @@ export async function synthesizeNpcDialogue(
  * Get static fallback response when synthesis is unavailable
  */
 function getStaticFallbackResponse(npc: NPC): string {
-  const emotion = (npc as any).emotionalState;
+  const emotion = npc.emotionalState;
   if (!emotion) return `${npc.name} looks at you curiously.`;
 
   if (emotion.trust > 70) {
@@ -133,6 +145,182 @@ function getStaticFallbackResponse(npc: NPC): string {
   }
 
   return `${npc.name} nods politely.`;
+}
+
+/**
+ * Phase 28 Task 3: Build dialogue context from world state
+ * Extracts economic cycle, anomalies, and recent outbursts for situational dialogue
+ * 
+ * NPCs should adapt their dialogue based on:
+ * - BOOM economy: Optimistic, talking about trade
+ * - RECESSION: Worried, talking about survival  
+ * - Age Rot zones nearby: Anxious, warning about dangers
+ * - Recent outbursts: Emotional, discussing community trauma
+ */
+export function buildDialogueContext(
+  npc: NPC,
+  state: WorldState,
+  questHistory: { questId: string; status: 'completed' | 'in_progress' | 'failed' }[] = []
+): DialogueContext {
+  // Base context
+  const context: DialogueContext = {
+    weather: (state.weather?.condition as 'clear' | 'snow' | 'rain') || 'clear',
+    season: (state.season as 'winter' | 'spring' | 'summer' | 'autumn') || 'spring',
+    hour: state.hour ?? 12,
+    dayPhase: getDayPhase(state.hour ?? 12),
+    reputation: npc.trust ?? 50,
+    questHistory
+  };
+
+  // Phase 28 Task 3: Economic cycle awareness
+  if (state.telemetryState?.economyHealth !== undefined) {
+    const economyScore = state.telemetryState.economyHealth;
+    context.economyScore = economyScore;
+    
+    if (economyScore > 75) {
+      context.currentEconomicCycle = 'BOOM';
+    } else if (economyScore < 25) {
+      context.currentEconomicCycle = 'RECESSION';
+    } else {
+      context.currentEconomicCycle = 'STABLE';
+    }
+  }
+
+  // Phase 28 Task 3: Active anomalies (Age Rot zones)
+  if (state.paradoxState?.anomalies && state.paradoxState.anomalies.length > 0) {
+    // Focus on anomalies near the NPC's location
+    const nearbyAnomalies = state.paradoxState.anomalies.filter(
+      (a: any) => a.locationId === npc.locationId || a.radius > 100
+    );
+    context.activeAnomalies = nearbyAnomalies.map((a: any) => ({
+      id: a.id,
+      type: a.type || 'reality_distortion',
+      locationId: a.locationId,
+      severity: a.severity || 0.5
+    }));
+    context.paradoxLevel = state.paradoxState.totalParadoxPoints ?? 0;
+  }
+
+  // Phase 28 Task 3: Recent outbursts (social scars from Phase 26)
+  if (state.events && state.events.length > 0) {
+    const recentOutbursts = state.events
+      .filter((e: any) => {
+        return e.type === 'SOCIAL_OUTBURST' && 
+               (state.tick ?? 0) - e.timestamp < 1000; // Within last 1000 ticks
+      })
+      .slice(0, 3)
+      .map((e: any) => ({
+        id: e.id,
+        description: e.payload?.description || 'Unknown incident',
+        severity: e.payload?.severity || 0.5,
+        tick: e.timestamp
+      }));
+    
+    if (recentOutbursts.length > 0) {
+      context.recentOutbursts = recentOutbursts;
+    }
+  }
+
+  // Phase 28 Task 3: Social tension
+  context.socialTension = state.socialTension ?? 0;
+
+  return context;
+}
+
+/**
+ * Helper: Determine day phase from hour
+ */
+function getDayPhase(hour: number): 'night' | 'morning' | 'afternoon' | 'evening' {
+  if (hour < 6 || hour >= 22) return 'night';
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'afternoon';
+  return 'evening';
+}
+
+/**
+ * Phase 28 Task 3: Generate economy-driven dialogue branches
+ * Returns different dialogue options based on economic cycle
+ */
+export function getEconomyDrivenDialogueOptions(
+  cycle: 'BOOM' | 'STABLE' | 'RECESSION' | undefined
+): DialogueOption[] {
+  if (!cycle) return [];
+
+  switch (cycle) {
+    case 'BOOM':
+      return [
+        {
+          id: 'boom-1',
+          text: "How's business treating you?",
+          sentiment: 0.5,
+          impact: 0.3,
+          consequence: 'quest_start'
+        },
+        {
+          id: 'boom-2',
+          text: 'Heard the caravans are doing well.',
+          sentiment: 0.3,
+          impact: 0.2,
+          consequence: 'reputation_change'
+        }
+      ];
+    case 'RECESSION':
+      return [
+        {
+          id: 'recession-1',
+          text: 'How are you managing with the downturn?',
+          sentiment: -0.2,
+          impact: 0.4,
+          consequence: 'quest_start'
+        },
+        {
+          id: 'recession-2',
+          text: 'Things look tough. Need help?',
+          sentiment: 0.4,
+          impact: 0.3,
+          consequence: 'reputation_change'
+        }
+      ];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Phase 28 Task 3: Generate paradox-aware dialogue branches
+ * Returns different dialogue options when near Age Rot zones
+ */
+export function getParadoxAwareDialogueOptions(
+  paradoxLevel: number | undefined,
+  hasNearbyAnomalies: boolean
+): DialogueOption[] {
+  if (!paradoxLevel || paradoxLevel < 50 || !hasNearbyAnomalies) {
+    return [];
+  }
+
+  return [
+    {
+      id: 'paradox-1',
+      text: 'Do you feel it? Reality is tearing apart.',
+      sentiment: -0.7,
+      impact: 0.6,
+      consequence: 'quest_start'
+    },
+    {
+      id: 'paradox-2',
+      text: 'We should stay away from that zone. Something is wrong.',
+      sentiment: -0.5,
+      impact: 0.4,
+      consequence: 'reputation_change'
+    },
+    {
+      id: 'paradox-3',
+      text: 'Those anomalies... they grow stronger each day.',
+      sentiment: -0.6,
+      impact: 0.5,
+      consequence: 'reputation_change'
+    }
+  ];
 }
 
 /**
@@ -315,10 +503,10 @@ export function resolveDialogue(
     const factionRep = npc.factionId ? (player.factionReputation?.[npc.factionId] ?? 0) : 0;
 
     context = {
-      weather: state.weather as any,
-      season: state.season as any,
+      weather: (state.weather || 'clear') as 'clear' | 'snow' | 'rain',
+      season: (state.season || 'winter') as 'winter' | 'spring' | 'summer' | 'autumn',
       hour: state.hour,
-      dayPhase: state.dayPhase as any,
+      dayPhase: (state.dayPhase || 'afternoon') as 'night' | 'morning' | 'afternoon' | 'evening',
       reputation: factionRep,  // Now uses faction reputation
       questHistory
     };
@@ -341,10 +529,12 @@ export function resolveDialogue(
   }
 
   // Structured dialogue node
-  const dialogueNode = dialogueText as any;
+  const dialogueNode = dialogueText as Record<string, unknown>;
+  const text = typeof dialogueNode?.text === 'string' ? dialogueNode.text : `${npc.name} says something.`;
+  const options = Array.isArray(dialogueNode?.options) ? dialogueNode.options as DialogueOption[] : [{ id: 'acknowledge', text: 'Continue' }];
   return {
-    text: dialogueNode?.text || `${npc.name} says something.`,
-    options: dialogueNode?.options || [{ id: 'acknowledge', text: 'Continue' }]
+    text,
+    options
   };
 }
 
@@ -623,7 +813,7 @@ export function restoreDisplacedNpcs(npcs: any[], state: any): Array<{ npcId: st
   for (const npc of npcs) {
     if (!npc.isDisplaced) continue;
 
-    const displacement = (state as any).npcDisplacements?.[npc.id];
+    const displacement = state.npcDisplacements?.[npc.id];
     if (!displacement) continue;
 
     // Check if enough time has passed for NPC to return
@@ -635,7 +825,7 @@ export function restoreDisplacedNpcs(npcs: any[], state: any): Array<{ npcId: st
         npcName: npc.name,
         reason: 'returned_from_displacement'
       });
-      delete (state as any).npcDisplacements[npc.id];
+      delete state.npcDisplacements[npc.id];
     }
   }
   
@@ -723,4 +913,546 @@ export function maybeAddAllyGiftOption(npc: any): DialogueOption | null {
   }
 
   return null;
+}
+
+/**
+ * M46-C1: Extract personality traits from NPC data
+ * Personality influences goal prioritization and action selection
+ */
+export function extractNpcPersonality(npc: any): NpcPersonality {
+  // Extract from NPC properties or use WTOL obfuscation hints
+  const obfuscationLevel = npc.obfuscationTier || 0.5; // 0 = transparent, 1 = very hidden
+  const emotionalState = npc.emotionalState || { trust: 50, fear: 50, gratitude: 50, resentment: 50 };
+
+  // Greediness: affected by emotional resentment (greedy when resentful), reputation
+  const greediness = Math.max(0, Math.min(1,
+    ((npc.reputationAsTrader || 0.5) + (emotionalState.resentment / 200)) / 1.5
+  ));
+
+  // Piety: affected by resentment (low piety when resentful), faction religion scores
+  const piety = Math.max(0, Math.min(1,
+    (npc.religiousScore || 0.3) - (emotionalState.resentment / 200)
+  ));
+
+  // Ambition: affected by power stat, fear (low ambition when scared)
+  const ambition = Math.max(0, Math.min(1,
+    ((npc.power || 30) / 100) - (Math.max(0, emotionalState.fear - 50) / 200)
+  ));
+
+  // Loyalty: affected by trust/gratitude
+  const loyalty = Math.max(0, Math.min(1,
+    ((emotionalState.trust + emotionalState.gratitude) / 200)
+  ));
+
+  // Risk: inverse of fear, scaled by reputation
+  const risk = Math.max(0, Math.min(1,
+    (1 - (emotionalState.fear / 100)) * (npc.reputationAsWarrior || 0.5)
+  ));
+
+  // Sociability: affected by gratitude and status
+  const sociability = Math.max(0, Math.min(1,
+    ((emotionalState.gratitude / 100) + (npc.importance ? 0.3 : 0)) / 1.3
+  ));
+
+  return { greediness, piety, ambition, loyalty, risk, sociability };
+}
+
+/**
+ * M46-C1: Initialize autonomous goals for an NPC
+ * Called when NPC enters the world or at epoch reset
+ */
+export function initializeNpcGoals(
+  npc: any,
+  personality: NpcPersonality,
+  currentTick: number
+): void {
+  const planner = getGoalOrientedPlanner();
+
+  // Initialize goals based on personality
+  const goals = planner.initializeGoalsForNpc(npc.id, personality, currentTick);
+
+  // Store personality on NPC for later reference
+  npc.personality = personality;
+  npc.goals = goals;
+  npc.autonomousPlans = [];
+}
+
+/**
+ * M46-C1: Plan next actions for an NPC based on their goals
+ * Called periodically (every 100 ticks or when goal changes)
+ */
+export function planNpcActions(
+  npc: any,
+  state: WorldState,
+  currentTick: number
+): any {
+  const planner = getGoalOrientedPlanner();
+
+  if (!npc.personality) {
+    npc.personality = extractNpcPersonality(npc);
+  }
+
+  if (!npc.goals) {
+    const goals = planner.getGoalsForNpc(npc.id);
+    if (goals.length === 0) {
+      initializeNpcGoals(npc, npc.personality, currentTick);
+    }
+  }
+
+  // Update goal progress based on current state
+  planner.updateGoalsForNpc(npc.id, npc, state, currentTick);
+
+  // Plan new actions
+  const plan = planner.planActionsForNpc(npc.id, npc, state, currentTick, 3);
+
+  if (plan.status === 'planned') {
+    // Mark plan as executing and store it
+    plan.status = 'executing';
+    plan.startedAt = currentTick;
+    if (!npc.autonomousPlans) {
+      npc.autonomousPlans = [];
+    }
+    npc.autonomousPlans.push(plan);
+
+    // Store on NPC for reference
+    npc.currentPlan = plan;
+  }
+
+  return plan;
+}
+
+/**
+ * M46-C1: Execute next step in an NPC's action plan
+ * Called when sufficient ticks have passed for action completion
+ */
+export function executeNpcPlanStep(
+  npc: any,
+  state: WorldState,
+  currentTick: number
+): { actionCompleted: boolean; nextAction?: any; effects?: any; description?: string } {
+  const planner = getGoalOrientedPlanner();
+  const currentPlan = npc.currentPlan;
+
+  if (!currentPlan || currentPlan.status !== 'executing') {
+    return { actionCompleted: false };
+  }
+
+  const result = planner.executeActionStep(currentPlan.id, npc.id, npc, currentTick);
+
+  let description = '';
+  if (result.success) {
+    const action = currentPlan.actions[result.nextStepIndex - 1];
+    description = generateActionDescription(npc, action, state);
+
+    if (result.nextStepIndex >= currentPlan.actions.length) {
+      currentPlan.status = 'completed';
+      npc.currentPlan = null; // Ready for new plan
+    }
+  } else {
+    description = `${npc.name}'s plan failed at step ${currentPlan.executingStep + 1}.`;
+    currentPlan.status = 'failed';
+    npc.currentPlan = null;
+  }
+
+  return {
+    actionCompleted: result.success,
+    nextAction: currentPlan.actions[result.nextStepIndex],
+    effects: result.effectsApplied,
+    description
+  };
+}
+
+/**
+ * M46-C1: Generate narrative description of an NPC's action
+ */
+function generateActionDescription(npc: any, action: any, state: WorldState): string {
+  const templates: Record<string, string> = {
+    trade: `${npc.name} conducted a trade, gaining ${action.effects.goldDelta} gold.`,
+    preach: `${npc.name} has been preaching, spreading their faith.`,
+    scout: `${npc.name} scouted the land, gathering intelligence.`,
+    recruit: `${npc.name} recruited new followers, spending ${-action.effects.goldDelta || 0} gold.`,
+    negotiate: `${npc.name} negotiated with an ally.`,
+    sabotage: `${npc.name} worked behind the scenes to undermine a rival.`,
+    research: `${npc.name} conducted research into hidden knowledge.`,
+    build: `${npc.name} oversaw construction of a structure.`
+  };
+
+  return templates[action.type] || `${npc.name} performed action: ${action.type}`;
+}
+
+/**
+ * M46-C1: Process all NPC autonomous activity for the world tick
+ * This is called from worldEngine each tick
+ */
+export function processNpcAutonomy(
+  npcs: any[],
+  state: WorldState,
+  currentTick: number
+): {
+  plansMade: number;
+  stepsExecuted: number;
+  descriptions: string[];
+} {
+  let plansMade = 0;
+  let stepsExecuted = 0;
+  const descriptions: string[] = [];
+
+  for (const npc of npcs) {
+    // Skip if no personality (not initialized for autonomy)
+    if (!npc.personality) {
+      npc.personality = extractNpcPersonality(npc);
+      if (!npc.goals) {
+        initializeNpcGoals(npc, npc.personality, currentTick);
+      }
+    }
+
+    // Plan every 200 ticks or when current plan is done
+    if (!npc.currentPlan || npc.lastPlanTick === undefined || currentTick - npc.lastPlanTick > 200) {
+      const plan = planNpcActions(npc, state, currentTick);
+      if (plan.status === 'executing') {
+        plansMade++;
+        npc.lastPlanTick = currentTick;
+      }
+    }
+
+    // Execute action steps based on tick budget per action
+    if (npc.currentPlan && npc.currentPlan.status === 'executing') {
+      const nextAction = npc.currentPlan.actions[npc.currentPlan.executingStep];
+
+      if (nextAction) {
+        // Track elapsed ticks for this action
+        if (npc.currentActionStartTick === undefined) {
+          npc.currentActionStartTick = currentTick;
+        }
+
+        const elapsedTicks = currentTick - npc.currentActionStartTick;
+
+        // When enough ticks have passed, execute the action
+        if (elapsedTicks >= nextAction.costInTicks) {
+          const result = executeNpcPlanStep(npc, state, currentTick);
+          if (result.actionCompleted) {
+            stepsExecuted++;
+            if (result.description) {
+              descriptions.push(result.description);
+            }
+            npc.currentActionStartTick = undefined; // Reset for next action
+          }
+        }
+      }
+    }
+  }
+
+  return { plansMade, stepsExecuted, descriptions };
+}
+
+/**
+ * Phase 26 Task 2: NPC Migration Logic
+ * NPCs in high-tension locations (GST > 0.8) attempt to migrate to safer biomes
+ * 
+ * Migration Logic:
+ * - Check every 100 ticks (every 5 minutes of gameplay)
+ * - 5% chance per NPC when conditions met
+ * - NPC must be in location where GST > 0.8
+ * - NPC relocates to lower-tension location controlled by friendly faction
+ * - Triggers NPC_MIGRATED event for world state consistency
+ * 
+ * @param state Current WorldState
+ * @returns Array of migration events for the event log
+ */
+export function triggerMigrationChecks(state: WorldState): Array<{
+  npcId: string;
+  npcName: string;
+  fromLocationId: string;
+  toLocationId: string;
+  reason: string;
+}> {
+  const migrations: Array<{
+    npcId: string;
+    npcName: string;
+    fromLocationId: string;
+    toLocationId: string;
+    reason: string;
+  }> = [];
+
+  if (!state.npcs || !state.locations) {
+    return migrations;
+  }
+
+  const currentTick = state.tick ?? 0;
+  const socialTension = state.socialTension ?? 0;
+
+  // Only check migrations every 100 ticks (~5 minutes at 1 tick/3s)
+  if (currentTick % 100 !== 0) {
+    return migrations;
+  }
+
+  // High-tension check: only trigger if GST > 0.8
+  if (socialTension <= 0.8) {
+    return migrations;
+  }
+
+  // Iterate through NPCs and check migration eligibility
+  for (const npc of state.npcs) {
+    // Skip if NPC has no location
+    if (!npc.locationId) continue;
+
+    // Get current NPC location
+    const currentLocation = state.locations.find(l => l.id === npc.locationId);
+    if (!currentLocation) continue;
+
+    // 5% migration chance
+    if (random() > 0.05) continue;
+
+    // Find safer destination: lower-tension location controlled by friendly faction
+    const saferLocation = findSaferMigrationDestination(
+      currentLocation,
+      npc,
+      state,
+      socialTension
+    );
+
+    if (saferLocation) {
+      // Record migration
+      const oldLocationId = npc.locationId;
+      npc.locationId = saferLocation.id;
+
+      migrations.push({
+        npcId: npc.id,
+        npcName: npc.name,
+        fromLocationId: oldLocationId,
+        toLocationId: saferLocation.id,
+        reason: `Escaped high-tension zone (GST ${socialTension.toFixed(2)}) to ${saferLocation.name}`
+      });
+
+      console.log(
+        `[NpcEngine] NPC Migration: ${npc.name} migrated from ${currentLocation.name} to ${saferLocation.name}`
+      );
+    }
+  }
+
+  return migrations;
+}
+
+/**
+ * Phase 26 Task 2: Find safer migration destination for NPC
+ * Looks for locations that:
+ * 1. Have lower population density (fewer active events)
+ * 2. Are controlled by faction with whom NPC has positive reputation
+ * 3. Have compatible biome for NPC residence
+ * 
+ * @param currentLocation Current NPC location
+ * @param npc The NPC seeking migration
+ * @param state Current WorldState
+ * @param currentTension Current Global Social Tension
+ * @returns Safer location if found, null otherwise
+ */
+function findSaferMigrationDestination(
+  currentLocation: any,
+  npc: NPC,
+  state: WorldState,
+  currentTension: number
+): any | null {
+  if (!state.locations || !state.factions || !state.player) {
+    return null;
+  }
+
+  // Criteria for safer location:
+  // 1. Different from current location
+  // 2. Lower population (proxy: fewer active encounters)
+  // 3. Controlled by faction NPC has positive reputation with
+  // 4. Not corrupted/dangerous biome
+
+  const safeLocations = state.locations.filter(loc => {
+    // Skip current location
+    if (loc.id === currentLocation.id) return false;
+
+    // Skip dangerous/corrupted biomes during migration
+    if (loc.biome === 'corrupted' || loc.biome === 'void') return false;
+
+    // Find controlling faction
+    const controllingFaction = state.factions?.find(
+      f => f.controlledLocationIds?.includes(loc.id)
+    );
+
+    if (!controllingFaction) {
+      // Uncontrolled (neutral) locations are acceptable fallbacks
+      return true;
+    }
+
+    // NPC must have friendly relationship with controlling faction
+    const npcReputation = state.player.factionReputation?.[controllingFaction.id] ?? 0;
+    return npcReputation >= 0;  // Neutral or better
+  });
+
+  if (safeLocations.length === 0) {
+    return null;
+  }
+
+  // Pick random safer location (or could prioritize by distance, biome compatibility, etc.)
+  return safeLocations[Math.floor(random() * safeLocations.length)];
+}
+
+/**
+ * Phase 26 Task 2: Register NPC_MIGRATED event in event log
+ * Ensures UI and other systems reflect the population shift
+ * 
+ * @param migrations Array of migration records from triggerMigrationChecks()
+ * @returns Array of Event objects for the mutation log
+ */
+export function createMigrationEvents(migrations: Array<{
+  npcId: string;
+  npcName: string;
+  fromLocationId: string;
+  toLocationId: string;
+  reason: string;
+}>): any[] {
+  return migrations.map(m => ({
+    id: `npc-migrated-${Date.now()}-${m.npcId}`,
+    worldInstanceId: undefined, // Filled in by caller
+    actorId: m.npcId,
+    type: 'NPC_MIGRATED',
+    payload: {
+      npcId: m.npcId,
+      npcName: m.npcName,
+      fromLocationId: m.fromLocationId,
+      toLocationId: m.toLocationId,
+      reason: m.reason,
+      timestamp: Date.now()
+    },
+    templateOrigin: undefined, // Filled in by caller
+    timestamp: Date.now(),
+    mutationClass: 'WORLD_EVENT'
+  }));
+}
+
+/**
+ * Phase 26 Task 2: Apply population decay modifier to abandoned locations
+ * Locations where NPCs have migrated away suffer reduced trade/resource generation
+ * 
+ * @param state Current WorldState
+ * @param abandonedLocationIds Array of location IDs where NPCs migrated from
+ */
+export function applyPopulationDecay(state: WorldState, abandonedLocationIds: string[]): void {
+  if (!state.locations) return;
+
+  for (const locId of abandonedLocationIds) {
+    const location = state.locations.find(l => l.id === locId);
+    if (!location) continue;
+
+    // Apply decay modifier (reduces resource generation, trade activity)
+    location._PopulationDecay ??= 0;
+    location._PopulationDecay += 0.1;  // 10% decay per migration event
+
+    // Cap decay at 50%
+    location._PopulationDecay = Math.min(0.5, location._PopulationDecay);
+
+    console.log(
+      `[NpcEngine] Population decay applied to ${location.name}: ${(location._PopulationDecay * 100).toFixed(1)}%`
+    );
+  }
+}
+
+/**
+ * M46-C1: Reset NPC autonomy state when epoch changes
+ */
+export function resetNpcAutonomy(): void {
+  const planner = getGoalOrientedPlanner();
+  planner.clearPlans();
+}
+
+/**
+ * Phase 27 Task 3: Generate NPC trade inventory scaled by economic cycle
+ */
+export function generateTradeInventory(npc: NPC, state: WorldState): Array<{
+  itemId: string;
+  quantity: number;
+  basePrice: number;
+  finalPrice: number;
+}> {
+  const economicEngine = getEconomicSynthesisEngine();
+  const getTelemetryEngine = require('./telemetryEngine').getTelemetryEngine;
+  const telemetry = getTelemetryEngine().generateTelemetryPulse(state);
+  const economyScore = telemetry.economyHealth ?? 50;
+  const cycle = economicEngine.getEconomicCycle(economyScore);
+
+  const baseInventory = [
+    { itemId: 'potion_health', rarity: 'common', basePrice: 10, defaultQty: 5 },
+    { itemId: 'potion_mana', rarity: 'common', basePrice: 10, defaultQty: 5 },
+    { itemId: 'herb_bundle', rarity: 'common', basePrice: 5, defaultQty: 10 },
+    { itemId: 'iron_ore', rarity: 'common', basePrice: 15, defaultQty: 3 },
+    { itemId: 'copper_ingot', rarity: 'uncommon', basePrice: 25, defaultQty: 2 },
+    { itemId: 'silk_cloth', rarity: 'uncommon', basePrice: 20, defaultQty: 3 },
+    { itemId: 'rare_spice', rarity: 'rare', basePrice: 50, defaultQty: 1 },
+    { itemId: 'enchanted_gem', rarity: 'rare', basePrice: 100, defaultQty: 1 },
+    { itemId: 'ancient_scroll', rarity: 'epic', basePrice: 200, defaultQty: 1 }
+  ];
+
+  let priceMultiplier = 1.0;
+  let rarityWeights = { common: 1, uncommon: 1, rare: 1, epic: 0.5 };
+  let quantityScale = 1.0;
+
+  if (cycle === EconomicCycle.BOOM) {
+    priceMultiplier = 0.85;
+    rarityWeights = { common: 0.8, uncommon: 1.2, rare: 1.4, epic: 0.8 };
+    quantityScale = 1.3;
+  } else if (cycle === EconomicCycle.RECESSION) {
+    priceMultiplier = 1.3;
+    rarityWeights = { common: 1.5, uncommon: 0.8, rare: 0.4, epic: 0.1 };
+    quantityScale = 0.7;
+  }
+
+  const inventory: Array<{
+    itemId: string;
+    quantity: number;
+    basePrice: number;
+    finalPrice: number;
+  }> = [];
+
+  for (const item of baseInventory) {
+    const weight = rarityWeights[item.rarity as keyof typeof rarityWeights] || 0;
+    if (random() < weight * 0.7) {
+      const quantity = Math.max(1, Math.floor(item.defaultQty * quantityScale));
+      const finalPrice = Math.floor(item.basePrice * priceMultiplier);
+      inventory.push({
+        itemId: item.itemId,
+        quantity,
+        basePrice: item.basePrice,
+        finalPrice
+      });
+    }
+  }
+
+  return inventory.length > 0 ? inventory : baseInventory.slice(0, 3);
+}
+
+/**
+ * Phase 27 Task 3: Update NPC emotional state based on economic cycle
+ */
+export function updateNpcEconomicEmotions(npcs: NPC[], state: WorldState): void {
+  if (!npcs || npcs.length === 0) return;
+
+  const economicEngine = getEconomicSynthesisEngine();
+  const getTelemetryEngine = require('./telemetryEngine').getTelemetryEngine;
+  const telemetry = getTelemetryEngine().generateTelemetryPulse(state);
+  const economyScore = telemetry.economyHealth ?? 50;
+  const cycle = economicEngine.getEconomicCycle(economyScore);
+
+  for (const npc of npcs) {
+    if (!npc.emotionalState) {
+      npc.emotionalState = {
+        trust: 50,
+        fear: 50,
+        gratitude: 50,
+        resentment: 50
+      };
+    }
+
+    if (cycle === EconomicCycle.BOOM) {
+      npc.emotionalState.trust = Math.min(100, npc.emotionalState.trust + 5);
+      npc.emotionalState.resentment = Math.max(0, npc.emotionalState.resentment - 5);
+    } else if (cycle === EconomicCycle.RECESSION) {
+      npc.emotionalState.trust = Math.max(0, npc.emotionalState.trust - 5);
+      npc.emotionalState.resentment = Math.min(100, npc.emotionalState.resentment + 10);
+    }
+  }
 }

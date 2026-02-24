@@ -106,25 +106,25 @@ const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({
                     <span className="power-type" style={{ color: '#ff6b6b' }}>
                       ⚔️ Military
                     </span>
-                    <span className="power-value">{faction.breakdown.military}</span>
+                    <span className="power-value">{faction.military}</span>
                   </div>
                   <div className="power-item">
                     <span className="power-type" style={{ color: '#4ecdc4' }}>
                       🏛️ Political
                     </span>
-                    <span className="power-value">{faction.breakdown.political}</span>
+                    <span className="power-value">{faction.political}</span>
                   </div>
                   <div className="power-item">
                     <span className="power-type" style={{ color: '#ffd700' }}>
                       💰 Economic
                     </span>
-                    <span className="power-value">{faction.breakdown.economic}</span>
+                    <span className="power-value">{faction.economic}</span>
                   </div>
                   <div className="power-item">
                     <span className="power-type" style={{ color: '#a78bfa' }}>
                       ✨ Spiritual
                     </span>
-                    <span className="power-value">{faction.breakdown.spiritual}</span>
+                    <span className="power-value">{faction.spiritual}</span>
                   </div>
                 </div>
               </div>
@@ -180,7 +180,7 @@ const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({
           {/* Clock Drift */}
           <div className="consensus-card">
             <div className="card-label">Max Clock Drift</div>
-            <div className="card-value">{formatLatency(consensusHealth.maxClockDrift)}</div>
+            <div className="card-value">{formatLatency(consensusHealth.clockDrift.max)}</div>
           </div>
 
           {/* Queue Depth */}
@@ -234,7 +234,7 @@ const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({
   // =========================================================================
 
   const renderEventsTab = () => {
-    if (snapshot.macroEvents.length === 0) {
+    if (snapshot.macroEventCountdowns.length === 0) {
       return <div className="diagnostic-empty">No upcoming events</div>;
     }
 
@@ -243,7 +243,7 @@ const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({
         <h3 className="tab-header">Macro Events</h3>
 
         <div className="events-list">
-          {snapshot.macroEvents.map(event => {
+          {snapshot.macroEventCountdowns.map(event => {
             const isImminent = event.etaTicks < 50; // < 2.5 sec
             const isWarning = event.etaTicks < 200; // < 10 sec
 
@@ -256,12 +256,12 @@ const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({
                   <div className="event-icon">{event.icon || '📍'}</div>
                   <div className="event-info">
                     <div className="event-name">{event.eventName}</div>
-                    <div className="event-type">{event.eventType}</div>
+                    <div className="event-type">{event.category}</div>
                   </div>
                 </div>
 
                 <div className="event-countdown">
-                  <div className="countdown-value">{formatETA(event.etaMs)}</div>
+                  <div className="countdown-value">{formatETA(event.etaTicks)}</div>
                   <div className="countdown-label">Remaining</div>
                 </div>
 

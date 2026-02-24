@@ -1,5 +1,5 @@
 import type { InventoryItem } from './worldEngine';
-import { createStackableItem } from './worldEngine';
+import { createStackableItem, isStackable, getStackableQuantity } from './worldEngine';
 import { random } from './prng';
 
 /**
@@ -71,7 +71,7 @@ export function validateRecipe(
     );
 
     // For stackable items, check quantity
-    if (!inventoryItem || (inventoryItem as any).quantity < requiredMaterial.quantity) {
+    if (!inventoryItem || !isStackable(inventoryItem) || inventoryItem.quantity < requiredMaterial.quantity) {
       missingMaterials.push(requiredMaterial);
     }
   });
@@ -114,7 +114,7 @@ export function deductMaterials(
       (item: InventoryItem) => item.itemId === requiredMaterial.itemId
     );
 
-    if (idx >= 0) {
+    if (idx >= 0 && isStackable(updated[idx])) {
       updated[idx].quantity -= requiredMaterial.quantity;
       if (updated[idx].quantity <= 0) {
         updated.splice(idx, 1);
@@ -137,10 +137,10 @@ export function addCraftResult(
   const result = recipe.result;
 
   const existingIdx = updated.findIndex(
-    (item: InventoryItem) => item.itemId === result.itemId
+    (item: InventoryItem) => item.itemId === result.itemId && isStackable(item)
   );
 
-  if (existingIdx >= 0) {
+  if (existingIdx >= 0 && isStackable(updated[existingIdx])) {
     updated[existingIdx].quantity += result.quantity;
   } else {
     updated.push({
@@ -200,7 +200,7 @@ export function calculateEpochAdjustedSuccess(
  * Check if player has Primal Flux ingredient
  */
 export function hasPrimalFluxIngredient(inventory: InventoryItem[]): boolean {
-  return inventory.some(item => item.itemId === 'primal_flux' && (item as any).quantity > 0);
+  return inventory.some(item => isStackable(item) && item.itemId === 'primal_flux' && item.quantity > 0);
 }
 
 /**
@@ -208,14 +208,14 @@ export function hasPrimalFluxIngredient(inventory: InventoryItem[]): boolean {
  */
 export function consumePrimalFlux(inventory: InventoryItem[]): InventoryItem[] {
   return inventory.map(item => {
-    if (item.itemId === 'primal_flux') {
+    if (isStackable(item) && item.itemId === 'primal_flux') {
       return {
         ...item,
-        quantity: Math.max(0, (item as any).quantity - 1)
+        quantity: Math.max(0, item.quantity - 1)
       };
     }
     return item;
-  }).filter(item => (item as any).quantity > 0);
+  }).filter(item => !isStackable(item) || item.quantity > 0);
 }
 
 /**

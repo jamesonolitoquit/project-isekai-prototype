@@ -15,7 +15,42 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { AtomicTrade, TradeStage, resolveDiceRoll, DiceAction } from '../engine';
+// import { AtomicTrade, TradeStage } from '../engine/atomicTradeEngine';
+// import { resolveDiceRoll, DiceAction } from '../engine';
+
+// Temporary type definitions
+type TradeStage = 'proposed' | 'negotiating' | 'staged' | 'committing' | 'completed' | 'cancelled' | 'failed';
+
+interface AtomicTrade {
+  tradeId: string;
+  stage: TradeStage;
+  initiatorId: string;
+  responderId: string;
+  initiatorItems: any[];
+  responderItems: any[];
+  createdAt: number;
+  timeoutAt: number;
+  failureReason?: string;
+}
+interface DiceAction {
+  type?: string;
+  dc?: number;
+  description?: string;
+  actionType?: string;
+  actionTitle?: string;
+  targetDC?: number;
+}
+
+function resolveDiceRoll(action: DiceAction, modifiers: any[], dc: number): any {
+  // Temporary implementation
+  return {
+    roll: Math.floor(Math.random() * 20) + 1,
+    total: Math.floor(Math.random() * 20) + 1,
+    passed: Math.random() > 0.5,
+    isCritical: false,
+    isFumble: false
+  };
+}
 
 interface TradeOverlayProps {
   trade: AtomicTrade | null;
@@ -34,6 +69,7 @@ interface InventoryItem {
   quantity: number;
   displayName: string;
   icon?: string;
+  _source?: 'mine' | 'theirs';
 }
 
 /**

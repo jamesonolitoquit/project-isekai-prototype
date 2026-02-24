@@ -98,7 +98,7 @@ function generateMapNodeStyle(
   }
 
   // If location is blighted (part of Age Rot effect), increase degradation
-  if ((location as any).biome === 'corrupted') {
+  if (location.biome === 'corrupted') {
     opacity = 0.7;
   }
 
@@ -122,7 +122,7 @@ export const MapPanel: React.FC<MapPanelProps> = ({
   const epochId = worldState.epochId || 'epoch_i_fracture';
 
   // Determine Age Rot severity from metadata
-  const ageRotSeverity = (worldState as any).ageRotSeverity || undefined;
+  const ageRotSeverity = worldState.ageRotSeverity || undefined;
 
   return (
     <div style={styles.container}>
@@ -176,7 +176,7 @@ export const MapPanel: React.FC<MapPanelProps> = ({
               )}
 
               {/* Show Age Rot danger indicator in Twilight */}
-              {epochId === 'epoch_iii_twilight' && (location as any).biome === 'corrupted' && (
+              {epochId === 'epoch_iii_twilight' && location.biome === 'corrupted' && (
                 <div style={styles.dangerIndicator}>⚡ BLIGHTED</div>
               )}
             </div>

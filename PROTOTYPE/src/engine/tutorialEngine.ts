@@ -1,21 +1,23 @@
 /**
- * M41 Task 2: Onboarding Engine
+ * M41 Task 2 + Phase 24 Task 4: Onboarding Engine (Hardened)
  * 
  * Tracks player milestone achievements and provides lore-compliant tutorials:
- * - First Roll: Dice ritual introduction
- * - First Trade: Economic system discovery
- * - Epoch Shift: Timeline navigation
+ * - Tier 1 (Early): First Roll, Trade, Combat, Spell, Epoch Shift
+ * - Tier 2 (Mid): Diplomat, Weaver
+ * - Tier 3 (Phase 24): Guild Sociability, Raid Encounter, Paradox Awareness, P2P Scaling
  * 
  * Integrates with WorldState event log to detect milestones automatically.
- * Provides localized tutorial overlays and help text.
+ * Provides localized tutorial overlays, Director Whispers prologue, and throttling.
+ * Persists in PlayerState.tutorialProgress for canonical save/load.
  */
 
 import { WorldState } from './worldEngine';
 
 /**
- * M41: Milestone identifiers for tutorial progression
+ * M41 + Phase 24: Milestone identifiers for tutorial progression
  * Tier 1 (Early Game): character_created, first_roll, first_trade, first_combat, first_spell, epoch_shift
- * Tier 2 (Mid Game): diplomat (faction influence), weaver (grand ritual)
+ * Tier 2 (Mid Game): diplomat, weaver
+ * Tier 3 (Phase 24): first_guild_join, first_raid_enter, paradox_warning, high_density_sync
  */
 export type MilestoneId = 
   | 'first_roll' 
@@ -24,8 +26,13 @@ export type MilestoneId =
   | 'character_created' 
   | 'first_combat' 
   | 'first_spell'
-  | 'diplomat'      // M42 Tier 2: Triggered on faction turn influence
-  | 'weaver';       // M42 Tier 2: Triggered on grand ritual with 3+ participants
+  | 'diplomat'
+  | 'weaver'
+  // Phase 24 Milestones
+  | 'first_guild_join'        // Joined first guild
+  | 'first_raid_enter'        // Entered first raid/anomaly
+  | 'paradox_warning'         // Paradox level reached critical
+  | 'high_density_sync';
 
 /**
  * M41: Milestone state tracking
@@ -121,11 +128,49 @@ const TUTORIAL_DATABASE: Record<MilestoneId, Omit<TutorialOverlay, 'visible' | '
     loreText: `From the Weaver's Codex: "Grand rituals are impossible - they require the unified will of multiple consciousnesses, each tethered to different probability streams. And yet, you have done it. The collective power you have channeled leaves a permanent mark on the timeline. This is not mere magic - this is the fundamental restructuring of reality's consensus. You are no longer merely a player in this world. You are an architect of it."`,
     actionLabel: "Accept Your Role",
     icon: "✨"
+  },
+  // ============ PHASE 24 TIER 3 MILESTONES ============
+  first_guild_join: {
+    title: "The Collective Ascends",
+    text: "You have joined a guild - a fellowship bound by shared purpose. Together, your strength multiplies.",
+    loreText: `From the Guild Manifesto: "A guild is not merely a collection of players - it is a living entity with its own reputation, treasury, and will. By joining, you surrender part of your autonomy but gain access to collective knowledge, shared resources, and protection. The guild becomes an extension of your identity in the Isekai."`,
+    actionLabel: "Embrace Fellowship",
+    icon: "🛡️"
+  },
+  first_raid_enter: {
+    title: "The Anomaly Calls",
+    text: "You have answered the call of a World Raid - a macro-anomaly that corrupts the very fabric of reality. Multitudes gather to stabilize it.",
+    loreText: `From Chronicle of Anomalies: "World Raids are birth points of new legends. They occur when paradox reaches critical mass, spawning boss entities that embody timeline instability. A single player cannot hope to overcome such beings - only collective will, synchronized perfectly, can pierce through. This is where heroes are forged."`,
+    actionLabel: "Answer the Call",
+    icon: "⚔️🌀"
+  },
+  paradox_warning: {
+    title: "Reality Strains Under Paradox",
+    text: "The paradox level in this region has grown dangerous. Temporal anomalies grow more frequent and severe.",
+    loreText: `From the Paradox Monitor's Log: "Each action you take creates minute ripples in causality. These ripples accumulate. When they reach a critical threshold, reality itself begins to reject the contradiction - causing glitches, spatial tears, and the manifestation of nightmare entities. Seek cleansing rituals or ventures into unparadoxed regions."`,
+    actionLabel: "Understand the Warning",
+    icon: "⚠️"
+  },
+  high_density_sync: {
+    title: "The Crowd Synchronizes",
+    text: "You have entered a crowded location with many other weavers. The world feels heavier, more dense with narrative weight.",
+    loreText: `From the Architecture of Consciousness: "In solitude, you navigate the Isekai with perfect clarity. But when many consciousnesses converge in one place, something profound occurs - a localized intensification of the narrative field. Your individual story becomes woven into a larger tapestry. Actions carry more weight, but also less agency. This is the paradox of community."`,
+    actionLabel: "Adapt to Density",
+    icon: "👥"
   }
 };
 
 /**
- * M41: Initialize empty tutorial state
+ * Phase 24: Director Whisper messages for prologue sequence
+ */
+const DIRECTOR_WHISPERS: string[] = [
+  "Synchronizing consciousness...",
+  "Bridging probability streams...",
+  "Welcome to the Isekai."
+];
+
+/**
+ * M41 + Phase 24: Initialize empty tutorial state
  */
 export function initializeTutorialState(): TutorialState {
   const milestones: Record<MilestoneId, TutorialMilestone> = {
@@ -137,7 +182,12 @@ export function initializeTutorialState(): TutorialState {
     epoch_shift: { id: 'epoch_shift', achieved: false },
     // Tier 2
     diplomat: { id: 'diplomat', achieved: false },
-    weaver: { id: 'weaver', achieved: false }
+    weaver: { id: 'weaver', achieved: false },
+    // Phase 24 Tier 3
+    first_guild_join: { id: 'first_guild_join', achieved: false },
+    first_raid_enter: { id: 'first_raid_enter', achieved: false },
+    paradox_warning: { id: 'paradox_warning', achieved: false },
+    high_density_sync: { id: 'high_density_sync', achieved: false }
   };
 
   return {
@@ -228,11 +278,11 @@ export function detectMilestones(state: WorldState, previousTutorialState: Tutor
   // Detection: Check ritual participation metadata
   if (
     !previousTutorialState.milestones.weaver.achieved &&
-    state.activeMacroEvents &&
-    Array.isArray(state.activeMacroEvents)
+    state.macroEvents &&
+    Array.isArray(state.macroEvents)
   ) {
     // Check for grand ritual with 3+ participants
-    const hasGrandRitual = state.activeMacroEvents.some((event: any) => {
+    const hasGrandRitual = state.macroEvents.some((event: any) => {
       return (
         event.type === 'grand_ritual' &&
         event.participants &&
@@ -462,3 +512,174 @@ export function getTier2Progress(tutorialState: TutorialState): { completed: num
     total: tier2Milestones.length
   };
 }
+
+// ============ PHASE 24: TIER 3 MILESTONES & FEATURES ============
+
+/**
+ * Phase 24: Trigger first guild join milestone
+ */
+export function triggerGuildJoinMilestone(tutorialState: TutorialState): TutorialState {
+  if (tutorialState.milestones.first_guild_join.achieved) {
+    return tutorialState;
+  }
+  return updateTutorialState(tutorialState, ['first_guild_join'], Date.now());
+}
+
+/**
+ * Phase 24: Trigger first raid enter milestone
+ */
+export function triggerRaidMilestone(tutorialState: TutorialState): TutorialState {
+  if (tutorialState.milestones.first_raid_enter.achieved) {
+    return tutorialState;
+  }
+  return updateTutorialState(tutorialState, ['first_raid_enter'], Date.now());
+}
+
+/**
+ * Phase 24: Trigger paradox warning milestone
+ */
+export function triggerParadoxWarningMilestone(tutorialState: TutorialState): TutorialState {
+  if (tutorialState.milestones.paradox_warning.achieved) {
+    return tutorialState;
+  }
+  return updateTutorialState(tutorialState, ['paradox_warning'], Date.now());
+}
+
+/**
+ * Phase 24: Trigger high-density sync milestone
+ */
+export function triggerHighDensitySyncMilestone(tutorialState: TutorialState): TutorialState {
+  if (tutorialState.milestones.high_density_sync.achieved) {
+    return tutorialState;
+  }
+  return updateTutorialState(tutorialState, ['high_density_sync'], Date.now());
+}
+
+/**
+ * Phase 24: New Player Prologue - "Director Whispers"
+ * Returns a sequence of timed whisper messages for immersive onboarding
+ */
+export function startNewPlayerPrologue(): Array<{ delayMs: number; message: string }> {
+  return [
+    { delayMs: 0, message: DIRECTOR_WHISPERS[0] },
+    { delayMs: 2000, message: DIRECTOR_WHISPERS[1] },
+    { delayMs: 4000, message: DIRECTOR_WHISPERS[2] }
+  ];
+}
+
+/**
+ * Phase 24: Check if tutorial should be throttled
+ * Throttles intrusive overlays during critical moments (raids, boss phases, high-density areas)
+ */
+export function isTutorialThrottled(state: WorldState): boolean {
+  // Throttle during active raids
+  if (state.activeRaids && state.activeRaids.length > 0) {
+    return true;  // Don't show tutorials during raid
+  }
+
+  // Throttle during boss phases (check paradox-triggered anomalies)
+  if (state.macroAnomalies && state.macroAnomalies.length > 0) {
+    for (const anomaly of state.macroAnomalies as any[]) {
+      if (anomaly.status === 'IN_PROGRESS' || anomaly.status === 'STABILIZING') {
+        return true;
+      }
+    }
+  }
+
+  // Throttle in very high-density areas (>50 concurrent players at location)
+  if (state.playerLocations) {
+    const playerCount = Object.values(state.playerLocations).length;
+    if (playerCount > 50) {
+      return true;  // Defer tutorials in crowded zones
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Phase 24: Detect milestones with Phase 24 systems
+ */
+export function detectMilestonesPhase24(state: WorldState, previousTutorialState: TutorialState): MilestoneId[] {
+  const detectedMilestones: MilestoneId[] = [];
+
+  // Guild Join: Check if player now has guildId
+  if (
+    !previousTutorialState.milestones.first_guild_join.achieved &&
+    (state.player as any)?.guildId
+  ) {
+    detectedMilestones.push('first_guild_join');
+  }
+
+  // Raid Enter: Check if player is in active raid
+  if (
+    !previousTutorialState.milestones.first_raid_enter.achieved &&
+    (state.player as any)?.activeRaidId
+  ) {
+    detectedMilestones.push('first_raid_enter');
+  }
+
+  // Paradox Warning: Check if paradox level is critical
+  if (
+    !previousTutorialState.milestones.paradox_warning.achieved &&
+    ((state.paradoxLevel ?? 0) > 250 || (state.generationalParadox ?? 0) > 300)
+  ) {
+    detectedMilestones.push('paradox_warning');
+  }
+
+  // High Density Sync: Check concurrent player count in location
+  if (
+    !previousTutorialState.milestones.high_density_sync.achieved &&
+    state.playerLocations &&
+    Object.values(state.playerLocations).length > 30
+  ) {
+    detectedMilestones.push('high_density_sync');
+  }
+
+  return detectedMilestones;
+}
+
+/**
+ * Phase 24: Get Tier 3 (Phase 24) progress
+ */
+export function getTier3Progress(tutorialState: TutorialState): { completed: number; total: number } {
+  const tier3Milestones: MilestoneId[] = [
+    'first_guild_join',
+    'first_raid_enter',
+    'paradox_warning',
+    'high_density_sync'
+  ];
+  const completed = tier3Milestones.filter(
+    id => tutorialState.milestones[id].achieved
+  ).length;
+
+  return {
+    completed,
+    total: tier3Milestones.length
+  };
+}
+
+/**
+ * Phase 24: Get Tutorial Archive - all earned milestones for replay
+ */
+export function getTutorialArchive(tutorialState: TutorialState): Array<{
+  milestoneId: MilestoneId;
+  title: string;
+  text: string;
+  loreText: string;
+  achievedAtTimestamp?: number;
+}> {
+  return Object.entries(tutorialState.milestones)
+    .filter(([_, milestone]) => milestone.achieved)
+    .map(([id, milestone]) => {
+      const dbEntry = TUTORIAL_DATABASE[id as MilestoneId];
+      return {
+        milestoneId: id as MilestoneId,
+        title: dbEntry?.title || 'Unknown Milestone',
+        text: dbEntry?.text || '',
+        loreText: dbEntry?.loreText || '',
+        achievedAtTimestamp: milestone.achievedAtTimestamp
+      };
+    });
+}
+

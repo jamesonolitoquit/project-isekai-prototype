@@ -1,0 +1,208 @@
+{
+  "name": "Luxfier Seed Zero",
+  "description": "Canonical world template spanning 10 epochs (1000-2900 AD). The definitive chronicle of Luxfier's rise, zenith, and transformation.",
+  "season": "spring",
+  "version": "2.0",
+  "multiEpochEnabled": true,
+  "baseEpoch": "epoch_i_fracture",
+  "isSeedZero": true,
+  "seedZeroMetadata": {
+    "created": "2026-02-20T00:00:00Z",
+    "designation": "Canonical Starting Timeline",
+    "purpose": "Primary reference world for ALPHA Beta Release",
+    "epochRange": "1000-2900 AD (10 Eras)",
+    "milestoneValidation": "M56-C1: Millennium Simulation Complete",
+    "totalEpochs": 10,
+    "yearSpan": 900,
+    "averageYearsPerEpoch": 90
+  },
+  "epochs": {
+    "epoch_i_fracture": {
+      "id": "epoch_i_fracture",
+      "sequenceNumber": 1,
+      "name": "Epoch I: Fracture",
+      "theme": "Recovery & Order",
+      "chronologyYear": 1000,
+      "description": "The Cataclysm has just ended. Civilization struggles to rebuild. Five factions rise to prominence, competing for influence. Magic stirs in ancient places.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 25, "trend": "ascending" },
+        "ironsmith-guild": { "power": 20, "trend": "stable" },
+        "luminara-mercantile": { "power": 20, "trend": "ascending" },
+        "shadow-conclave": { "power": 15, "trend": "hidden" },
+        "adventurers-league": { "power": 20, "trend": "forming" }
+      }
+    },
+    "epoch_ii_waning": {
+      "id": "epoch_ii_waning",
+      "sequenceNumber": 2,
+      "name": "Epoch II: Waning Light",
+      "theme": "Decline & Mystery",
+      "chronologyYear": 1100,
+      "description": "100 years of peace fade. Ancient evils stir. One faction dominates politics as others fragment. The landscape shows signs of corruption.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 60, "trend": "dominant" },
+        "ironsmith-guild": { "power": 10, "trend": "declining" },
+        "luminara-mercantile": { "power": 15, "trend": "unstable" },
+        "shadow-conclade": { "power": 30, "trend": "ascendant" },
+        "adventurers-league": { "power": 5, "trend": "dissolved" }
+      }
+    },
+    "epoch_iii_twilight": {
+      "id": "epoch_iii_twilight",
+      "sequenceNumber": 3,
+      "name": "Epoch III: Twilight's End",
+      "theme": "Desperation & Void",
+      "chronologyYear": 1200,
+      "description": "The final age dawns. Only the Shadow Conclave stands strong. Reality itself fractures. Ruins dot the landscape. This is the last hope for salvation.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 15, "trend": "collapsing" },
+        "ironsmith-guild": { "power": 5, "trend": "extinct" },
+        "luminara-mercantile": { "power": 8, "trend": "failing" },
+        "shadow-conclave": { "power": 70, "trend": "triumphant" },
+        "adventurers-league": { "power": 2, "trend": "legendary" }
+      }
+    },
+    "epoch_iv_emergence": {
+      "id": "epoch_iv_emergence",
+      "sequenceNumber": 4,
+      "name": "Epoch IV: Emergence",
+      "theme": "Rebirth & Hope",
+      "chronologyYear": 1300,
+      "description": "From the ashes, new hope emerges. A hero rises to challenge the darkness. The balance begins to shift. Ghost Ruins filled with ancient relics become accessible.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 45, "trend": "reconstituting" },
+        "ironsmith-guild": { "power": 12, "trend": "reforming" },
+        "luminara-mercantile": { "power": 18, "trend": "recovering" },
+        "shadow-conclave": { "power": 35, "trend": "weakening" },
+        "adventurers-league": { "power": 20, "trend": "resurgent" }
+      }
+    },
+    "epoch_v_reformation": {
+      "id": "epoch_v_reformation",
+      "sequenceNumber": 5,
+      "name": "Epoch V: Reformation",
+      "theme": "Reconstruction & Alliance",
+      "chronologyYear": 1400,
+      "description": "Factions negotiate new treaties. Civilization rebuilds infrastructure. Trade routes are restored. The threat recedes but memories remain vivid.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 38, "trend": "stabilizing" },
+        "ironsmith-guild": { "power": 22, "trend": "growing" },
+        "luminara-mercantile": { "power": 25, "trend": "recovering" },
+        "shadow-conclave": { "power": 28, "trend": "contained" },
+        "adventurers-league": { "power": 30, "trend": "rising" }
+      }
+    },
+    "epoch_vi_renaissance": {
+      "id": "epoch_vi_renaissance",
+      "sequenceNumber": 6,
+      "name": "Epoch VI: Renaissance",
+      "theme": "Flourishing & Discovery",
+      "chronologyYear": 1500,
+      "description": "A golden age dawns. Trade flourishes. The arts and sciences advance. Scholars study the relics of fallen epochs. The darkness seems truly defeated.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 32, "trend": "cooperative" },
+        "ironsmith-guild": { "power": 32, "trend": "prosperous" },
+        "luminara-mercantile": { "power": 36, "trend": "dominant" },
+        "shadow-conclave": { "power": 12, "trend": "dormant" },
+        "adventurers-league": { "power": 38, "trend": "valiant" }
+      }
+    },
+    "epoch_vii_zenith": {
+      "id": "epoch_vii_zenith",
+      "sequenceNumber": 7,
+      "name": "Epoch VII: Zenith",
+      "theme": "Pinnacle & Innovation",
+      "chronologyYear": 1600,
+      "description": "Civilization reaches its zenith. Innovation becomes commonplace. Nations cooperate rather than compete. Monuments are raised to commemorate victory.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 34, "trend": "integrated" },
+        "ironsmith-guild": { "power": 33, "trend": "integrated" },
+        "luminara-mercantile": { "power": 34, "trend": "integrated" },
+        "shadow-conclave": { "power": 8, "trend": "inactive" },
+        "adventurers-league": { "power": 35, "trend": "integrated" }
+      }
+    },
+    "epoch_viii_dissolution": {
+      "id": "epoch_viii_dissolution",
+      "sequenceNumber": 8,
+      "name": "Epoch VIII: Dissolution",
+      "theme": "Fragmentation & Tension",
+      "chronologyYear": 1700,
+      "description": "Perfection breeds complacency. Subtle tensions emerge. Old alliances fracture silently. Scholars warn of historical patterns, but few listen.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 30, "trend": "isolating" },
+        "ironsmith-guild": { "power": 28, "trend": "fragmenting" },
+        "luminara-mercantile": { "power": 35, "trend": "monopolizing" },
+        "shadow-conclave": { "power": 18, "trend": "stirring" },
+        "adventurers-league": { "power": 27, "trend": "destabilizing" }
+      }
+    },
+    "epoch_ix_cataclysm_warning": {
+      "id": "epoch_ix_cataclysm_warning",
+      "sequenceNumber": 9,
+      "name": "Epoch IX: Cataclysm Warning",
+      "theme": "Premonition & Hubris",
+      "chronologyYear": 1800,
+      "description": "Strange phenomena herald catastrophe. The skies darken with omens. Reality shows cracks. Nations ignore the warnings. The cycle approaches its inevitable conclusion.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 25, "trend": "declining" },
+        "ironsmith-guild": { "power": 20, "trend": "withdrawing" },
+        "luminara-mercantile": { "power": 35, "trend": "exploiting" },
+        "shadow-conclave": { "power": 36, "trend": "positioning" },
+        "adventurers-league": { "power": 18, "trend": "warning" }
+      }
+    },
+    "epoch_x_apotheosis": {
+      "id": "epoch_x_apotheosis",
+      "sequenceNumber": 10,
+      "name": "Epoch X: Apotheosis",
+      "theme": "Transcendence & Transformation",
+      "chronologyYear": 1900,
+      "description": "The final age culminates in transformation. Reality itself is remade. What emerges is beyond mortal comprehension. The chronicle ends, and something new begins.",
+      "locationOverrides": {},
+      "npcOverrides": {},
+      "questOverrides": {},
+      "factionStateOverride": {
+        "silver-flame": { "power": 50, "trend": "transcendent" },
+        "ironsmith-guild": { "power": 50, "trend": "transcendent" },
+        "luminara-mercantile": { "power": 50, "trend": "transcendent" },
+        "shadow-conclave": { "power": 50, "trend": "transcendent" },
+        "adventurers-league": { "power": 50, "trend": "transcendent" }
+      }
+    }
+  },
+  "metadata": {
+    "designation": "SEED_ZERO",
+    "validatedBy": ["M56-C1", "M57-A1", "M57-E1"],
+    "releaseTarget": "ALPHA_BETA_RELEASE",
+    "createdDate": "2026-02-20",
+    "notes": "Canonical 10-epoch world template for Beta testing. All faction states, epoch transitions, and narrative arcs validated through Millennium Simulation."
+  }
+}

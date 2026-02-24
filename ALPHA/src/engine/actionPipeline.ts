@@ -1,18 +1,24 @@
 import { WorldState, StackableItem } from './worldEngine';
 import { Event } from '../events/mutationLog';
 import { random } from './prng';
-import { createPlayerCharacter, validateStatAllocation } from './characterCreation';
+import { validateStatAllocation } from './characterCreation';
 import { resolveCombat, resolveDefense, resolveParry, resolveHeal, CombatantStats, getEquipmentBonuses, applyEquipmentBonuses } from './ruleEngine';
+import { getLegacyEngine } from './legacyEngine';
 import { isNpcAvailable, resolveDialogue } from './npcEngine';
-import { resolveLootTable, validateRecipe, rollCraftingCheck, deductMaterials, addCraftResult, type Recipe } from './craftingEngine';
+import { resolveLootTable, validateRecipe, rollCraftingCheck, type Recipe } from './craftingEngine';
 import { resolveSpell, getSpellById } from './magicEngine';
-import { calculateDrift, validateAuthority, getParadoxSeverity, checkForSpellBackfire } from './paradoxEngine';
+import { calculateDrift, validateAuthority, checkForSpellBackfire } from './paradoxEngine';
 import { calculateMorphCost, generateRitualChallenge, performRitualCheck, handleMorphSuccess, handleMorphFailure, calculateEssenceDecay, checkMorphCooldown, findNearestAltar } from './morphEngine';
 import { calculateEncounterChance, selectEncounterType, generateEncounterNpc, generateEncounterCombatant, calculateTravelDistance, hasHiddenAreas, getLocationBiome, calculateSearchDifficulty, performSearchCheck } from './encounterEngine';
-import { calculateRelicBonus, shouldRelicRebel, checkInfusionStability, calculateUnbindCost, isRelicRebelling, generateRelicDialogue, applyRelicRebellion, getWieldingRequirement, calculateItemCorruption } from './artifactEngine';
+import { checkInfusionStability, calculateUnbindCost, calculateItemCorruption } from './artifactEngine';
 import { checkLocationHazards } from './hazardEngine';
-import { checkLocationDiscovery, discoverLocation, getAdjacentLocations } from './mapEngine';
+import { checkLocationDiscovery, discoverLocation } from './mapEngine';
 import { canUnlockAbility, unlockAbility, equipAbility, getAbility } from './skillEngine';
+import { getLocationControllingFaction, calculateFactionTax } from './factionTerritoryEngine';
+import { getInvestigationPipeline } from './investigationPipelineEngine';
+import { awardMerit, calculateMeritReward } from './factionCommandEngine';
+import { initiateChronicleTransition, getNextEpoch, EPOCH_DEFINITIONS } from './chronicleEngine';
+import { healWorldScar, restoreScarLocation } from './worldScarsEngine';
 
 // Dice roll context for action resolution
 interface DiceRollContext {
@@ -24,6 +30,43 @@ interface DiceRollContext {
   targetValue: number;
   targetDescription?: string;
 }
+
+/**
+ * M57-A1: Item template structure from items.json
+ */
+interface ItemTemplate {
+  id: string;
+  name: string;
+  type: string;
+  rarity: string;
+  description: string;
+  equipmentSlot?: string;
+  stats?: Record<string, number>;
+  baseDamage?: number;
+  effect?: Record<string, any>;
+  stackable: boolean;
+  weight: number;
+}
+
+/**
+ * M57-A1: Loot table entry structure
+ */
+interface LootTableEntry {
+  itemId: string;
+  chance: number;
+  minQuantity: number;
+  maxQuantity: number;
+}
+
+/**
+ * M57-A1: Items data structure
+ */
+interface ItemsDataStructure {
+  items: ItemTemplate[];
+  recipes: Recipe[];
+  loot_tables: Record<string, LootTableEntry[]>;
+}
+
 import { calculateEnvironmentalFatigue, calculateSeasonalModifiers, checkEnvironmentalHazard, isLocationSheltered } from './environmentalModifierEngine';
 import { resolveWeather } from './weatherEngine';
 import itemsData from '../data/items.json';
@@ -45,7 +88,7 @@ function applyHazardsInCombat(state: WorldState, action: Action): Event[] {
   const hazardEvents: Event[] = [];
   
   // Get hazards from world state (if available)
-  const hazards = (state as any).hazards || [];
+  const hazards = state.hazards || [];
   if (hazards.length === 0) {
     return hazardEvents;
   }
@@ -75,25 +118,26 @@ function applyHazardsInCombat(state: WorldState, action: Action): Event[] {
 }
 
 // Build item templates map from items.json
-const ITEM_TEMPLATES: Record<string, any> = {};
-if (itemsData.items && Array.isArray(itemsData.items)) {
-  itemsData.items.forEach((item: any) => {
+const ITEM_TEMPLATES: Record<string, ItemTemplate> = {};
+const typedItemsData = itemsData as ItemsDataStructure;
+if (typedItemsData.items && Array.isArray(typedItemsData.items)) {
+  typedItemsData.items.forEach((item: ItemTemplate) => {
     ITEM_TEMPLATES[item.id] = item;
   });
 }
 
 // Build recipe map from items.json
 const RECIPES: Record<string, Recipe> = {};
-if ((itemsData as any).recipes && Array.isArray((itemsData as any).recipes)) {
-  (itemsData as any).recipes.forEach((recipe: any) => {
+if (typedItemsData.recipes && Array.isArray(typedItemsData.recipes)) {
+  typedItemsData.recipes.forEach((recipe: Recipe) => {
     RECIPES[recipe.id] = recipe;
   });
 }
 
 // Build loot tables map from items.json
-const LOOT_TABLES: Record<string, any[]> = {};
-if ((itemsData as any).loot_tables && typeof (itemsData as any).loot_tables === 'object') {
-  Object.entries((itemsData as any).loot_tables).forEach(([tableId, entries]: [string, any]) => {
+const LOOT_TABLES: Record<string, LootTableEntry[]> = {};
+if (typedItemsData.loot_tables && typeof typedItemsData.loot_tables === 'object') {
+  Object.entries(typedItemsData.loot_tables).forEach(([tableId, entries]: [string, LootTableEntry[]]) => {
     LOOT_TABLES[tableId] = entries;
   });
 }
@@ -116,7 +160,7 @@ function validateMetagaming(state: WorldState, action: Action): {
 } {
   const knowledgeBase = state.player.knowledgeBase;
   const visitedLocations = state.player.visitedLocations;
-  const suspicionLevel = (state.player as any).suspicionLevel ?? 0;
+  const suspicionLevel = state.player?.suspicionLevel ?? 0;
   const events: Event[] = [];
   let suspicionIncrement = 0;
   let isSuspicious = false;
@@ -216,7 +260,7 @@ function validateMetagaming(state: WorldState, action: Action): {
       (state.player as any).suspicionLevel = 0;
     }
     
-    const previousLevel = (state.player as any).suspicionLevel;
+    const previousLevel = state.player?.suspicionLevel;
     const newLevel = previousLevel + suspicionIncrement;
     (state.player as any).suspicionLevel = newLevel;
     
@@ -401,9 +445,9 @@ export function processAction(state: WorldState, action: Action): Event[] {
       travelTicks = Math.round(travelTicks * targetTerrainMod);
 
       // ALPHA_M15: Apply environmental fatigue (MP cost for movement)
-      const weather = (state as any).weather || 'clear';
-      const season = (state as any).season || 'spring';
-      const weatherResult = resolveWeather(season as 'winter' | 'spring' | 'summer' | 'autumn', (state as any).hour || 12, weather);
+      const weather = state.weather || 'clear';
+      const season = state.season || 'spring';
+      const weatherResult = resolveWeather(season, state.hour || 12, weather);
       const fatigueMult = calculateEnvironmentalFatigue(weatherResult.current, weatherResult.intensity);
       
       // Base MP cost: 10 + distance/10
@@ -540,6 +584,63 @@ export function processAction(state: WorldState, action: Action): Event[] {
           }
         }
       }
+      
+      // M49-A1: Faction territory taxation/bounty system
+      {
+        const controllingFaction = getLocationControllingFaction(state, to);
+        if (controllingFaction) {
+          const playerRep = state.player.factionReputation?.[controllingFaction.id] || 0;
+          
+          // Check if location is hostile territory
+          if (playerRep < -20) {
+            // Trigger bounty/tax event
+            const taxResult = calculateFactionTax(state, to);
+            
+            if (taxResult) {
+              // Check if player has enough gold
+              const goldInventory = state.player.inventory?.find(item => 
+                (item.kind === 'stackable' && item.itemId === 'gold')
+              ) as any;
+              const playerGold = goldInventory?.quantity || 0;
+              
+              if (playerGold >= taxResult.amount) {
+                // Apply tax
+                if (goldInventory) {
+                  goldInventory.quantity = (goldInventory.quantity || 0) - taxResult.amount;
+                }
+                
+                events.push(createEvent(state, action, 'FACTION_TAX_PAID', {
+                  factionId: taxResult.factionId,
+                  factionName: taxResult.factionName,
+                  amount: taxResult.amount,
+                  playerReputation: playerRep,
+                  message: `${taxResult.factionName} tax collectors demand ${taxResult.amount} gold to allow passage through their territory.`
+                }));
+              } else {
+                // Insufficient gold - trigger bounty/combat encounter
+                events.push(createEvent(state, action, 'FACTION_BOUNTY_TRIGGERED', {
+                  factionId: taxResult.factionId,
+                  factionName: taxResult.factionName,
+                  requiredGold: taxResult.amount,
+                  playerGold: playerGold,
+                  playerReputation: playerRep,
+                  message: `${taxResult.factionName} patrols catch you trying to enter their territory without proper payment! A bounty has been placed on your head!`
+                }));
+              }
+            }
+          } else if (playerRep < 0 && playerRep > -20) {
+            // Neutral/uncertain stance - minor annoyance but no tax
+            const minorAnnoyance = controllingFaction.name + ' patrols eye you suspiciously as you pass through their territory.';
+            events.push(createEvent(state, action, 'FACTION_SUSPICIOUS', {
+              factionId: controllingFaction.id,
+              factionName: controllingFaction.name,
+              playerReputation: playerRep,
+              message: minorAnnoyance
+            }));
+          }
+        }
+      }
+      
       break;
     }
 
@@ -577,6 +678,23 @@ export function processAction(state: WorldState, action: Action): Event[] {
         // Assume they're progressing dialogue
       }
 
+      // M53-D1: Handle Soul Echo merit transfer consequence
+      if (npc.type === 'SOUL_ECHO' && choiceId === 'inherit_merit' && npc.soulEchoData?.inheritableMerit) {
+        const inheritedMerit = npc.soulEchoData.inheritableMerit;
+        state.player.merit = (state.player.merit || 0) + inheritedMerit;
+        
+        events.push(createEvent(state, action, 'SOUL_ECHO_MERIT_TRANSFERRED', {
+          npcId,
+          npcName: npc.name,
+          meritTransferred: inheritedMerit,
+          totalMerit: state.player.merit,
+          message: `✨ You absorbed the ancestral wisdom of ${npc.name}. Gained ${inheritedMerit} Merit!`
+        }));
+        
+        events.push(createEvent(state, action, 'DIALOG_CHOICE', { npcId, choiceId }));
+        break;
+      }
+
       // Check if this NPC is associated with a quest and if so, trigger quest start or other effects
       if (npc.questId) {
         const quest = state.quests.find(q => q.id === npc.questId);
@@ -587,6 +705,91 @@ export function processAction(state: WorldState, action: Action): Event[] {
       }
 
       events.push(createEvent(state, action, 'DIALOG_CHOICE', { npcId, choiceId }));
+      break;
+    }
+
+    case 'START_INVESTIGATION': {
+      // M49-A2: Rumor Investigation Pipeline
+      const rumorId = action.payload?.rumorId;
+      
+      // Validate rumor exists in belief registry
+      const beliefRegistry = state.beliefRegistry || {};
+      if (!beliefRegistry[rumorId]) {
+        events.push(createEvent(state, action, 'INVESTIGATION_FAILED', {
+          reason: 'rumor-not-found',
+          rumorId,
+          message: 'This rumor cannot be found in your knowledge.'
+        }));
+        return events;
+      }
+
+      // Check if investigation already active for this rumor
+      const existingInvestigation = (state.investigations || []).find(inv => inv.targetRumorId === rumorId && inv.status === 'active');
+      if (existingInvestigation) {
+        events.push(createEvent(state, action, 'INVESTIGATION_ALREADY_ACTIVE', {
+          rumorId,
+          investigationId: existingInvestigation.id,
+          message: 'You are already investigating this rumor.'
+        }));
+        return events;
+      }
+
+      // Determine cost: 50 Gold or 20 MP fallback
+      const goldItem = state.player.inventory?.find(item => 
+        (item as any).kind === 'stackable' && (item as any).itemId === 'gold'
+      ) as any;
+      const playerGold = goldItem?.quantity || 0;
+      const INVESTIGATION_COST_GOLD = 50;
+      const INVESTIGATION_COST_MP = 20;
+
+      let costUsed: 'gold' | 'mp';
+      let costAmount: number;
+
+      if (playerGold >= INVESTIGATION_COST_GOLD) {
+        // Use gold
+        if (goldItem) {
+          goldItem.quantity = (goldItem.quantity || 0) - INVESTIGATION_COST_GOLD;
+        }
+        costUsed = 'gold';
+        costAmount = INVESTIGATION_COST_GOLD;
+      } else if ((state.player.mp || 0) >= INVESTIGATION_COST_MP) {
+        // Fallback to MP (scrying cost)
+        state.player.mp = (state.player.mp || 0) - INVESTIGATION_COST_MP;
+        costUsed = 'mp';
+        costAmount = INVESTIGATION_COST_MP;
+      } else {
+        // Insufficient resources
+        events.push(createEvent(state, action, 'INVESTIGATION_INSUFFICIENT_RESOURCES', {
+          rumorId,
+          requiredGold: INVESTIGATION_COST_GOLD,
+          availableGold: playerGold,
+          requiredMp: INVESTIGATION_COST_MP,
+          availableMp: state.player.mp || 0,
+          message: 'You lack sufficient Gold (50) or MP (20) to begin this investigation.'
+        }));
+        return events;
+      }
+
+      // Create investigation via pipeline
+      const investigationPipeline = getInvestigationPipeline(state.seed);
+      const investigation = investigationPipeline.createInvestigation(rumorId, undefined, state.player.id);
+
+      // Add to world state investigations
+      if (!state.investigations) {
+        state.investigations = [];
+      }
+      state.investigations.push(investigation);
+
+      // Emit event
+      const costMessage = costUsed === 'gold' ? `${costAmount} Gold` : `${costAmount} MP`;
+      events.push(createEvent(state, action, 'INVESTIGATION_STARTED', {
+        rumorId,
+        investigationId: investigation.id,
+        costUsed,
+        costAmount,
+        message: `You begin investigating the rumor. (${costMessage} invested)`
+      }));
+
       break;
     }
 
@@ -639,8 +842,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
       if (objective?.type === 'visit' && objective.location) {
         if (state.player.location === objective.location) {
           // Check time-lock if specified
-          if ((objective as any).timeConstraints) {
-            const tc = (objective as any).timeConstraints;
+          if (objective.timeConstraints) {
+            const tc = objective.timeConstraints;
             const hourMatch = typeof tc.startHour === 'number' && typeof tc.endHour === 'number'
               ? (state.hour >= tc.startHour && state.hour <= tc.endHour)
               : true;
@@ -685,6 +888,13 @@ export function processAction(state: WorldState, action: Action): Event[] {
       // Add reward event
       if (quest.rewards) {
         events.push(createEvent(state, action, 'REWARD', { questId, reward: quest.rewards }));
+      }
+
+      // M51-A1: Award merit for quest completion (deeds that advance the narrative)
+      const meritReward = calculateMeritReward('QUEST_COMPLETED');
+      if (meritReward > 0) {
+        const meritResult = awardMerit(state, meritReward, `quest_completed:${questId}`);
+        events.push(meritResult.event);
       }
 
       break;
@@ -761,6 +971,42 @@ export function processAction(state: WorldState, action: Action): Event[] {
         [defenderId]: (defender.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 })
       };
 
+      // M49-A5: Apply resonance bonuses if an ancestral echo is active
+      const activeEchoId = (state.player as any).activeResonanceEchoId;
+      const resonanceLevel = (state.player as any).soulResonanceLevel || 0;
+      let resonanceBonus: Record<string, number> = {};
+      let resonanceEventPayload: any = {};
+
+      if (activeEchoId && resonanceLevel > 0) {
+        const legacyEngine = getLegacyEngine(state.seed);
+        const activeEcho = legacyEngine.getSoulEcho(activeEchoId);
+
+        if (activeEcho) {
+          // M49-A5: Echo Feedback Multipliers
+          // Apply stat bonuses based on echo type and resonance level
+          const multiplier = Math.floor(resonanceLevel / 30); // 0-3 bonus ranks at levels 0, 30, 60, 90
+          const echoTypeBonus = activeEcho.echoType === 'overwhelming' ? 4 : activeEcho.echoType === 'resonant' ? 3 : activeEcho.echoType === 'clear' ? 2 : 1;
+
+          resonanceBonus = {
+            str: multiplier * echoTypeBonus,
+            agi: Math.floor(multiplier * (echoTypeBonus / 2)),
+            end: multiplier * 2
+          };
+
+          // Apply bonuses to player stats
+          playerStats.str = (playerStats.str || 10) + (resonanceBonus.str || 0);
+          playerStats.agi = (playerStats.agi || 10) + (resonanceBonus.agi || 0);
+          playerStats.end = (playerStats.end || 10) + (resonanceBonus.end || 0);
+
+          resonanceEventPayload = {
+            echoId: activeEchoId,
+            echoName: activeEcho.originalNpcName,
+            resonanceLevel,
+            bonusesApplied: resonanceBonus
+          };
+        }
+      }
+
       // Resolve combat using ruleEngine
       const combatEvents = resolveCombat(
         state.player.id,
@@ -770,6 +1016,11 @@ export function processAction(state: WorldState, action: Action): Event[] {
         state.id
       );
       events.push(...combatEvents);
+
+      // Emit resonance bonus event if active
+      if (Object.keys(resonanceBonus).length > 0) {
+        events.push(createEvent(state, action, 'RESONANCE_COMBAT_BONUS', resonanceEventPayload));
+      }
 
       // Add faction events for combat victories
       // Check if defender was defeated and has a faction
@@ -940,6 +1191,95 @@ export function processAction(state: WorldState, action: Action): Event[] {
       break;
     }
 
+    case 'HEAL_WORLD_SCAR': {
+      // M54-A1: Heal a world scar at current location using Resonance + Merit
+      const playerLocation = action.payload?.locationId || state.player.location;
+      const worldScars = (state as any).worldScars || [];
+      const scarAtLocation = worldScars.find((s: any) => s.locationId === playerLocation);
+
+      if (!scarAtLocation) {
+        events.push(createEvent(state, action, 'HEAL_SCAR_FAILED', {
+          reason: 'NO_SCAR_AT_LOCATION',
+          message: 'There is no world scar to heal at this location.'
+        }));
+        break;
+      }
+
+      // M54-A1: Cost check - 50 Resonance + 20 Merit
+      const playerResonance = (state.player as any).soulResonanceLevel ?? 0;
+      const playerMerit = state.player.merit ?? 0;
+      const RESONANCE_COST = 50;
+      const MERIT_COST = 20;
+
+      if (playerResonance < RESONANCE_COST) {
+        events.push(createEvent(state, action, 'HEAL_SCAR_FAILED', {
+          reason: 'INSUFFICIENT_RESONANCE',
+          currentResonance: playerResonance,
+          requiredResonance: RESONANCE_COST,
+          message: `You need ${RESONANCE_COST} Soul Resonance to heal this scar. You have ${playerResonance}.`
+        }));
+        break;
+      }
+
+      if (playerMerit < MERIT_COST) {
+        events.push(createEvent(state, action, 'HEAL_SCAR_FAILED', {
+          reason: 'INSUFFICIENT_MERIT',
+          currentMerit: playerMerit,
+          requiredMerit: MERIT_COST,
+          message: `You need ${MERIT_COST} Merit to heal this scar. You have ${playerMerit}.`
+        }));
+        break;
+      }
+
+      // Deduct costs
+      state.player.soulResonanceLevel = playerResonance - RESONANCE_COST;
+      state.player.merit = playerMerit - MERIT_COST;
+
+      // Heal the scar
+      const healResult = healWorldScar(scarAtLocation, RESONANCE_COST, MERIT_COST);
+      const healedScar = healResult.healed;
+      const fullyRestored = healResult.fullyRestored;
+
+      // Update scar in state
+      (state as any).worldScars = worldScars.map((s: any) => s.id === scarAtLocation.id ? healedScar : s);
+
+      // M54-A1: If fully restored, restore the biome
+      if (fullyRestored) {
+        const restoration = restoreScarLocation(playerLocation);
+        
+        // Update location biome
+        const location = state.locations.find(l => l.id === playerLocation);
+        if (location) {
+          location.biome = restoration.restoredBiome as any;
+          location.description = restoration.description;
+          location.spiritDensity = Math.max(0.3, (location.spiritDensity ?? 0.5) - 0.2); // Healing reduces spirit density
+        }
+
+        events.push(createEvent(state, action, 'WORLD_SCAR_FULLY_HEALED', {
+          scarId: healedScar.id,
+          scarType: healedScar.type,
+          locationId: playerLocation,
+          restoredBiome: restoration.restoredBiome,
+          restorationMessage: restoration.description,
+          resonanceSpent: RESONANCE_COST,
+          meritSpent: MERIT_COST,
+          message: `✨ The ${healedScar.type} scar has been fully healed! ${restoration.description}`
+        }));
+      } else {
+        events.push(createEvent(state, action, 'WORLD_SCAR_HEALED', {
+          scarId: healedScar.id,
+          scarType: healedScar.type,
+          locationId: playerLocation,
+          previousHealing: scarAtLocation.healingProgress,
+          newHealing: healedScar.healingProgress,
+          resonanceSpent: RESONANCE_COST,
+          meritSpent: MERIT_COST,
+          message: `You channeled healing energy into the scar. Healing progress: ${scarAtLocation.healingProgress.toFixed(0)}% → ${healedScar.healingProgress.toFixed(0)}%`
+        }));
+      }
+      break;
+    }
+
     case 'REST': {
       // Rest action: restore 10% HP per game hour spent resting, and 25% MP
       const currentHp = state.player.hp || 100;
@@ -996,6 +1336,86 @@ export function processAction(state: WorldState, action: Action): Event[] {
           message: `New location discovered: ${location.name}`
         }));
       }
+      break;
+    }
+
+    case 'HARVEST_RESOURCE': {
+      // M55-C1: Harvest resources from current biome (mutated resources from scars)
+      const playerLocation = state.player.location;
+      const location = state.locations.find(l => l.id === playerLocation);
+
+      if (!location) {
+        events.push(createEvent(state, action, 'HARVEST_FAILED', {
+          reason: 'UNKNOWN_LOCATION',
+          message: 'You are not at a valid location to harvest.'
+        }));
+        break;
+      }
+
+      // M55-C1: Define resources by biome type
+      const biomeResourceMap: Record<string, { resourceId: string; name: string; rarity: string }[]> = {
+        'corrupted': [
+          { resourceId: 'cursed_locus', name: 'Cursed Locus', rarity: 'rare' },
+          { resourceId: 'tainted_essence', name: 'Tainted Essence', rarity: 'uncommon' },
+          { resourceId: 'mourning_moss', name: 'Mourning Moss', rarity: 'common' }
+        ],
+        'cave': [
+          { resourceId: 'blessed_crystal', name: 'Blessed Crystal', rarity: 'rare' },
+          { resourceId: 'stone_fragment', name: 'Stone Fragment', rarity: 'common' }
+        ],
+        'mountain': [
+          { resourceId: 'blessed_crystal', name: 'Blessed Crystal', rarity: 'rare' },
+          { resourceId: 'stone_fragment', name: 'Stone Fragment', rarity: 'common' }
+        ],
+        'forest': [
+          { resourceId: 'radiant_herbs', name: 'Radiant Herbs', rarity: 'common' },
+          { resourceId: 'ancient_wood', name: 'Ancient Wood', rarity: 'uncommon' }
+        ]
+      };
+
+      const biome = location.biome || 'forest';
+      const availableResources = biomeResourceMap[biome] || biomeResourceMap['forest'];
+
+      if (availableResources.length === 0) {
+        events.push(createEvent(state, action, 'HARVEST_FAILED', {
+          reason: 'NO_RESOURCES',
+          message: 'There are no harvestable resources at this location.'
+        }));
+        break;
+      }
+
+      // Select random resource from biome
+      const harvestedResourceIdx = Math.floor(Math.random() * availableResources.length);
+      const harvestedResource = availableResources[harvestedResourceIdx];
+      const quantity = Math.floor(Math.random() * 3) + 1; // 1-3 quantity
+
+      // Add to inventory
+      if (!state.player.inventory) {
+        state.player.inventory = [];
+      }
+
+      const existingItem = state.player.inventory.find(item => 
+        'stackable' in item && item.itemId === harvestedResource.resourceId
+      );
+
+      if (existingItem && 'stackable' in existingItem) {
+        (existingItem as any).quantity += quantity;
+      } else {
+        state.player.inventory.push({
+          kind: 'stackable',
+          itemId: harvestedResource.resourceId,
+          quantity
+        });
+      }
+
+      events.push(createEvent(state, action, 'RESOURCE_HARVESTED', {
+        resourceId: harvestedResource.resourceId,
+        resourceName: harvestedResource.name,
+        quantity,
+        rarity: harvestedResource.rarity,
+        biome,
+        message: `Harvested ${quantity}x ${harvestedResource.name} (${harvestedResource.rarity})`
+      }));
       break;
     }
 
@@ -1343,6 +1763,73 @@ export function processAction(state: WorldState, action: Action): Event[] {
         locationId: playerLocation,
         regeneratesInHours: node.regeneratesInHours
       }));
+
+      break;
+    }
+
+    case 'HARVEST_RESOURCE': {
+      // M55-C1: NPC harvest action - adds biome-specific resources to NPC inventory
+      const { npcId } = action.payload;
+      if (!npcId) return [];
+
+      const npc = state.npcs.find(n => n.id === npcId);
+      if (!npc) {
+        events.push(createEvent(state, action, 'HARVEST_FAILED', {
+          reason: 'npc-not-found',
+          npcId
+        }));
+        return events;
+      }
+
+      // Determine biome from location
+      const location = state.locations.find(l => l.id === npc.locationId);
+      const biome = location?.biome || 'Plains';
+      
+      // M55-C1: Define harvest yields by biome
+      const biomeHarvests: Record<string, { name: string; quantity: number; rarity: string }[]> = {
+        'Corrupted': [{ name: 'Cursed Locus', quantity: 1, rarity: 'rare' }],
+        'Caves': [{ name: 'Blessed Crystal', quantity: 2, rarity: 'uncommon' }],
+        'Forest': [{ name: 'Moonleaf', quantity: 3, rarity: 'common' }],
+        'Plains': [{ name: 'Golden Wheat', quantity: 2, rarity: 'common' }],
+        'Mountains': [{ name: 'Iron Ore', quantity: 1, rarity: 'uncommon' }],
+        'Swamp': [{ name: 'Marsh Herb', quantity: 2, rarity: 'common' }],
+        'Coast': [{ name: 'Sea Salt', quantity: 3, rarity: 'common' }]
+      };
+
+      const harvests = biomeHarvests[biome] || biomeHarvests['Plains'];
+      
+      // M55-C1: Add harvested items to NPC inventory (random selection)
+      if (!npc.inventory) {
+        npc.inventory = [];
+      }
+
+      harvests.forEach((harvest) => {
+        const newItem: StackableItem = {
+          kind: 'stackable',
+          itemId: `harvest_${harvest.name.replace(/\s/g, '_')}`,
+          quantity: harvest.quantity
+        };
+
+        // Try to stack with existing stackable item or add new
+        const existing = npc.inventory!.find((item: any) => 
+          item.kind === 'stackable' && item.itemId === newItem.itemId
+        ) as StackableItem | undefined;
+        
+        if (existing) {
+          existing.quantity += harvest.quantity;
+        } else {
+          npc.inventory!.push(newItem);
+        }
+
+        events.push(createEvent(state, action, 'NPC_HARVESTED', {
+          npcId,
+          npcName: npc.name,
+          biome,
+          itemName: harvest.name,
+          quantity: harvest.quantity,
+          rarity: harvest.rarity
+        }));
+      });
 
       break;
     }
@@ -2760,6 +3247,160 @@ export function processAction(state: WorldState, action: Action): Event[] {
         soulStrainCost: unbindCost,
         message: `You have severed your bond with ${relic.name}. Soul strain increases by ${unbindCost}.`
       }));
+      break;
+    }
+
+    case 'PERFORM_GRAND_RITUAL': {
+      // M53-C1: Grand Ritual Engine - Player-driven epoch transition via séance at World Scars
+      const playerLocation = state.player.location;
+      const currentResonance = (state.player as any).soulResonanceLevel || 0;
+      const currentSoulStrain = (state.player as any).soulStrain || 0;
+
+      // Pre-flight check 1: Must be at a location with an active WorldScar
+      const worldScars = (state as any).worldScars || [];
+      const scarAtLocation = worldScars.find((s: any) => s.locationId === playerLocation);
+      
+      if (!scarAtLocation) {
+        events.push(createEvent(state, action, 'RITUAL_FAILED', {
+          reason: 'NO_SCAR_AT_LOCATION',
+          message: 'You cannot perform a Grand Ritual here. No World Scar is present at this location.'
+        }));
+        break;
+      }
+
+      // Pre-flight check 2: Must have enough Resonance (50 minimum)
+      if (currentResonance < 50) {
+        events.push(createEvent(state, action, 'RITUAL_FAILED', {
+          reason: 'INSUFFICIENT_RESONANCE',
+          currentResonance,
+          required: 50,
+          message: `You do not have enough Resonance. Required: 50, Current: ${currentResonance}`
+        }));
+        break;
+      }
+
+      // Pre-flight check 3: Soul Strain must be below Sunder Threshold (80)
+      if (currentSoulStrain >= 80) {
+        events.push(createEvent(state, action, 'RITUAL_FAILED', {
+          reason: 'SOUL_STRAIN_TOO_HIGH',
+          currentSoulStrain,
+          threshold: 80,
+          message: `Your soul is too corrupted to attempt a Grand Ritual. Soul Strain: ${currentSoulStrain}/80`
+        }));
+        break;
+      }
+
+      // Calculate ritual success probability
+      let successChance = 30; // Base 30%
+      const resonanceBonus = Math.min(currentResonance - 50, 50); // +1% per point above 50, max +50%
+      successChance += resonanceBonus;
+
+      // Scar synergy: +10% if scar type matches highest faction reputation
+      const factionRep = state.player.factionReputation || {};
+      const highestFactionId = Object.keys(factionRep).reduce((a, b) => 
+        (factionRep[a] || 0) > (factionRep[b] || 0) ? a : b, ''
+      );
+      
+      // Note: For now, we'll apply a constant +10% synergy bonus
+      // In future, map scarType to faction and check match
+      successChance += 10;
+
+      // Soul Strain penalty: -5% per 10 points of existing strain
+      const strainPenalty = Math.floor((currentSoulStrain / 10) * 5);
+      successChance -= strainPenalty;
+
+      // Cap success chance between 5% and 95%
+      successChance = Math.max(5, Math.min(95, successChance));
+
+      // Roll success
+      const ritualRoll = random() * 100;
+      const ritualSucceeded = ritualRoll < successChance;
+
+      if (ritualSucceeded) {
+        // ===== SUCCESS: Trigger epoch transition =====
+        (state.player as any).soulResonanceLevel = Math.max(0, currentResonance - 50);
+        (state.player as any).soulStrain = Math.min(100, currentSoulStrain + 10);
+
+        events.push(createEvent(state, action, 'GRAND_RITUAL_SUCCESS', {
+          locationId: playerLocation,
+          scarType: scarAtLocation.type,
+          scarSeverity: scarAtLocation.severity,
+          resonanceConsumed: 50,
+          soulStrainGained: 10,
+          successChance,
+          roll: Math.round(ritualRoll),
+          message: `✦ The Grand Ritual succeeds! Reality trembles as you pierce the veil between epochs.`
+        }));
+
+        // Attempt epoch transition
+        try {
+          const legacyEngine = getLegacyEngine(state.seed);
+          const currentEpoch = EPOCH_DEFINITIONS[state.epochId || 'epoch_i_fracture'];
+          
+          // Create minimal legacy for this transition
+          const currentLegacy = {
+            id: `legacy_ritual_${state.tick}`,
+            chronicleId: state.chronicleId || `chronicle_${state.id}`,
+            canonicalName: 'The Wanderer', // No player name stored in PlayerState
+            bloodlineOrigin: 'ritual_summoned',
+            mythStatus: Math.min(100, currentSoulStrain + 50), // Use soul strain as proxy for power
+            deeds: [],
+            factionInfluence: state.player.factionReputation || {},
+            inheritedPerks: [],
+            ancestralCurses: currentSoulStrain >= 60 ? ['soul_corrupted'] : [],
+            epochsLived: 1,
+            totalGenerations: 1,
+            soulEchoCount: 0,
+            finalWorldState: 'neutral' as const,
+            paradoxDebt: 0,
+            timestamp: Date.now()
+          };
+
+          // Trigger epoch transition
+          const nextState = initiateChronicleTransition(state, currentLegacy);
+          Object.assign(state, nextState);
+
+          events.push(createEvent(state, action, 'EPOCH_TRANSITIONED', {
+            fromEpochId: currentEpoch.id,
+            toEpochId: (getNextEpoch(currentEpoch.id))?.id,
+            ritualInitiated: true,
+            message: `The world transforms. A new epoch begins.`
+          }));
+        } catch (error) {
+          console.error('[M53-C1] Failed to initiate chronicle transition:', error);
+          events.push(createEvent(state, action, 'TRANSITION_ERROR', {
+            reason: 'epoch_transition_failed',
+            error: String(error),
+            message: 'The ritual began but something went wrong. Reality stabilizes without change.'
+          }));
+        }
+      } else {
+        // ===== FAILURE: Ritual backlash =====
+        (state.player as any).soulResonanceLevel = Math.max(0, currentResonance - 25);
+        (state.player as any).soulStrain = Math.min(100, currentSoulStrain + 30); // Harsh penalty
+
+        events.push(createEvent(state, action, 'GRAND_RITUAL_FAILURE', {
+          locationId: playerLocation,
+          scarType: scarAtLocation.type,
+          resonanceConsumed: 25,
+          soulStrainGained: 30,
+          successChance,
+          roll: Math.round(ritualRoll),
+          message: `✗ The Grand Ritual fails catastrophically! Your soul is torn by the backlash.`
+        }));
+
+        // Generate Ritual Backlash macro-event at location
+        if (state.macroEvents) {
+          state.macroEvents.push({
+            id: `ritual_backlash_${state.tick}`,
+            type: 'RITUAL_BACKLASH',
+            locationId: playerLocation,
+            message: `A failed Grand Ritual unleashed chaotic forces, scarring reality further.`,
+            tick: state.tick || 0,
+            severity: currentSoulStrain + 30
+          });
+        }
+      }
       break;
     }
 

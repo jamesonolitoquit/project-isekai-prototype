@@ -10,10 +10,12 @@
  * - AJV schema validation with error line highlighting
  * - Blueprint preview
  * - Social perception gating
+ * - M55-E1: Weaver Settings integration for BYOK LLM keys
  */
 
 import React, { useState, useMemo } from 'react';
 import { generateVisualPrompt, generateAtmosphericText, type VisualPrompt } from '../../engine/assetGenerator';
+import { WeaverSettings } from './WeaverSettings';
 
 interface ArchitectForgeProps {
   state: any;
@@ -72,6 +74,7 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
   const [visualAuditLocationId, setVisualAuditLocationId] = useState<string | null>(null);
   const [generatedVisualPrompt, setGeneratedVisualPrompt] = useState<VisualPrompt | null>(null);
   const [generatedAtmosphericText, setGeneratedAtmosphericText] = useState<string>('');
+  const [weaverSettingsOpen, setWeaverSettingsOpen] = useState(false);
 
   // Create hierarchical location view
   const locationHierarchy = useMemo(() => {
@@ -176,14 +179,36 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
       <div style={{
         padding: '12px 16px',
         borderBottom: '1px solid #333',
-        background: 'linear-gradient(90deg, #1a1a2e 0%, #16213e 100%)'
+        background: 'linear-gradient(90deg, #1a1a2e 0%, #16213e 100%)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start'
       }}>
-        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fbbf24', marginBottom: '8px' }}>
-          ⚙️ THE ARCHITECT'S FORGE
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fbbf24', marginBottom: '8px' }}>
+            ⚙️ THE ARCHITECT'S FORGE
+          </div>
+          <div style={{ fontSize: '10px', color: '#888' }}>
+            Design world blueprints, shape faction influence, validate spatial hierarchies
+          </div>
         </div>
-        <div style={{ fontSize: '10px', color: '#888' }}>
-          Design world blueprints, shape faction influence, validate spatial hierarchies
-        </div>
+        <button
+          onClick={() => setWeaverSettingsOpen(true)}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: '#60a5fa',
+            color: '#1a1a2e',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            fontFamily: '"JetBrains Mono", monospace',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          🔑 WEAVER SETTINGS
+        </button>
       </div>
 
       {/* Tab Navigation */}
@@ -947,6 +972,18 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
           ✓ Validate
         </button>
       </div>
+
+      {/* M55-D1: WeaverSettings Modal */}
+      {weaverSettingsOpen && (
+        <WeaverSettings
+          isOpen={weaverSettingsOpen}
+          onClose={() => setWeaverSettingsOpen(false)}
+          onApply={() => {
+            // Refresh LLM configuration in state
+            setWeaverSettingsOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

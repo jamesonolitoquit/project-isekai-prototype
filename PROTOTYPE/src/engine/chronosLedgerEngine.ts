@@ -34,25 +34,24 @@ export function generateResonanceSummary(state: WorldState, ledger?: ChronosLedg
   // Track NPC emotional transformations
   const emotionalArcs: any[] = [];
   for (const npc of state.npcs || []) {
-    const npcWithEmotion = npc as any;
-    if (!npcWithEmotion.emotionalState?.emotionalHistory || npcWithEmotion.emotionalState.emotionalHistory.length === 0) {
+    if (!npc.emotionalState?.emotionalHistory || npc.emotionalState.emotionalHistory.length === 0) {
       continue;
     }
 
-    const history = npcWithEmotion.emotionalState.emotionalHistory;
+    const history = npc.emotionalState.emotionalHistory;
     const mostRecent = history[history.length - 1];
 
     if (Math.abs(mostRecent.delta) > 10) {
       let emotionalArc = '';
 
       if (mostRecent.category === 'gratitude' && mostRecent.delta > 0) {
-        emotionalArc = `The ${(npc as any).name} will never forget your kindness during ${mostRecent.reason}`;
+        emotionalArc = `The ${npc.name} will never forget your kindness during ${mostRecent.reason}`;
       } else if (mostRecent.category === 'resentment' && mostRecent.delta > 0) {
-        emotionalArc = `The ${(npc as any).name} harbors deep resentment toward you after ${mostRecent.reason}`;
+        emotionalArc = `The ${npc.name} harbors deep resentment toward you after ${mostRecent.reason}`;
       } else if (mostRecent.category === 'fear' && mostRecent.delta > 0) {
-        emotionalArc = `The ${(npc as any).name} regards you with cautious fear following ${mostRecent.reason}`;
+        emotionalArc = `The ${npc.name} regards you with cautious fear following ${mostRecent.reason}`;
       } else if (mostRecent.category === 'trust' && mostRecent.delta > 0) {
-        emotionalArc = `The ${(npc as any).name} now trusts you after ${mostRecent.reason}`;
+        emotionalArc = `The ${npc.name} now trusts you after ${mostRecent.reason}`;
       }
 
       if (emotionalArc) {
@@ -76,10 +75,11 @@ export function generateResonanceSummary(state: WorldState, ledger?: ChronosLedg
   
   let scarCount = 0;
   for (const location of state.locations || []) {
-    const scars = (location as any).activeScars || [];
-    if (scars.length > 0) {
-      scarCount += scars.length;
-      lines.push(`  - ${location.name}: ${scars[0].description}`);
+    const scarIds = location.activeScars || [];
+    if (scarIds.length > 0) {
+      const scarDescription = state.worldScars?.find((s: any) => s.id === scarIds[0])?.description || 'Unknown scar';
+      scarCount += scarIds.length;
+      lines.push(`  - ${location.name}: ${scarDescription}`);
     }
   }
 
@@ -123,7 +123,7 @@ export function calculateWorldTension(state: WorldState): number {
   // Count active location scars
   let activeScarCount = 0;
   for (const location of state.locations || []) {
-    const scars = (location as any).activeScars || [];
+    const scars = location.activeScars || [];
     activeScarCount += scars.length;
   }
   tension += Math.min(30, activeScarCount * 10); // Scars add up to 30 tension
@@ -135,8 +135,7 @@ export function calculateWorldTension(state: WorldState): number {
   // Average NPC fear across world
   let totalFear = 0;
   for (const npc of state.npcs || []) {
-    const npcWithEmotion = npc as any;
-    totalFear += npcWithEmotion.emotionalState?.fear || 50;
+    totalFear += npc.emotionalState?.fear || 50;
   }
   const avgFear = state.npcs && state.npcs.length > 0 ? totalFear / state.npcs.length : 50;
   tension += (avgFear - 50) * 0.4; // Fear above neutral contributes tension

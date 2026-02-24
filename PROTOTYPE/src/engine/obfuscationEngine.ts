@@ -1,4 +1,5 @@
 import { WorldState, PlayerState, NPC } from './worldEngine';
+import { getBeliefEngine, type HardFact, type Rumor } from './beliefEngine';
 
 /**
  * Represents a limited view of the world that the player can perceive
@@ -54,8 +55,8 @@ function getHealthDescription(currentHp: number, maxHp: number): string {
 /**
  * Generate a vague mana description
  */
-function getManaDescription(currentMp: number, maxMp: number): string {
-  if (maxMp === 0) return undefined as any;
+function getManaDescription(currentMp: number, maxMp: number): string | undefined {
+  if (maxMp === 0) return undefined;
   const percent = (currentMp / maxMp) * 100;
   if (percent > 70) return 'Abundant';
   if (percent > 40) return 'Moderate';
@@ -122,7 +123,7 @@ export function filterStateForPlayer(
   // Filter NPCs based on knowledge and faction
   const filteredNpcs: FilteredNPC[] = groundTruth.npcs.map((npc) => {
     const isIdentified = kbSet.has(`npc:${npc.id}`);
-    const lastSeen = (groundTruth.player as any)?.lastSeen?.[npc.id];
+    const lastSeen = undefined; // lastSeen tracking not yet implemented
 
     // Check faction-based access
     const shouldAutoReveal = shouldAutoRevealByFaction(npc, playerFactionReputation);
@@ -384,3 +385,189 @@ export function generateDiscoveryEvent(
     }
   };
 }
+
+/**
+ * M45-A2: World Truth Obfuscation Layer (WTOL)
+ * 
+ * Wrapper for state delivery that filters facts based on player perception
+ * Hard facts that the player doesn't have perception to know are replaced
+ * with rumors (distorted versions) instead.
+ * 
+ * This creates the "belief layer" - the player's subjective understanding
+ * of world events they shouldn't know about yet.
+ */
+export interface WtolFilteredState extends FilteredState {
+  accessibleFacts: string[]; // Fact IDs the player can access
+  rumoredFacts: Record<string, Rumor>; // Fact ID -> Rumor that player heard instead
+  perceptionLevel: number; // Player's effective perception (0-100)
+}
+
+/**
+ * Apply WTOL filtering to a player's state
+ * 
+ * This is the main function called before sending state to a client.
+ * It:
+ * 1. Calculates the player's perception level (faction rank, knowledge, etc.)
+ * 2. Determines which hard facts the player can access
+ * 3. Replaces inaccessible facts with rumors in the player's belief layer
+ * 4. Returns a filtered state safe to send to client
+ */
+export function applyWtolToState(
+  groundTruth: WorldState,
+  knowledgeBase: Set<string> | string[],
+  beliefLayer: BeliefLayer,
+  playerFactionReputation?: Record<string, number>,
+  playerFactionRank: number = 0
+): WtolFilteredState {
+  // Step 1: Calculate player's perception level
+  const beliefEngine = getBeliefEngine();
+  const playerId = groundTruth.player?.id || 'unknown';
+  
+  const perceptionLevel = beliefEngine.calculatePerceptionLevel(
+    playerId,
+    groundTruth,
+    playerFactionRank
+  );
+
+  // Step 2: Get the base filtered state (faction masking, NPC identification)
+  const baseFiltered = filterStateForPlayer(
+    groundTruth,
+    knowledgeBase,
+    beliefLayer,
+    playerFactionReputation
+  );
+
+  // Step 3: Determine which hard facts are accessible and which need rumor replacement
+  const beliefRegistry = beliefEngine.getRegistry();
+  const accessibleFacts: string[] = [];
+  const rumoredFacts: Record<string, Rumor> = {};
+
+  Object.entries(beliefRegistry.hardFacts).forEach(([factId, hardFact]) => {
+    // Check if player has perception to know this fact
+    const canAccess = beliefEngine.canAccessFact(
+      playerId,
+      factId,
+      perceptionLevel.level
+    );
+
+    if (canAccess) {
+      accessibleFacts.push(factId);
+    } else {
+      // Find the best rumor for this fact based on player's location
+      const playerLocationId = groundTruth.player?.location || 'unknown';
+      const rumors = Object.values(beliefRegistry.rumors)
+        .filter(r => r.originalFactId === factId);
+
+      if (rumors.length > 0) {
+        // Pick rumor based on distance and faction
+        const bestRumor = rumors.reduce((best, current) => {
+          const currentConfidence = beliefEngine.getRumorConfidenceAtLocation(
+            current.id,
+            playerLocationId,
+            hardFact.originLocationId,
+            current.distanceFromOrigin
+          );
+          const bestConfidence = beliefEngine.getRumorConfidenceAtLocation(
+            best.id,
+            playerLocationId,
+            hardFact.originLocationId,
+            best.distanceFromOrigin
+          );
+          return currentConfidence > bestConfidence ? current : best;
+        });
+
+        rumoredFacts[factId] = bestRumor;
+        
+        // Add this rumor to player's knowledge base if perception is high enough
+        if (perceptionLevel.level > 30) {
+          beliefLayer.facts[factId] = false; // Marked as rumor, not true
+        }
+      }
+    }
+  });
+
+  // Step 4: Create the WTOL-filtered state
+  const wtolFiltered: WtolFilteredState = {
+    ...baseFiltered,
+    accessibleFacts,
+    rumoredFacts,
+    perceptionLevel: perceptionLevel.level
+  };
+
+  // Step 5: Inject rumors into NPC dialogue if appropriate
+  // NPCs should mention rumors if they're confident enough
+  if (wtolFiltered.npcs) {
+    wtolFiltered.npcs.forEach(npc => {
+      // NPCs in the same location would know local rumors
+      const locationRumors = beliefEngine.getNpcRumorsForLocation(
+        npc.locationId,
+        npc.factionId || 'neutral'
+      );
+
+      if (locationRumors.length > 0) {
+        // Store which rumors this NPC has heard
+        locationRumors.forEach(rumor => {
+          beliefEngine.addNpcRumorKnowledge(npc.id, rumor.id);
+        });
+      }
+    });
+  }
+
+  return wtolFiltered;
+}
+
+/**
+ * Helper: Determine if a location has "sensitive information"
+ * These are facts/secrets players shouldn't know about unless faction rank is high
+ */
+export function getLocationSecrets(
+  locationId: string,
+  perceptionLevel: number
+): { secret: string; requiredPerception: number }[] {
+  // In full implementation, this would query a database of location secrets
+  // For now, return an empty array as placeholder
+  return [];
+}
+
+/**
+ * Helper: Generate a rumor-based description for an NPC
+ * Used when player hears about an NPC but hasn't met them
+ */
+export function generateRumorAboutNpc(
+  npcId: string,
+  npcName: string,
+  npcFaction: string
+): string {
+  const descriptions = [
+    `A mysterious ${npcFaction} operative known as ${npcName}...`,
+    `They say ${npcName} works for ${npcFaction}... or maybe they don't...`,
+    `Reports of someone called ${npcName} have been coming in from ${npcFaction} circles`,
+    `${npcName} is said to be affiliated with ${npcFaction}, but who really knows?`,
+    `There's SOME connection between ${npcName} and ${npcFaction}, but it's unclear...`
+  ];
+  
+  return descriptions[Math.floor(Math.random() * descriptions.length)];
+}
+
+/**
+ * Helper: Check if a memetic event (idea that spreads) should reach this player
+ * Based on perception level and distance from origin
+ */
+export function shouldPlayerKnowAboutMemetEvent(
+  eventOriginLocationId: string,
+  playerLocationId: string,
+  eventSeverity: number, // 0-100
+  playerPerceptionLevel: number // 0-100
+): boolean {
+  // High perception = hear about more things
+  const perceptionThreshold = 50 - (playerPerceptionLevel * 0.2);
+  
+  // High severity events spread wider
+  const severityBonus = eventSeverity * 0.5;
+  
+  // Random spread based on combined factors
+  const spreadChance = Math.min(100, perceptionThreshold + severityBonus);
+  
+  return Math.random() * 100 < spreadChance;
+}
+

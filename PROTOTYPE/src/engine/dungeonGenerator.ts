@@ -55,6 +55,11 @@ export interface DungeonLayout {
   totalDifficulty: number;
   structure: 'linear' | 'branching' | 'paradox_loop';
   theme: string;                  // "temple", "crypt", "fractured_space", etc.
+  // M44-B2: Faction integration
+  factionId?: string;             // controlling faction (if any)
+  contentionLevel?: number;        // 0-1, war intensity at location
+  strongholdTheme?: boolean;       // true if faction stronghold (higher tier loot)
+  hazardIntensity?: number;        // 0-1, scales with contention level
 }
 
 /**
@@ -113,12 +118,15 @@ function getEpochConfig(epochId: string): EpochDungeonConfig {
 
 /**
  * Generate a dungeon layout for a location based on current epoch
+ * M44-B2: Enhanced with faction and contention parameters for dynamic scaling
  */
 export function generateDungeonLayout(
   locationId: string,
   locationName: string,
   epochId: string,
-  seed: number
+  seed: number,
+  factionId?: string,
+  contentionLevel?: number
 ): DungeonLayout {
   const rng = new SeededRng(seed);
   const config = getEpochConfig(epochId);
@@ -126,8 +134,16 @@ export function generateDungeonLayout(
   const theme = config.themes[rng.nextInt(0, config.themes.length - 1)];
   const dungeonId = `${locationId}_${epochId}`;
 
-  // Generate room count based on config + randomness
-  const roomCount = config.avgRoomCount + rng.nextInt(-2, 2);
+  // M44-B2: Scale dungeon based on contention level
+  const contentionMult = contentionLevel && contentionLevel > 0.6 ? 1.5 : 1.0; // 50% more rooms in war-torn areas
+
+  // Generate room count based on config + randomness + contention
+  let roomCount = config.avgRoomCount + rng.nextInt(-2, 2);
+  roomCount = Math.ceil(roomCount * contentionMult);
+
+  // M44-B2: Adjust encounter density based on faction stronghold
+  const encounterDensity = factionId ? config.encounterDensity * 1.2 : config.encounterDensity;
+  const hazardDensity = contentionLevel && contentionLevel > 0.6 ? config.hazardDensity * 1.3 : config.hazardDensity;
 
   // Create rooms
   const rooms = new Map<string, DungeonRoom>();
@@ -137,7 +153,7 @@ export function generateDungeonLayout(
     const roomId = `${dungeonId}_room_${i}`;
     roomIds.push(roomId);
 
-    const room = generateRoom(roomId, i, roomCount, config, rng, epochId, theme);
+    const room = generateRoom(roomId, i, roomCount, config, rng, epochId, theme, factionId, contentionLevel);
     rooms.set(roomId, room);
   }
 
@@ -169,12 +185,18 @@ export function generateDungeonLayout(
     rooms,
     totalDifficulty,
     structure: config.structure,
-    theme
+    theme,
+    // M44-B2: Faction integration fields
+    factionId,
+    contentionLevel,
+    strongholdTheme: factionId !== undefined && contentionLevel !== undefined && contentionLevel > 0.5,
+    hazardIntensity: contentionLevel !== undefined ? contentionLevel : 0.3
   };
 }
 
 /**
  * Generate a single room
+ * M44-B2: Enhanced with faction and contention parameters
  */
 function generateRoom(
   roomId: string,
@@ -183,11 +205,18 @@ function generateRoom(
   config: EpochDungeonConfig,
   rng: SeededRng,
   epochId: string,
-  theme: string
+  theme: string,
+  factionId?: string,
+  contentionLevel?: number
 ): DungeonRoom {
   const isEntry = index === 0;
   const isExit = index === totalRooms - 1;
   const isMiddle = index > 0 && index < totalRooms - 1;
+
+  // M44-B2: Scale encounter density based on contention
+  const encounterDensity = contentionLevel && contentionLevel > 0.6 
+    ? config.encounterDensity * 1.3 
+    : config.encounterDensity;
 
   // Generate encounters
   const encounters: Array<{
@@ -196,14 +225,25 @@ function generateRoom(
     difficulty: number;
     rewards?: { loot: string[]; xp: number };
   }> = [];
-  if (rng.nextFloat(0, 1) < config.encounterDensity && !isEntry) {
+  if (rng.nextFloat(0, 1) < encounterDensity && !isEntry) {
     const encounterType: 'combat' | 'social' | 'environmental' = rng.pick(
       ['combat', 'social', 'environmental'] as const
     );
+    
+    // M44-B2: Add faction-themed enemies for faction strongholds
+    let enemyName = generateEncounterName(theme);
+    if (factionId && contentionLevel && contentionLevel > 0.5) {
+      const factionEnemies: Record<string, string> = {
+        silver_flame: 'Silver Flame Knight',
+        shadow_conclave: 'Shadow Conclave Assassin',
+      };
+      enemyName = factionEnemies[factionId] || enemyName;
+    }
+
     encounters.push({
       type: encounterType,
-      name: generateEncounterName(theme),
-      difficulty: config.baseDifficulty + rng.nextInt(-1, 2),
+      name: enemyName,
+      difficulty: config.baseDifficulty + rng.nextInt(-1, 2) + (contentionLevel ? Math.floor(contentionLevel * 2) : 0),
       rewards: {
         loot: ['gold_' + rng.nextInt(10, 50), 'scroll_' + rng.nextInt(1, 5)],
         xp: 50 + index * 10
@@ -212,27 +252,37 @@ function generateRoom(
   }
 
   // Generate hazards
+  // M44-B2: Scale hazard intensity with contention level
+  const hazardDensity = contentionLevel && contentionLevel > 0.6 
+    ? config.hazardDensity * 1.3 
+    : config.hazardDensity;
+    
   const hazards: Array<{
     type: 'trap' | 'environmental' | 'paradox';
     name: string;
     difficulty: number;
   }> = [];
-  for (let i = 0; i < rng.nextInt(0, config.hazardDensity > 0.5 ? 2 : 1); i++) {
-    if (rng.nextFloat(0, 1) < config.hazardDensity) {
+  for (let i = 0; i < rng.nextInt(0, hazardDensity > 0.5 ? 2 : 1); i++) {
+    if (rng.nextFloat(0, 1) < hazardDensity) {
       const hazardType: 'trap' | 'environmental' | 'paradox' =
         epochId === 'epoch_iii_twilight' ? 'paradox' : rng.pick(['trap', 'environmental'] as const);
       hazards.push({
         type: hazardType,
         name: generateHazardName(theme, epochId),
-        difficulty: config.baseDifficulty + rng.nextInt(0, 2)
+        difficulty: config.baseDifficulty + rng.nextInt(0, 2) + (contentionLevel ? Math.floor(contentionLevel * 1.5) : 0)
       });
     }
   }
 
   // Generate treasures
+  // M44-B2: Higher loot in faction strongholds
+  const lootMult = factionId && contentionLevel && contentionLevel > 0.5 
+    ? config.lootMultiplier * 1.5 
+    : config.lootMultiplier;
+    
   const treasures = [];
   const treasureChance = isExit ? 0.8 : isMiddle ? 0.4 : 0.2;
-  if (rng.nextFloat(0, 1) < treasureChance * config.lootMultiplier) {
+  if (rng.nextFloat(0, 1) < treasureChance * lootMult) {
     treasures.push(`treasure_${roomId}_${rng.nextInt(1000, 9999)}`);
   }
 
@@ -502,3 +552,263 @@ export function generateDungeonMap(dungeon: DungeonLayout): string {
 
   return lines.join('\n');
 }
+
+/**
+ * M46-B1: The Ruin-Architect - Generate dungeon from world fragments
+ * 
+ * Takes historical world fragments (ruins, shrines, tombs, etc.) and creates
+ * dungeons that reflect what happened to the location.
+ * 
+ * Maps fragment types to dungeon themes:
+ * - ruin → collapsed fortress with faction enemies
+ * - shrine → holy site with ritualistic challenges
+ * - tomb → burial chamber with guardians
+ * - statue/monument → location with historical echoes
+ */
+export interface FragmentBasedDungeon extends DungeonLayout {
+  fragmentType: string;
+  historicalEventId?: string;
+  narrativeContext: string; // Story of what happened
+  themeticLoot: boolean; // True if loot reflects the event
+}
+
+export function generateDungeonFromWorldFragment(
+  locationId: string,
+  locationName: string,
+  fragment: any, // WorldFragment from chronicleEngine
+  epochId: string,
+  seed: number,
+  factionRegistry?: any // factionLootRegistry
+): FragmentBasedDungeon {
+  const rng = new SeededRng(seed);
+  
+  // Map fragment type to dungeon theme
+  const fragmentThemes: Record<string, string> = {
+    ruin: 'faded_fortress',
+    shrine: 'corrupted_crypt',
+    tomb: 'faded_fortress',
+    statue: 'ancient_temple',
+    monument: 'ancient_temple',
+    altar: 'corrupted_crypt'
+  };
+
+  const baseTheme = fragmentThemes[fragment.type] || 'ancient_temple';
+
+  // Enhance the description with historical context
+  const narrativeContext = buildFragmentNarrative(
+    fragment,
+    baseTheme,
+    locationName
+  );
+
+  // Generate base dungeon
+  const baseDungeon = generateDungeonLayout(
+    locationId,
+    locationName,
+    epochId,
+    seed,
+    fragment.historicalEvent?.factionIds?.[0],
+    0.5 // Medium contention for historical sites
+  );
+
+  // M46-B1: Enhance with fragment-specific features
+  const fragmentDungeon: FragmentBasedDungeon = {
+    ...baseDungeon,
+    fragmentType: fragment.type,
+    historicalEventId: fragment.historicalEvent?.id,
+    narrativeContext,
+    themeticLoot: true // We populate this below
+  };
+
+  // Enhanced naming
+  fragmentDungeon.name = `${locationName}: ${getFragmentTypeName(fragment.type)}`;
+  fragmentDungeon.description = narrativeContext;
+
+  // M46-B1: Populate rooms with thematic loot and encounters
+  populateFragmentDungeonWithHistory(
+    fragmentDungeon,
+    fragment,
+    rng,
+    factionRegistry
+  );
+
+  return fragmentDungeon;
+}
+
+/**
+ * Build narrative context from historical fragment
+ */
+function buildFragmentNarrative(
+  fragment: any,
+  theme: string,
+  locationName: string
+): string {
+  const eventDescriptions: Record<string, string> = {
+    ruin: `Once, this fortress stood proud, home to ${fragment.historicalEvent?.factionIds?.[0] || 'a great faction'}. Now it lies in ruins, testament to the conflicts that raged here. The air carries echoes of ancient warfare.`,
+    shrine: `A sacred place, dedicated to powers not yet forgotten. The shrine has fallen into disrepair, yet traces of its holy significance remain etched upon the stone. Something still lingers here.`,
+    tomb: `A burial chamber, holding the remains of someone significant. The tomb's architecture speaks of reverence and power. Those entombed here were important to ${fragment.historicalEvent?.factionIds?.[0] || 'their faction'}.`,
+    statue: `A monument to a legendary figure, carved in stone. This statue commemorates ${fragment.historicalEvent?.narrative || 'a forgotten deed'}. Time has weathered it, but its message endures.`,
+    monument: `A memorial to an event of great import. The inscription speaks of ${fragment.historicalEvent?.narrative || 'a pivotal moment in history'}. The monument stands as witness to what transpired.`,
+    altar: `An ancient altar, used for rituals and ceremonies. ${fragment.historicalEvent?.narrative || 'Something sacred occurred here'}. The lingering energy suggests its power has not fully faded.`
+  };
+
+  return eventDescriptions[fragment.type] || `A historical site of unknown significance, bearing the marks of ${locationName}'s complex past.`;
+}
+
+/**
+ * Get human-readable name for fragment type
+ */
+function getFragmentTypeName(fragmentType: string): string {
+  const names: Record<string, string> = {
+    ruin: 'Fallen Fortress',
+    shrine: 'Desecrated Shrine',
+    tomb: 'Royal Tomb',
+    statue: 'Monument to the Fallen',
+    monument: 'Historical Monument',
+    altar: 'Ancient Altar'
+  };
+  return names[fragmentType] || 'Historic Site';
+}
+
+/**
+ * M46-B1: Populate dungeon rooms with historically appropriate loot and encounters
+ */
+function populateFragmentDungeonWithHistory(
+  dungeon: FragmentBasedDungeon,
+  fragment: any,
+  rng: SeededRng,
+  factionRegistry?: any
+): void {
+  const event = fragment.historicalEvent;
+  
+  // Adjust room encounters based on fragment type
+  let roomIndex = 0;
+  for (const [roomId, room] of dungeon.rooms) {
+    // Add fragment-appropriate encounters
+    if (!room.encounters) room.encounters = [];
+
+    switch (fragment.type) {
+      case 'ruin':
+        // Ruins have faction guards/remnants
+        if (roomIndex > 0 && roomIndex < dungeon.rooms.size - 1) {
+          room.encounters.push({
+            type: 'combat',
+            name: `Remnant of ${event?.factionIds?.[0] || 'a fallen faction'}`,
+            difficulty: 4,
+            rewards: {
+              loot: ['faction_seal', 'ancient_armor_piece'],
+              xp: 200
+            }
+          });
+        }
+        break;
+
+      case 'shrine':
+        // Shrines have ritualistic/spiritual challenges
+        if (roomIndex % 2 === 1) {
+          room.encounters.push({
+            type: 'social',
+            name: 'Spectral Guardian',
+            difficulty: 3,
+            rewards: {
+              loot: ['blessed_relic', 'holy_water'],
+              xp: 150
+            }
+          });
+        }
+        break;
+
+      case 'tomb':
+        // Tombs have undead guardians
+        if (roomIndex > dungeon.rooms.size / 2) {
+          room.encounters.push({
+            type: 'combat',
+            name: 'Tomb Guardian',
+            difficulty: 5,
+            rewards: {
+              loot: ['burial_treasure', 'cursed_item'],
+              xp: 250
+            }
+          });
+        }
+        break;
+
+      case 'statue':
+      case 'monument':
+        // Monuments have less combat, more lore
+        if (roomIndex === Math.floor(dungeon.rooms.size / 2)) {
+          room.encounters.push({
+            type: 'environmental',
+            name: 'Historical Vision',
+            difficulty: 2,
+            rewards: {
+              loot: ['historical_artifact', 'knowledge_scroll'],
+              xp: 100
+            }
+          });
+        }
+        break;
+    }
+
+    // M46-B2: Add faction-themed loot if registry available
+    if (factionRegistry && event?.factionIds?.[0]) {
+      const factionId = event.factionIds[0];
+      const factionItems = factionRegistry.getLootByFaction(factionId);
+      
+      if (factionItems && factionItems.length > 0 && rng.nextFloat(0, 1) < 0.3) {
+        const randomFactionItem = factionItems[rng.nextInt(0, factionItems.length - 1)];
+        if (!room.treasures) room.treasures = [];
+        room.treasures.push(`${randomFactionItem.id}_unique`);
+      }
+    }
+
+    roomIndex++;
+  }
+}
+
+/**
+ * M46-B1: Query for available world fragments in an area
+ * Used to see which dungeon options are available based on history
+ */
+export function getAvailableFragmentDungeons(
+  locationId: string,
+  chronicleEngine: any, // from worldEngine
+  epochId: string
+): Array<{
+  fragmentId: string;
+  fragmentType: string;
+  narrative: string;
+  estimatedDifficulty: number;
+}> {
+  if (!chronicleEngine) return [];
+
+  const fragments = chronicleEngine.getFragmentsAtLocation?.(locationId) || [];
+  
+  return fragments.map((fragment: any) => ({
+    fragmentId: fragment.id,
+    fragmentType: fragment.type,
+    narrative: buildFragmentNarrative(fragment, 'ancient_temple', locationId),
+    estimatedDifficulty: getDifficultyForFragmentType(fragment.type, fragment.historicalEvent?.severity || 50)
+  }));
+}
+
+/**
+ * Estimate difficulty based on fragment type and historical severity  
+ */
+function getDifficultyForFragmentType(fragmentType: string, severity: number): number {
+  const baseDifficulties: Record<string, number> = {
+    ruin: 25,
+    shrine: 15,
+    tomb: 35,
+    statue: 10,
+    monument: 12,
+    altar: 18
+  };
+
+  const base = baseDifficulties[fragmentType] || 20;
+  // Severity 0-100 scales difficulty from 0.8x to 1.5x
+  const severityMultiplier = 0.8 + (severity / 100) * 0.7;
+  
+  return Math.floor(base * severityMultiplier);
+}
+

@@ -19,7 +19,7 @@ import { generateVisualPrompt, generateAtmosphericText, type VisualPrompt } from
 interface ArchitectForgeProps {
   state: any;
   onBlueprintSave?: (blueprint: any) => void;
-  onBlueprintValidate?: (blueprint: any) => { valid: boolean; errors: Array<{ line: number; message: string; }} };
+  onBlueprintValidate?: (blueprint: any) => { valid: boolean; errors: Array<{ line: number; message: string; }> };
   showAdvanced?: boolean;
 }
 
@@ -55,7 +55,7 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
   onBlueprintValidate,
   showAdvanced = true 
 }) => {
-  const [activeTab, setActiveTab] = useState<'spatial' | 'factions' | 'validation' | 'preview' | 'devtools' | 'visual-audit'>('spatial');
+  const [activeTab, setActiveTab] = useState<'spatial' | 'factions' | 'validation' | 'preview' | 'devtools' | 'visual-audit' | 'live-mutate'>('spatial');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [blueprintLocations, setBlueprintLocations] = useState<BlueprintLocation[]>(
@@ -73,6 +73,10 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
   const [visualAuditLocationId, setVisualAuditLocationId] = useState<string | null>(null);
   const [generatedVisualPrompt, setGeneratedVisualPrompt] = useState<VisualPrompt | null>(null);
   const [generatedAtmosphericText, setGeneratedAtmosphericText] = useState<string>('');
+  // Phase 19: Live mutation state
+  const [liveMutationMode, setLiveMutationMode] = useState(false);
+  const [mutationUndoStack, setMutationUndoStack] = useState<any[]>([]);
+  const [pendingMutation, setPendingMutation] = useState<any>(null);
 
   // Create hierarchical location view
   const locationHierarchy = useMemo(() => {
@@ -196,7 +200,7 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
         backgroundColor: '#1a1a1a',
         overflowX: 'auto'
       }}>
-        {(['spatial', 'factions', 'validation', 'preview', 'devtools', 'visual-audit'] as const).map(tab => (
+        {(['spatial', 'factions', 'validation', 'preview', 'devtools', 'visual-audit', 'live-mutate'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -219,6 +223,7 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
             {tab === 'preview' && '👁️ Preview'}
             {tab === 'devtools' && '⚙️ DevTools'}
             {tab === 'visual-audit' && '🎨 Visual Audit'}
+            {tab === 'live-mutate' && '⚡ Live Mutate'}
           </button>
         ))}
       </div>
@@ -295,8 +300,22 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
             borderRadius: '6px',
             borderLeft: '3px solid #4ade80'
           }}>
-            <div style={{ marginBottom: '12px', fontWeight: 'bold', color: '#4ade80' }}>
-              ✓ Edit Location Properties
+            <div style={{ marginBottom: '12px', fontWeight: 'bold', color: '#4ade80', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>✓ Edit Location Properties</span>
+              <button
+                onClick={() => setLiveMutationMode(!liveMutationMode)}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: liveMutationMode ? '#ff6b6b' : '#4ade80',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  fontSize: '10px'
+                }}
+              >
+                {liveMutationMode ? '⚡ LIVE MUTATE ON' : 'Preview'}
+              </button>
             </div>
 
             {blueprintLocations.find(l => l.id === selectedLocation) && (
@@ -877,6 +896,153 @@ const ArchitectForge: React.FC<ArchitectForgeProps> = ({
                 Select a location and click "Generate Prompt" to preview its visual description
               </div>
             )}
+          </div>
+        )}
+
+        {/* Live Mutation Tab (M57-T2) */}
+        {activeTab === 'live-mutate' && (
+          <div style={{ padding: '16px' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                marginBottom: '12px'
+              }}>
+                <button
+                  onClick={() => setLiveMutationMode(!liveMutationMode)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: liveMutationMode ? '#ef4444' : '#60a5fa',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {liveMutationMode ? '🔴 LIVE MODE (APPLY)' : '⚫ PREVIEW MODE'}
+                </button>
+                <span style={{ color: '#aaa', fontSize: '11px' }}>
+                  {liveMutationMode ? '⚠️ Changes will be permanent and deduct legacy points' : 'No changes will be applied'}
+                </span>
+              </div>
+
+              {pendingMutation && (
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  borderRadius: '4px',
+                  border: '1px solid #ef4444',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{ color: '#fca5a5', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>
+                    📋 Pending Mutation Cost: {pendingMutation.cost} legacy points
+                  </div>
+                  <div style={{ color: '#aaa', fontSize: '11px', marginBottom: '8px' }}>
+                    {pendingMutation.description}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        setPendingMutation(null);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        color: '#fca5a5',
+                        border: '1px solid #ef4444',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '10px'
+                      }}
+                    >
+                      ✕ Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (liveMutationMode) {
+                          // Apply mutation
+                          setMutationUndoStack(prev => [...prev, pendingMutation]);
+                          setPendingMutation(null);
+                          // TODO: Call applyLiveWorldMutation
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '10px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ✓ {liveMutationMode ? 'Apply' : 'Preview'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {mutationUndoStack.length > 0 && (
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                  borderRadius: '4px',
+                  border: '1px solid #4ade80',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{ color: '#4ade80', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>
+                    ↩️ Undo Stack ({mutationUndoStack.length} mutations)
+                  </div>
+                  {mutationUndoStack.slice(-3).map((mut, idx) => (
+                    <div key={idx} style={{ color: '#aaa', fontSize: '10px', marginBottom: '4px' }}>
+                      •  {mut.description} ({-mut.cost} pt refund)
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      if (mutationUndoStack.length > 0) {
+                        const reverted = mutationUndoStack.pop();
+                        setMutationUndoStack([...mutationUndoStack]);
+                        // TODO: Revert mutation in worldState
+                      }
+                    }}
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 12px',
+                      backgroundColor: '#fbbf24',
+                      color: '#1a1a2e',
+                      border: 'none',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      fontSize: '10px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    ↩️ Revert Last
+                  </button>
+                </div>
+              )}
+
+              <div style={{
+                padding: '12px',
+                backgroundColor: 'rgba(107, 114, 128, 0.1)',
+                borderRadius: '4px',
+                border: '1px solid #4b5563',
+                marginBottom: '12px'
+              }}>
+                <div style={{ color: '#999', fontSize: '11px', marginBottom: '8px' }}>
+                  <strong>Mutation Costs:</strong><br/>
+                  • Rename/Description: 5 pts<br/>
+                  • NPC/Resource: 15 pts<br/>
+                  • Biome/Linked: 25 pts
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

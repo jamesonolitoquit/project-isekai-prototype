@@ -48,6 +48,13 @@ Thumbs.db
 
 # Browser baseline and visual artifacts
 baseline-browser*
+
+# Environment files (secrets)
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 visual-test-*
 
 # Pack/archives produced by git or package managers

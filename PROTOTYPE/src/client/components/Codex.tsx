@@ -29,14 +29,30 @@ interface DiscoveredLocation {
 }
 
 /**
+ * Phase 18: Landmark quest tracking
+ */
+interface LandmarkQuestEntry {
+  questId: string;
+  name: string;
+  landmarkName: string;
+  questType: 'CLEANSE_CORRUPTION' | 'RETRIEVE_RELIC' | 'WITNESS_EVENT' | 'RESOLVE_PARADOX';
+  isCompleted: boolean;
+  paradoxReward: number;
+  difficulty: 1 | 2 | 3 | 4 | 5;
+  canonLocked?: boolean;
+  description: string;
+}
+
+/**
  * Codex Component - displays discovered entities and knowledge
  * Part of Phase 10 (WTOL) - allows players to review what they've learned
  */
 export default function Codex({ state }: CodexProps) {
-  const [activeTab, setActiveTab] = useState<'npcs' | 'items' | 'locations' | 'facts'>('npcs');
+  const [activeTab, setActiveTab] = useState<'npcs' | 'items' | 'locations' | 'quests' | 'facts'>('npcs');
   
   const knowledgeBase = state?.player?.knowledgeBase || [];
   const visitedLocations = state?.player?.visitedLocations || [];
+  const landmarkQuests = state?.player?.landmarkQuests || [];  // Phase 18
 
   // Extract discovered NPCs
   const discoveredNpcs: DiscoveredNpc[] = (state?.npcs || [])
@@ -69,6 +85,35 @@ export default function Codex({ state }: CodexProps) {
       visited: visitedLocations.includes(loc.id)
     }));
 
+  // Extract landmark quests (Phase 18)
+  const availableLandmarkQuests: LandmarkQuestEntry[] = landmarkQuests
+    .filter((q: any) => !q.isCompleted)
+    .map((q: any) => ({
+      questId: q.questId,
+      name: q.name,
+      landmarkName: q.landmarkName,
+      questType: q.questType,
+      isCompleted: false,
+      paradoxReward: q.paradoxReward,
+      difficulty: q.difficulty,
+      canonLocked: false,
+      description: q.description
+    }));
+
+  const completedLandmarkQuests: LandmarkQuestEntry[] = landmarkQuests
+    .filter((q: any) => q.isCompleted)
+    .map((q: any) => ({
+      questId: q.questId,
+      name: q.name,
+      landmarkName: q.landmarkName,
+      questType: q.questType,
+      isCompleted: true,
+      paradoxReward: q.paradoxReward,
+      difficulty: q.difficulty,
+      canonLocked: q.canonLocked ?? true,  // Completed quests are canon locked
+      description: q.description
+    }));
+
   const npcProgressPercent = discoveredNpcs.length > 0 
     ? Math.round((discoveredNpcs.length / Math.max(discoveredNpcs.length, (state?.npcs || []).length)) * 100)
     : 0;
@@ -95,7 +140,7 @@ export default function Codex({ state }: CodexProps) {
 
       {/* Tab Navigation */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #333' }}>
-        {(['npcs', 'items', 'locations', 'facts'] as const).map((tab) => (
+        {(['npcs', 'items', 'locations', 'quests', 'facts'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -114,6 +159,7 @@ export default function Codex({ state }: CodexProps) {
             {tab === 'npcs' && `NPCs (${discoveredNpcs.length})`}
             {tab === 'items' && `Items (${discoveredItems.length})`}
             {tab === 'locations' && `Locations (${discoveredLocations.length})`}
+            {tab === 'quests' && `Landmarks (${completedLandmarkQuests.length})`}
             {tab === 'facts' && 'Facts'}
           </button>
         ))}
@@ -231,6 +277,90 @@ export default function Codex({ state }: CodexProps) {
                 <li>Identification: Use IDENTIFY or TRUE SIGHT spells to learn NPC identities</li>
               </ul>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'quests' && (
+          <div>
+            {availableLandmarkQuests.length === 0 && completedLandmarkQuests.length === 0 ? (
+              <p style={{ color: '#aaa', fontSize: '12px' }}>No landmark quests discovered yet. Seek out historical landmarks.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {completedLandmarkQuests.length > 0 && (
+                  <>
+                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#d4af37', marginTop: '8px' }}>
+                      ✓ COMPLETED LANDMARKS ({completedLandmarkQuests.length})
+                    </div>
+                    {completedLandmarkQuests.map((q) => (
+                      <div
+                        key={q.questId}
+                        style={{
+                          backgroundColor: '#1a2a1a',
+                          padding: '8px',
+                          borderRadius: '4px',
+                          borderLeft: '3px solid #d4af37',
+                          fontSize: '11px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontWeight: 'bold', color: '#d4af37' }}>{q.landmarkName}</div>
+                          {q.canonLocked && (
+                            <span style={{
+                              backgroundColor: '#d4af37',
+                              color: '#000',
+                              padding: '2px 6px',
+                              borderRadius: '3px',
+                              fontSize: '9px',
+                              fontWeight: 'bold'
+                            }}>
+                              🔒 CANON LOCK
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ color: '#aaa', marginTop: '4px' }}>
+                          {q.questType === 'CLEANSE_CORRUPTION' ? '🗑️ Cleanse Corruption' :
+                           q.questType === 'RETRIEVE_RELIC' ? '🔍 Retrieve Relic' :
+                           q.questType === 'WITNESS_EVENT' ? '👁️ Witness Event' :
+                           '⚖️ Resolve Paradox'}
+                        </div>
+                        <div style={{ color: '#4ade80', fontSize: '10px', marginTop: '4px' }}>
+                          Paradox Reduced: {Math.abs(q.paradoxReward)}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {availableLandmarkQuests.length > 0 && (
+                  <>
+                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#88ccee', marginTop: '8px' }}>
+                      📜 AVAILABLE QUESTS ({availableLandmarkQuests.length})
+                    </div>
+                    {availableLandmarkQuests.map((q) => (
+                      <div
+                        key={q.questId}
+                        style={{
+                          backgroundColor: '#1a2a3a',
+                          padding: '8px',
+                          borderRadius: '4px',
+                          borderLeft: '3px solid #88ccee',
+                          fontSize: '11px'
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold', color: '#88ccee' }}>{q.name}</div>
+                        <div style={{ color: '#aaa', marginTop: '4px', fontSize: '10px' }}>
+                          {q.description}
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px', fontSize: '10px' }}>
+                          <span style={{ color: '#888' }}>Difficulty: {'★'.repeat(q.difficulty)}</span>
+                          <span style={{ color: '#ff9999' }}>Paradox: {Math.abs(q.paradoxReward)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

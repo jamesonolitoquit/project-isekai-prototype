@@ -1,162 +1,461 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Luxfier World Template",
-  "description": "JSON Schema for validating Luxfier world templates",
+  "title": "Luxfier World Template (v2.0)",
+  "description": "JSON Schema for validating Luxfier world templates with M44-M46 integration",
   "type": "object",
   "required": ["name", "description", "season", "locations", "npcs", "quests"],
   "properties": {
     "name": {
       "type": "string",
-      "description": "Name of the world"
+      "description": "Unique name of the world template"
     },
     "description": {
       "type": "string",
-      "description": "Description of the world"
+      "description": "High-level narrative overview visible to players and chronicle"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the template (e.g., '2.0')"
     },
     "season": {
       "type": "string",
       "enum": ["winter", "spring", "summer", "autumn"],
-      "description": "Current season in the world"
+      "description": "Starting season in the world"
+    },
+    "multiEpochEnabled": {
+      "type": "boolean",
+      "description": "If true, template persists across player deaths with legacy systems",
+      "default": false
+    },
+    "baseEpoch": {
+      "type": "string",
+      "description": "The epoch ID this template uses as default (e.g., 'epoch_i_fracture')"
+    },
+    "timeSettings": {
+      "type": "object",
+      "description": "Tick and time configuration",
+      "properties": {
+        "ticksPerMinute": { "type": "number", "minimum": 1 },
+        "ticksPerHour": { "type": "number", "minimum": 1 },
+        "ticksPerDay": { "type": "number", "minimum": 1 },
+        "startingHour": { "type": "number", "minimum": 0, "maximum": 23 }
+      }
+    },
+    "moduleIdentification": {
+      "type": "object",
+      "description": "Version locking and compatibility info",
+      "properties": {
+        "templateId": { "type": "string" },
+        "engineVersion": { "type": "string" },
+        "minimumEngineVersion": { "type": "string" },
+        "targetEngineVersion": { "type": "string" },
+        "compatibilityRange": { "type": "string" },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "author": { "type": "string" },
+            "createdDate": { "type": "string" },
+            "lastUpdated": { "type": "string" },
+            "tags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "factions": {
+      "type": "array",
+      "description": "Factions present in the world (M44-T2, M44-D2)",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "philosophy"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "philosophy": { "type": "string" },
+          "initialInfluence": { "type": "number", "minimum": 0, "maximum": 100 },
+          "baseStrength": { "type": "number", "minimum": 0, "maximum": 1 },
+          "isExpansionist": { "type": "boolean" },
+          "rivalries": { "type": "array", "items": { "type": "string" } },
+          "traits": { "type": "array", "items": { "type": "string" } },
+          "economicModel": { "type": "string", "enum": ["mercantile", "militant", "isolationist"] },
+          "baseColor": { "type": "string", "description": "Hex color code" }
+        }
+      }
+    },
+    "travelMatrix": {
+      "type": "object",
+      "description": "Tick costs for traveling between locations",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "number" }
+      }
+    },
+    "standardActionCosts": {
+      "type": "object",
+      "description": "Default tick costs for standard actions",
+      "properties": {
+        "search": { "type": "number" },
+        "rest_short": { "type": "number" },
+        "rest_long": { "type": "number" },
+        "dialogue_per_word": { "type": "number" },
+        "combat_round": { "type": "number" }
+      }
     },
     "locations": {
       "type": "array",
-      "description": "List of locations in the world",
+      "description": "Locations in the world",
       "items": {
         "type": "object",
         "required": ["id", "name"],
         "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique identifier for the location"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name of the location"
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "spiritDensity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "biome": { "type": "string", "enum": ["forest", "cave", "village", "corrupted", "shrine", "maritime", "mountain", "plains", "dungeon"] },
+          "description": { "type": "string" },
+          "conditionalSeason": { "type": "string" },
+          "environmentalEffects": { "type": "array", "items": { "type": "string" } },
+          "subAreas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "difficulty": { "type": "number" },
+                "discoveryReward": { "type": "number" },
+                "environmentalEffects": { "type": "array", "items": { "type": "string" } },
+                "description": { "type": "string" }
+              }
+            }
           }
-        },
-        "additionalProperties": true
+        }
+      }
+    },
+    "locationInfluences": {
+      "type": "object",
+      "description": "Initial faction influence at each location (M44-T2)",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
     "npcs": {
       "type": "array",
-      "description": "List of NPCs in the world",
+      "description": "NPCs in the world (M46-C1, M46-C2)",
       "items": {
         "type": "object",
         "required": ["id", "name", "locationId"],
         "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique identifier for the NPC"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name of the NPC"
-          },
-          "locationId": {
-            "type": "string",
-            "description": "Location where the NPC is found"
-          },
-          "questId": {
-            "type": "string",
-            "description": "Associated quest ID (optional)"
-          },
-          "dialogue": {
-            "type": "array",
-            "description": "Dialogue lines for the NPC",
-            "items": {}
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "locationId": { "type": "string" },
+          "factionId": { "type": "string" },
+          "factionRole": { "type": "string", "enum": ["leader", "soldier", "merchant", "civilian", "outsider"] },
+          "persona": { "type": "string", "description": "Mental blueprint for AI DM roleplay (50-500 chars)" },
+          "quirks": { "type": "array", "items": { "type": "string" } },
+          "voiceDescriptor": { "type": "string" },
+          "emotionalTone": { "type": "string" },
+          "routine": {
+            "type": "object",
+            "description": "24-hour schedule",
+            "additionalProperties": { "type": "string" }
           },
           "availability": {
             "type": "object",
-            "description": "Availability window for the NPC",
             "properties": {
-              "startHour": {
-                "type": "number"
-              },
-              "endHour": {
-                "type": "number"
-              }
-            },
-            "additionalProperties": true
+              "startHour": { "type": "number", "minimum": 0, "maximum": 23 },
+              "endHour": { "type": "number", "minimum": 0, "maximum": 23 },
+              "requiresReputation": { "type": "number", "minimum": -100, "maximum": 100 },
+              "requiresQuestStatus": { "type": "string" }
+            }
+          },
+          "emotionalState": {
+            "type": "object",
+            "properties": {
+              "trust": { "type": "number", "minimum": 0, "maximum": 100 },
+              "fear": { "type": "number", "minimum": 0, "maximum": 100 },
+              "gratitude": { "type": "number", "minimum": 0, "maximum": 100 },
+              "resentment": { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          },
+          "personality": {
+            "type": "object",
+            "description": "GOAP Personality weights (M46-C1)",
+            "properties": {
+              "greediness": { "type": "number", "minimum": 0, "maximum": 1 },
+              "piety": { "type": "number", "minimum": 0, "maximum": 1 },
+              "ambition": { "type": "number", "minimum": 0, "maximum": 1 },
+              "loyalty": { "type": "number", "minimum": 0, "maximum": 1 },
+              "risk": { "type": "number", "minimum": 0, "maximum": 1 },
+              "sociability": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "dialogueVariations": {
+            "type": "object",
+            "description": "Context-aware dialogue responses",
+            "additionalProperties": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ]
+            }
           }
-        },
-        "additionalProperties": true
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Initial NPC-to-NPC relationships (M46-C2)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fromNpcId": { "type": "string" },
+          "toNpcId": { "type": "string" },
+          "trust": { "type": "number", "minimum": -100, "maximum": 100 },
+          "affinity": { "type": "number", "minimum": -100, "maximum": 100 },
+          "debt": { "type": "number" },
+          "status": { "type": "string", "enum": ["neutral", "allied", "hostile", "rival"] }
+        }
+      }
+    },
+    "hardFacts": {
+      "type": "array",
+      "description": "Hard facts seeding the belief layer (M45-A1)",
+      "items": {
+        "type": "object",
+        "required": ["id", "eventType", "description", "originLocationId", "originEpochTick"],
+        "properties": {
+          "id": { "type": "string" },
+          "eventType": { "type": "string", "enum": ["death", "siege", "miracle", "catastrophe", "discovery", "treaty", "betrayal"] },
+          "description": { "type": "string" },
+          "originLocationId": { "type": "string" },
+          "originEpochTick": { "type": "number" },
+          "factionIds": { "type": "array", "items": { "type": "string" } },
+          "severity": { "type": "number", "minimum": 0, "maximum": 100 },
+          "truthRadius": { "type": "number", "description": "Distance where 100% accuracy spreads" },
+          "truthDecayRate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Speed of confidence drop with distance" },
+          "timestamp": { "type": "number" }
+        }
+      }
+    },
+    "rumors": {
+      "type": "array",
+      "description": "Pre-seeded rumors (M45-A1)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "originalFactId": { "type": "string" },
+          "description": { "type": "string" },
+          "claimedLocationId": { "type": "string" },
+          "claimedFactionIds": { "type": "array", "items": { "type": "string" } },
+          "confidenceLevel": { "type": "number", "minimum": 0, "maximum": 100 },
+          "distanceFromOrigin": { "type": "number" },
+          "factionRelevance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "createdAt": { "type": "number" },
+          "spreadsToLocations": { "type": "array", "items": { "type": "string" } },
+          "sourceNpcIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "soulEchoes": {
+      "type": "array",
+      "description": "Ancestral perks and relics (M45-C1)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "ancestorName": { "type": "string" },
+          "deedTriggered": { "type": "string" },
+          "echoType": { "type": "string", "enum": ["relic_item", "ethereal_power", "bloodline_blessing", "ancestral_memory"] },
+          "rarity": { "type": "string", "enum": ["rare", "epic", "legendary", "mythic"] },
+          "powerLevel": { "type": "number", "minimum": 0, "maximum": 100 },
+          "mechanicalEffect": { "type": "string" },
+          "narrativeEffect": { "type": "string" },
+          "requiresMythStatus": { "type": "number", "minimum": 0, "maximum": 100 },
+          "generationsOld": { "type": "number" },
+          "visualMarker": { "type": "string" },
+          "audioMarker": { "type": "string" }
+        }
+      }
+    },
+    "factionPricingRules": {
+      "type": "object",
+      "description": "Faction-specific pricing modifiers (M44-D2)",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "economicModel": { "type": "string", "enum": ["mercantile", "militant", "isolationist"] },
+          "baseTaxRate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "modifiers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "baseModifier": { "type": "number" },
+                "reason": { "type": "string", "enum": ["faction_favor", "faction_tax", "illegal", "luxury_inflation"] },
+                "description": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "causalWeatherRules": {
+      "type": "array",
+      "description": "Rules that trigger weather based on world state (M44-D1)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "condition": { "type": "string", "enum": ["high_contention", "low_contention", "magical_surge", "faction_victory", "epoch_transition"] },
+          "triggerThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+          "weatherResult": { "type": "string", "enum": ["clear", "snow", "rain", "ash_storm", "cinder_fog", "mana_static"] },
+          "intensity": { "type": "string", "enum": ["light", "moderate", "heavy"] },
+          "duration": { "type": "number" },
+          "priority": { "type": "number" },
+          "narrative": { "type": "string" }
+        }
+      }
+    },
+    "worldFragments": {
+      "type": "array",
+      "description": "Buildings, monuments, and landmarks with durability (M43-A4)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "locationId": { "type": "string" },
+          "type": { "type": "string", "enum": ["building", "garden", "landmark", "shrine", "monument", "ruin", "statue", "road", "bridge"] },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "durability": { "type": "number", "minimum": 0, "maximum": 1 },
+          "weatheringRate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "isImmutable": { "type": "boolean" },
+          "historicalEvent": { "type": "string" }
+        }
+      }
+    },
+    "investigationClues": {
+      "type": "object",
+      "description": "Clue sources for investigation (M46-A2)",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": { "type": "string", "enum": ["npc_dialogue", "artifact_inspection", "location_search", "memory_recall"] },
+            "description": { "type": "string" },
+            "confidenceBonus": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
       }
     },
     "quests": {
       "type": "array",
-      "description": "List of quests in the world",
+      "description": "Quests in the world",
       "items": {
         "type": "object",
         "required": ["id", "title"],
         "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique identifier for the quest"
-          },
-          "title": {
-            "type": "string",
-            "description": "Title of the quest"
-          },
-          "description": {
-            "type": "string",
-            "description": "Detailed description of the quest"
-          },
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "giver": { "type": "string" },
           "objective": {
             "type": "object",
-            "description": "Quest objective",
             "properties": {
-              "type": {
-                "type": "string"
-              },
-              "location": {
-                "type": "string"
+              "type": { "type": "string", "enum": ["visit", "combat", "exploration", "challenge", "gather", "craft", "investigation"] },
+              "location": { "type": "string" },
+              "requirements": { "type": "array", "items": { "type": "string" } },
+              "timeConstraints": {
+                "type": "object",
+                "properties": {
+                  "startHour": { "type": "number" },
+                  "endHour": { "type": "number" }
+                }
               }
-            },
-            "additionalProperties": true
-          },
-          "dependencies": {
-            "type": "array",
-            "description": "IDs of quests that must be completed first",
-            "items": {
-              "type": "string"
             }
           },
+          "dependencies": { "type": "array", "items": { "type": "string" } },
           "rewards": {
             "type": "object",
-            "description": "Quest rewards"
+            "properties": {
+              "xp": { "type": "number" },
+              "gold": { "type": "number" },
+              "reputationDelta": { "type": "object", "additionalProperties": { "type": "number" } }
+            }
           },
-          "expiresInHours": {
-            "type": "number",
-            "description": "Quest expiration time in hours"
+          "expiresInHours": { "type": "number" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "epochs": {
+      "type": "object",
+      "description": "Epoch definitions for multi-generation play",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "sequenceNumber": { "type": "number" },
+          "name": { "type": "string" },
+          "theme": { "type": "string" },
+          "chronologyYear": { "type": "number" },
+          "description": { "type": "string" },
+          "nextEpochId": { "type": "string" },
+          "previousEpochId": { "type": "string" },
+          "factionStateOverride": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "power": { "type": "number" },
+                "trend": { "type": "string", "enum": ["ascending", "stable", "declining", "hidden"] }
+              }
+            }
           }
-        },
-        "additionalProperties": true
+        }
+      }
+    },
+    "performanceGuardrails": {
+      "type": "object",
+      "description": "Performance limits to prevent simulation lag",
+      "properties": {
+        "maxNpcsPerLocation": { "type": "number", "minimum": 1 },
+        "maxQuestsActive": { "type": "number", "minimum": 1 },
+        "maxFactionsActive": { "type": "number", "minimum": 1 },
+        "maxWorldFragmentsPerEpoch": { "type": "number", "minimum": 1 },
+        "maxInvestigationsActive": { "type": "number", "minimum": 1 },
+        "npcGossipUpdateInterval": { "type": "number" },
+        "factionSkirmishInterval": { "type": "number" },
+        "investigationTickInterval": { "type": "number" }
+      }
+    },
+    "economics": {
+      "type": "object",
+      "description": "Economic configuration (M44-D2)",
+      "properties": {
+        "globalInflation": { "type": "number" },
+        "scarcityBias": { "type": "number" },
+        "markets": { "type": "array" },
+        "resourceNodes": { "type": "array" }
       }
     },
     "metadata": {
       "type": "object",
-      "description": "Metadata about the world template",
+      "description": "Metadata and configuration",
       "properties": {
-        "templateId": {
-          "type": "string",
-          "description": "Identifier for this template"
-        },
-        "audioVolume": {
-          "type": "number",
-          "description": "Default audio volume (0-1)"
-        },
-        "particleDensity": {
-          "type": "string",
-          "enum": ["low", "medium", "high"],
-          "description": "Particle effect density"
-        },
-        "initialReputation": {
-          "type": "object",
-          "description": "Initial reputation values by NPC ID"
-        }
-      },
-      "additionalProperties": true
+        "templateId": { "type": "string" },
+        "audioVolume": { "type": "number", "minimum": 0, "maximum": 1 },
+        "particleDensity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "initialReputation": { "type": "object" }
+      }
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

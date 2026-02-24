@@ -13,7 +13,7 @@
  * Target: <5 seconds total execution, 0 integrity errors
  */
 
-import { createWorldController, createInitialWorld } from '../engine/public';
+import { createWorldController, createInitialWorld } from '../engine/worldEngine';
 import type { WorldState } from '../engine/worldEngine';
 import type { Event } from '../events/mutationLog';
 import { createSave, loadSave, listSaves, verifySaveIntegrity } from '../engine/saveLoadEngine';

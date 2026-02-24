@@ -27,6 +27,16 @@ export interface PlayerCharacter {
   knowledgeBase?: string[];
   visitedLocations?: string[];
   beliefLayer?: { npcLocations: Record<string, string>; npcStats: Record<string, any>; facts: Record<string, boolean>; suspicionLevel: number };
+  bloodlineData?: {
+    canonicalName?: string;
+    inheritedPerks?: string[];
+    inheritedItems?: { itemId: string; rarity?: string }[];
+    mythStatus: number;
+    epochsLived: number;
+    deeds?: string[];
+  };
+  spellCooldownBonus?: number;
+  factionReputation?: Record<string, number>;
 }
 
 export const STAT_POINTS_AVAILABLE = 20;

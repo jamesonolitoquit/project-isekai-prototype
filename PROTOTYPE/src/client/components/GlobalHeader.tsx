@@ -1,16 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
+import WeaverSettings from './WeaverSettings';
 
 interface GlobalHeaderProps {
   state?: any;
 }
 
 export default function GlobalHeader({ state }: GlobalHeaderProps) {
+  const [showWeaverSettings, setShowWeaverSettings] = useState(false);
   if (!state?.player) return null;
 
   const hp = state.player.hp || 0;
   const maxHp = state.player.maxHp || 100;
+  const hpPercent = maxHp > 0 ? (hp / maxHp) * 100 : 0;
   const mp = state.player.mp || 0;
   const maxMp = state.player.maxMp || 50;
+  const mpPercent = maxMp > 0 ? (mp / maxMp) * 100 : 0;
   const gold = state.player.gold || 0;
   const level = state.player.level || 1;
   const hour = state.hour !== undefined ? state.hour : state.time?.hour || 0;
@@ -119,15 +123,41 @@ export default function GlobalHeader({ state }: GlobalHeaderProps) {
         </div>
       )}
 
-      {/* Gold & Time */}
-      <div style={{ display: 'flex', gap: '24px', justifyContent: 'flex-end' }}>
+      {/* Gold & Time & Settings */}
+      <div style={{ display: 'flex', gap: '24px', justifyContent: 'flex-end', alignItems: 'center' }}>
         <div style={{ fontSize: '12px', color: '#fbbf24' }}>
           💰 {gold} Gold
         </div>
         <div style={{ fontSize: '12px', color: '#9333ea' }}>
           🕐 {hour.toString().padStart(2, '0')}:00
         </div>
+        <button
+          onClick={() => setShowWeaverSettings(true)}
+          style={{
+            background: 'rgba(116, 185, 255, 0.1)',
+            border: '1px solid rgba(116, 185, 255, 0.3)',
+            borderRadius: '4px',
+            color: '#74b9ff',
+            fontSize: '12px',
+            padding: '6px 10px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          title="Open Weaver Settings"
+        >
+          ⚙️
+        </button>
       </div>
+
+      {/* Weaver Settings Modal */}
+      {showWeaverSettings && (
+        <WeaverSettings
+          onClose={() => setShowWeaverSettings(false)}
+          onConfigSaved={() => {
+            // Config saved, AI engine will pick it up automatically
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -425,3 +425,198 @@ export function resistMagicDamage(
     logs
   };
 }
+
+/**
+ * Phase 26 Task 3: Social Outburst & World Scars
+ * Triggers catastrophic world-altering events when Global Social Tension reaches critical threshold (1.0+)
+ * Creates lasting environmental scars and destroys world fragments
+ */
+
+export interface ScarCreationResult {
+  locationId: string;
+  scarId: string;
+  scarType: 'battlefield' | 'cultural_scar';
+  severity: number;
+}
+
+export interface FragmentDamageResult {
+  fragmentId: string;
+  locationId: string;
+  previousDurability: number;
+  damageDealt: number;
+  newDurability: number;
+  destroyed: boolean;
+}
+
+/**
+ * Determine if a location should receive a "battlefield" scar (has active entities)
+ * or "cultural_scar" (consequences without direct combat)
+ */
+function determineScarType(locationHasActors: boolean): 'battlefield' | 'cultural_scar' {
+  if (locationHasActors) {
+    return random() < 0.6 ? 'battlefield' : 'cultural_scar'; // 60% battlefield if actors present
+  }
+  return 'cultural_scar'; // Default to cultural scar for empty locations
+}
+
+/**
+ * Create or update scars at all world locations during social outburst
+ * Each location receives one scar based on its active state
+ */
+export function createLocationScars(
+  locations: any[],
+  npcs: any[],
+  tick: number,
+  epochCreated: number
+): ScarCreationResult[] {
+  const results: ScarCreationResult[] = [];
+  
+  locations.forEach(location => {
+    // Check if location has active NPCs (determines scar type)
+    const npcCount = npcs.filter(n => n.locationId === location.id).length;
+    const hasActors = npcCount > 0;
+    
+    // Determine scar type
+    const scarType = determineScarType(hasActors);
+    
+    // Create scar ID
+    const scarId = `scar_${location.id}_${tick}_${Math.floor(random() * 0xffffff).toString(16)}`;
+    
+    // Initialize activeScars array if not present
+    if (!location.activeScars) {
+      location.activeScars = [];
+    }
+    
+    // Add scar ID to location
+    location.activeScars.push(scarId);
+    
+    // Calculate severity based on NPC count (more crowding = more severe)
+    const severity = Math.min(100, 40 + Math.floor(npcCount * 5));
+    
+    results.push({
+      locationId: location.id,
+      scarId,
+      scarType,
+      severity
+    });
+  });
+  
+  return results;
+}
+
+/**
+ * Apply damage to all world fragments during social outburst
+ * 20-40% fragment destruction chance with 10-30 durability loss
+ */
+export function damageWorldFragments(
+  worldFragments: any[],
+  state: any
+): FragmentDamageResult[] {
+  const results: FragmentDamageResult[] = [];
+  
+  const survivingFragments: any[] = [];
+  
+  worldFragments.forEach(fragment => {
+    const destroyChance = 0.2 + random() * 0.2; // 20-40% chance
+    const damageAmount = 10 + Math.floor(random() * 20); // 10-30 damage
+    
+    if (random() < destroyChance) {
+      // Fragment is destroyed (durability reduced to 0 or below)
+      const finalDurability = Math.max(0, fragment.durability - damageAmount);
+      
+      results.push({
+        fragmentId: fragment.id,
+        locationId: fragment.locationId,
+        previousDurability: fragment.durability,
+        damageDealt: damageAmount,
+        newDurability: 0,
+        destroyed: true
+      });
+    } else {
+      // Fragment takes damage but survives
+      const finalDurability = Math.max(0, fragment.durability - damageAmount);
+      
+      results.push({
+        fragmentId: fragment.id,
+        locationId: fragment.locationId,
+        previousDurability: fragment.durability,
+        damageDealt: damageAmount,
+        newDurability: finalDurability,
+        destroyed: false
+      });
+      
+      // Add to surviving fragments (with updated durability)
+      survivingFragments.push({
+        ...fragment,
+        durability: finalDurability
+      });
+    }
+  });
+  
+  // Update state with surviving fragments only
+  if (state) {
+    state.worldFragments = survivingFragments;
+  }
+  
+  return results;
+}
+
+/**
+ * Orchestrate a social outburst event when GST >= 1.0
+ * Returns outburst metadata for event creation
+ */
+export function triggerSocialOutburst(
+  state: any,
+  socialTension: number
+): { triggered: boolean; scars: ScarCreationResult[]; fragmentDamage: FragmentDamageResult[]; stats: any } {
+  // Check threshold: only trigger at GST >= 1.0
+  if (socialTension < 1.0) {
+    return { triggered: false, scars: [], fragmentDamage: [], stats: {} };
+  }
+
+  // Check if outburst already triggered this epoch to avoid spam
+  const lastOutburstTick = state._lastSocialOutburstTick ?? -1000;
+  if (state.tick && state.tick - lastOutburstTick < 100) {
+    return { triggered: false, scars: [], fragmentDamage: [], stats: {} };
+  }
+
+  // Create scars at all locations
+  const scarResults = createLocationScars(
+    state.locations || [],
+    state.npcs || [],
+    state.tick || 0,
+    state.epochCreated || 0
+  );
+
+  // Apply fragment damage
+  const fragmentResults = damageWorldFragments(
+    state.worldFragments || [],
+    state
+  );
+
+  // Mark outburst as occurred
+  state._lastSocialOutburstTick = state.tick;
+
+  // Calculate statistics for event payload
+  const stats = {
+    totalLocations: state.locations?.length || 0,
+    locationsAffected: scarResults.length,
+    scarTypes: {
+      battlefield: scarResults.filter(s => s.scarType === 'battlefield').length,
+      cultural_scar: scarResults.filter(s => s.scarType === 'cultural_scar').length
+    },
+    totalFragments: state.worldFragments?.length || 0,
+    fragmentsDamaged: fragmentResults.length,
+    fragmentsDestroyed: fragmentResults.filter(r => r.destroyed).length,
+    averageSeverity: scarResults.length > 0 
+      ? Math.floor(scarResults.reduce((sum, s) => sum + s.severity, 0) / scarResults.length)
+      : 0
+  };
+
+  return {
+    triggered: true,
+    scars: scarResults,
+    fragmentDamage: fragmentResults,
+    stats
+  };
+}

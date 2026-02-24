@@ -21,6 +21,7 @@
 
 import type { WorldState, NPC } from './worldEngine';
 import type { PlaystyleProfile } from './analyticsEngine';
+import crypto from 'node:crypto';
 
 /**
  * Dialogue context from player interaction
@@ -31,6 +32,7 @@ export interface DialogueContext {
   questState?: string; // Phase of any active quest with this NPC
   reputationDelta?: number; // Recent reputation changes
   previousMessages?: Array<{ role: 'npc' | 'player'; text: string }>; // Conversation history
+  socialTension?: number; // GST value [0-1] for narrative mutation (Task 3)
 }
 
 /**
@@ -58,7 +60,7 @@ export interface CharacterVoice {
  * LLM API Configuration
  */
 export interface LlmConfig {
-  provider: 'openai' | 'claude' | 'mock';
+  provider: 'openai' | 'claude' | 'groq' | 'ollama' | 'mock';
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -67,37 +69,268 @@ export interface LlmConfig {
 }
 
 /**
+ * Dialogue cache entry for M56-B1
+ * Tracks cached NPC responses to reduce API calls
+ */
+export interface DialogueCacheEntry {
+  promptHash: string;      // SHA-256 hash of prompt
+  response: string;        // Cached LLM response
+  provider: string;        // Provider that generated it
+  timestamp: number;       // When it was cached (tick)
+  expiresAt: number;       // Cache expiry tick (30 min / 1800 ticks)
+  npcId: string;           // Associated NPC
+}
+
+/**
+ * Provider health status for failover chain
+ */
+export interface ProviderHealthStatus {
+  provider: string;        // 'openai' | 'groq' | 'ollama' | etc.
+  healthy: boolean;        // Current health status
+  lastCheckTick: number;   // When last health check ran
+  errorCount: number;      // Consecutive errors
+  responseTimeMs: number;  // Average response time
+}
+
+/**
+ * Dialogue cache metrics for session analytics
+ */
+export interface DialogueCacheMetrics {
+  totalCalls: number;      // Total LLM calls made
+  cacheHits: number;       // Successful cache hits
+  cacheMisses: number;     // Cache misses requiring API call
+  hitRate: number;         // Percentage of hits (0-100)
+  averageResponseTimeMs: number; // Avg time for API calls
+  providersUsed: Record<string, number>; // Provider call count
+}
+
+/**
+ * Global dialogue cache and metrics - M56-B1
+ */
+const dialogueCache = new Map<string, DialogueCacheEntry>();
+const dialogueCacheMetrics: DialogueCacheMetrics = {
+  totalCalls: 0,
+  cacheHits: 0,
+  cacheMisses: 0,
+  hitRate: 0,
+  averageResponseTimeMs: 0,
+  providersUsed: {}
+};
+const providerHealthStatus: Map<string, ProviderHealthStatus> = new Map([
+  ['openai', { provider: 'openai', healthy: true, lastCheckTick: 0, errorCount: 0, responseTimeMs: 0 }],
+  ['groq', { provider: 'groq', healthy: true, lastCheckTick: 0, errorCount: 0, responseTimeMs: 0 }],
+  ['ollama', { provider: 'ollama', healthy: true, lastCheckTick: 0, errorCount: 0, responseTimeMs: 0 }],
+  ['claude', { provider: 'claude', healthy: true, lastCheckTick: 0, errorCount: 0, responseTimeMs: 0 }]
+]);
+
+/**
+ * Generate SHA-256 hash of prompt for cache key
+ */
+function hashPrompt(prompt: string): string {
+  return crypto.createHash('sha256').update(prompt).digest('hex');
+}
+
+/**
+ * Check provider health via HTTP endpoint
+ */
+export async function checkProviderHealth(provider: string, baseUrl?: string, apiKey?: string): Promise<boolean> {
+  try {
+    let endpoint = '';
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    
+    if (provider === 'openai') {
+      endpoint = 'https://api.openai.com/v1/models';
+      headers['Authorization'] = `Bearer ${apiKey || process.env.OPENAI_API_KEY}`;
+    } else if (provider === 'groq') {
+      endpoint = 'https://api.groq.com/openai/v1/models';
+      headers['Authorization'] = `Bearer ${apiKey || process.env.GROQ_API_KEY}`;
+    } else if (provider === 'ollama') {
+      endpoint = (baseUrl || 'http://localhost:11434') + '/api/tags';
+    } else if (provider === 'claude') {
+      endpoint = 'https://api.anthropic.com/v1/messages';
+      headers['x-api-key'] = apiKey || process.env.ANTHROPIC_API_KEY || '';
+      headers['anthropic-version'] = '2023-06-01';
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers,
+      timeout: 5000
+    } as any);
+
+    const healthy = response.ok;
+    const status = providerHealthStatus.get(provider);
+    if (status) {
+      status.healthy = healthy;
+      status.errorCount = healthy ? 0 : Math.min(status.errorCount + 1, 3);
+      status.lastCheckTick = Date.now();
+    }
+    return healthy;
+  } catch {
+    const status = providerHealthStatus.get(provider);
+    if (status) {
+      status.healthy = false;
+      status.errorCount = Math.min(status.errorCount + 1, 3);
+    }
+    return false;
+  }
+}
+
+/**
+ * Get current dialogue cache metrics - M56-B1
+ */
+export function getDialogueCacheMetrics(): DialogueCacheMetrics {
+  return { ...dialogueCacheMetrics };
+}
+
+/**
+ * Clear dialogue cache (for session reset or memory management)
+ */
+export function clearDialogueCache(): void {
+  dialogueCache.clear();
+  dialogueCacheMetrics.totalCalls = 0;
+  dialogueCacheMetrics.cacheHits = 0;
+  dialogueCacheMetrics.cacheMisses = 0;
+  dialogueCacheMetrics.hitRate = 0;
+}
+
+/**
+ * Load provider configuration from localStorage (set via WeaverSettings)
+ * Uses base64 encryption for sensitive fields
+ */
+function loadProviderConfigFromStorage(): Partial<LlmConfig> | null {
+  try {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return null; // Server-side rendering or no localStorage
+    }
+    const stored = localStorage.getItem('isekai_weaver_config');
+    if (!stored) return null;
+    const config = JSON.parse(Buffer.from(stored, 'base64').toString('utf-8'));
+    return {
+      provider: config.provider as any,
+      apiKey: config.apiKey,
+      model: config.modelName,
+      baseUrl: config.baseUrl,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Call LLM API to generate NPC dialogue response
- * Supports multiple providers: OpenAI GPT-4, Claude, or mock responses
+ * Supports multiple providers with priority fallback chain: OpenAI → Groq → Ollama → Template Mock
+ * Implements dialogue cache with M56-B1 cache tracking (target: >90% hit rate)
  */
 export async function callLlmApi(
   prompt: string,
-  config: LlmConfig = { provider: 'openai', model: 'gpt-4', temperature: 0.8, maxTokens: 150 }
+  config?: Partial<LlmConfig>,
+  currentTick: number = Date.now()
 ): Promise<string> {
+  // Try to load player config from WeaverSettings (localStorage)
+  const playerConfig = loadProviderConfigFromStorage();
+  
+  const fullConfig: LlmConfig = {
+    provider: 'openai',
+    model: 'gpt-4',
+    temperature: 0.8,
+    maxTokens: 150,
+    ...playerConfig,  // Override with player config if available
+    ...config         // Override with explicit config if provided
+  };
+  
+  dialogueCacheMetrics.totalCalls++;
+
+  // Check cache first (M56-B1 optimization)
+  const promptHash = hashPrompt(prompt);
+  const cachedEntry = dialogueCache.get(promptHash);
+  if (cachedEntry && cachedEntry.expiresAt > currentTick) {
+    dialogueCacheMetrics.cacheHits++;
+    dialogueCacheMetrics.hitRate = Math.round((dialogueCacheMetrics.cacheHits / dialogueCacheMetrics.totalCalls) * 100);
+    return cachedEntry.response;
+  }
+  dialogueCacheMetrics.cacheMisses++;
+  dialogueCacheMetrics.hitRate = Math.round((dialogueCacheMetrics.cacheHits / dialogueCacheMetrics.totalCalls) * 100);
+
   // If mock mode, return a procedural response
-  if (config.provider === 'mock') {
+  if (fullConfig.provider === 'mock') {
     return mockLlmResponse(prompt);
   }
 
   // Get API key from environment or config
-  const apiKey = config.apiKey || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey && config.provider !== 'mock') {
+  const apiKey = fullConfig.apiKey || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey && (fullConfig.provider as string) !== 'mock') {
     console.warn('LLM API key not found. Using mock response.');
     return mockLlmResponse(prompt);
   }
 
   try {
-    if (config.provider === 'openai') {
-      return await callOpenAiApi(prompt, apiKey || '', config);
-    } else if (config.provider === 'claude') {
-      return await callClaudeApi(prompt, apiKey || '', config);
+    let response = '';
+    const startTime = Date.now();
+    const provider = fullConfig.provider as string;
+
+    // Priority fallback chain: OpenAI → Groq → Ollama → Template Mock
+    if (fullConfig.provider === 'openai') {
+      response = await callOpenAiApi(prompt, apiKey || '', fullConfig);
+      dialogueCacheMetrics.providersUsed.openai = (dialogueCacheMetrics.providersUsed.openai || 0) + 1;
+    } else if (fullConfig.provider === 'claude') {
+      response = await callClaudeApi(prompt, apiKey || '', fullConfig);
+      dialogueCacheMetrics.providersUsed.claude = (dialogueCacheMetrics.providersUsed.claude || 0) + 1;
+    } else if (fullConfig.provider === 'groq') {
+      response = await callGroqApi(prompt, apiKey || '', fullConfig);
+      dialogueCacheMetrics.providersUsed.groq = (dialogueCacheMetrics.providersUsed.groq || 0) + 1;
+    } else if (fullConfig.provider === 'ollama') {
+      response = await callOllamaApi(prompt, fullConfig);
+      dialogueCacheMetrics.providersUsed.ollama = (dialogueCacheMetrics.providersUsed.ollama || 0) + 1;
     }
+
+    if (!response) {
+      // Fallback to next provider in chain
+      if (fullConfig.provider !== 'ollama') {
+        console.warn(`${provider} failed, falling back to next provider`);
+        return await callLlmApi(prompt, { ...config, provider: fullConfig.provider === 'openai' ? 'groq' : 'ollama' }, currentTick);
+      }
+      return mockLlmResponse(prompt);
+    }
+
+    // Cache the response (30 min expiry = 1800 ticks at 1 tick/sec)
+    const responseTimeMs = Date.now() - startTime;
+    dialogueCache.set(promptHash, {
+      promptHash,
+      response,
+      provider,
+      timestamp: currentTick,
+      expiresAt: currentTick + 1800,
+      npcId: 'unknown'
+    });
+
+    // Update provider metrics
+    const status = providerHealthStatus.get(provider);
+    if (status) {
+      status.responseTimeMs = (status.responseTimeMs + responseTimeMs) / 2;
+      status.errorCount = 0;
+    }
+
+    return response;
   } catch (error) {
-    console.error(`LLM API error (${config.provider}):`, error);
+    const provider = fullConfig.provider as string;
+    console.error(`LLM API error (${provider}):`, error);
+    
+    // Update provider error count
+    const status = providerHealthStatus.get(provider);
+    if (status) {
+      status.errorCount = Math.min(status.errorCount + 1, 3);
+    }
+
+    // Fallback to next provider in chain
+    if (fullConfig.provider !== 'ollama' && fullConfig.provider !== 'mock') {
+      return await callLlmApi(prompt, { ...config, provider: fullConfig.provider === 'openai' ? 'groq' : 'ollama' }, currentTick);
+    }
+
     return mockLlmResponse(prompt);
   }
-
-  return mockLlmResponse(prompt);
 }
 
 /**
@@ -144,7 +377,7 @@ async function callOpenAiApi(
     throw new Error(`OpenAI API error (${response.status}): ${error}`);
   }
 
-  const data = await response.json() as any;
+  const data = await response.json() as Record<string, unknown>;
   return data?.choices?.[0]?.message?.content || mockLlmResponse(prompt);
 }
 
@@ -187,8 +420,90 @@ async function callClaudeApi(
     throw new Error(`Claude API error (${response.status}): ${error}`);
   }
 
-  const data = await response.json() as any;
+  const data = await response.json() as Record<string, unknown>;
   return data?.content?.[0]?.text || mockLlmResponse(prompt);
+}
+
+/**
+ * Call Groq API (LLaMA 3 via fast inference)
+ * M56-B1: Provider chain support with Mixtral-8x7b-32768
+ */
+async function callGroqApi(
+  prompt: string,
+  apiKey: string,
+  config: LlmConfig
+): Promise<string> {
+  const baseUrl = config.baseUrl || 'https://api.groq.com/openai/v1';
+  const model = config.model || 'mixtral-8x7b-32768';
+  const temperature = config.temperature ?? 0.8;
+  const maxTokens = config.maxTokens ?? 150;
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a dynamic NPC in a fantasy RPG game. Respond concisely with emotion and personality.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature,
+      max_tokens: maxTokens,
+      top_p: 0.9,
+      frequency_penalty: 0.2
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Groq API error (${response.status}): ${error}`);
+  }
+
+  const data = await response.json() as Record<string, unknown>;
+  return (data?.choices?.[0]?.message?.content as string) || '';
+}
+
+/**
+ * Call Ollama API (local inference endpoint)
+ * M56-B1: Local provider for offline/self-hosted deployments
+ */
+async function callOllamaApi(
+  prompt: string,
+  config: LlmConfig
+): Promise<string> {
+  const baseUrl = config.baseUrl || 'http://localhost:11434';
+  const model = config.model || 'llama2';
+  const temperature = config.temperature ?? 0.8;
+
+  const response = await fetch(`${baseUrl}/api/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      stream: false,
+      temperature
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Ollama API error (${response.status}): ${error}`);
+  }
+
+  const data = await response.json() as Record<string, unknown>;
+  return (data?.response as string) || '';
 }
 
 /**
@@ -236,7 +551,7 @@ function generateCharacterBlueprint(npc: NPC, voice?: CharacterVoice): string {
 ## Character Blueprint: ${npc.name}
 ### Identity
 - Role: ${npc.factionRole || 'Independent'}
-- Importance Level: ${(npc as any).importance || 'minor'}
+- Importance Level: ${npc.importance || 'minor'}
 ${factionNote ? `- Faction Affiliation: ${factionNote}` : ''}
 
 ### Voice & Speech
@@ -258,10 +573,10 @@ ${personalityNote ? `- Personality: ${personalityNote}` : ''}
  */
 function generateEnvironmentalContext(state: WorldState, npc: NPC, dialogueContext?: DialogueContext): string {
   const currentLocation = state.locations?.find(l => l.id === npc.locationId);
-  const weather = (state as any).weather || 'clear';
-  const dayPhase = (state as any).dayPhase || 'day';
-  const season = (state as any).season || 'spring';
-  const currentHour = (state as any).hour || 12;
+  const weather = state.weather || 'clear';
+  const dayPhase = state.dayPhase || 'day';
+  const season = state.season || 'spring';
+  const currentHour = state.hour || 12;
   
   let environmentNote = '';
   if (currentLocation) {
@@ -310,7 +625,7 @@ function calculateQuickTension(state: WorldState): number {
   
   let activeScarCount = 0;
   for (const location of state.locations || []) {
-    const scars = (location as any).activeScars || [];
+    const scars = location.activeScars || [];
     activeScarCount += scars.length;
   }
   tension += Math.min(30, activeScarCount * 10);
@@ -340,7 +655,7 @@ function generateRecentEventsNote(state: WorldState, npc: NPC): string {
  * Modulates NPC behavior based on emotional state toward player
  */
 function generateResonanceWeights(npc: NPC, dialogueContext?: DialogueContext): string {
-  const emotionalState = (npc as any).emotionalState || {
+  const emotionalState = npc.emotionalState || {
     trust: 50,
     fear: 50,
     gratitude: 50,
@@ -588,6 +903,75 @@ ${epochDialogueFlavor}
 }
 
 /**
+ * Phase 25 Task 3: Generate Global Social Tension narrative context
+ * Modifies NPC dialogue based on world social state
+ * 
+ * Thresholds:
+ * - GST > 0.75: Paranoid mode (distrust, short sentences, defensive)
+ * - 0.4 < GST <= 0.75: Cautious mode (measured, careful)
+ * - GST <= 0.4: Peaceful mode (warm, welcoming, open)
+ */
+function generateGstNarrativeContext(socialTension?: number): string {
+  if (socialTension === undefined || socialTension <= 0) {
+    return '';
+  }
+
+  const gstLevel = Math.min(1.0, socialTension);
+  let modeInstruction = '';
+  let emotionalState = '';
+  let speechModifier = '';
+
+  if (gstLevel > 0.75) {
+    // PARANOID MODE - High social chaos
+    modeInstruction = `
+## Social Tension Context: PARANOID MODE
+The world is in social chaos (Tension: ${(gstLevel * 100).toFixed(1)}%). Trust is fragile. People are suspicious.`;
+    emotionalState = `
+**Your Emotional State**: Guarded, anxious, defensive. You suspect hidden motives. You second-guess friendly overtures.
+**Your Assumptions**: People are unreliable. Betrayal is always possible. Information is currency and leverage.`;
+    speechModifier = `
+**Speech Adjustments**:
+- Use short, clipped sentences
+- Express suspicion overtly ("Trust? That's a luxury.")
+- Withhold information unless absolutely necessary
+- Question the player's motives frequently
+- References to danger, betrayal, or deception are natural`;
+  } else if (gstLevel > 0.4) {
+    // CAUTIOUS MODE - Moderate tension
+    modeInstruction = `
+## Social Tension Context: CAUTIOUS MODE
+The world feels uncertain (Tension: ${(gstLevel * 100).toFixed(1)}%). People are careful with trust.`;
+    emotionalState = `
+**Your Emotional State**: Measured, thoughtful, reserved. You're weighing the player's trustworthiness. You reveal information slowly.
+**Your Assumptions**: Caution is wisdom. Not all offers are genuine. Verify intentions before committing.`;
+    speechModifier = `
+**Speech Adjustments**:
+- Use measured, deliberate tone
+- Express conditional cooperation ("Help me first, then we'll talk")
+- Ask probing questions before responding
+- Reference recent tensions or conflicts in the world
+- Show interest but maintain boundaries`;
+  } else {
+    // PEACEFUL MODE - Low tension
+    modeInstruction = `
+## Social Tension Context: PEACEFUL MODE
+The world feels harmonious (Tension: ${(gstLevel * 100).toFixed(1)}%). People are more open and trusting.`;
+    emotionalState = `
+**Your Emotional State**: Open, friendly, willing to help. You assume good intentions. You're eager to connect.
+**Your Assumptions**: Cooperation benefits everyone. The player's quest likely aligns with the greater good.`;
+    speechModifier = `
+**Speech Adjustments**:
+- Use warm, welcoming tone
+- Offer help readily ("I'd be happy to assist")
+- Share information freely unless sensitive
+- Reference community and shared purpose
+- Show genuine interest in the player's wellbeing`;
+  }
+
+  return `${modeInstruction}${emotionalState}${speechModifier}`;
+}
+
+/**
  * Main synthesis function: Generates a comprehensive LLM prompt for NPC dialogue
  * 
  * @param npcId - The NPC's ID
@@ -633,6 +1017,9 @@ export function generateNpcPrompt(
     generateLegendContext(npc, state),
     '',
     generateResonanceWeights(npc, context),
+    '',
+    // Phase 25 Task 3: Add GST narrative mutation context
+    generateGstNarrativeContext(context?.socialTension),
     '',
     generateWTOLFilters(npc, state, knowledgeScope),
   ];
@@ -688,7 +1075,7 @@ function deriveVoiceFromNpc(npc: NPC): CharacterVoice {
     tone,
     vocabulary,
     speechPattern,
-    personalityAdjective: derivePersonalityFromEmotions(npc as any)
+    personalityAdjective: derivePersonalityFromEmotions(npc)
   };
 }
 
@@ -739,7 +1126,7 @@ export function parseNpcResponse(response: string): { stageDirection?: string; d
 export function applyEmotionalDecay(npc: any, state: WorldState, decayPerDay: number = 2): void {
   if (!npc.emotionalState) return;
 
-  const lastDecay = (npc as any).lastEmotionalDecay || 0;
+  const lastDecay = npc.lastEmotionalDecay || 0;
   const ticksPerDay = 1440;
   const timeSinceDecay = (state.tick ?? 0) - lastDecay;
 
@@ -753,7 +1140,7 @@ export function applyEmotionalDecay(npc: any, state: WorldState, decayPerDay: nu
     npc.emotionalState.gratitude = Math.max(0, Math.min(100, npc.emotionalState.gratitude + (npc.emotionalState.gratitude < 50 ? totalDecay : -totalDecay)));
     npc.emotionalState.resentment = Math.max(0, Math.min(100, npc.emotionalState.resentment + (npc.emotionalState.resentment < 50 ? totalDecay : -totalDecay)));
 
-    (npc as any).lastEmotionalDecay = state.tick;
+    npc.lastEmotionalDecay = state.tick;
   }
 }
 
@@ -765,7 +1152,7 @@ export function generateLegendContext(npc: NPC, state: WorldState): string {
   const sections: string[] = [];
 
   // Check if NPC is a Soul Echo or high-ranking faction member
-  const isSoulEcho = npc.role === 'spirit_guide' || npc.id?.includes('soul_echo');
+  const isSoulEcho = npc.id?.includes('soul_echo');
   const isLeader = npc.factionRole === 'leader' || npc.factionRole === 'commander';
 
   if (!isSoulEcho && !isLeader) {
@@ -1029,7 +1416,8 @@ export function generateCoDmResponse(
     // Classic conflict: Narrator wants structure, Chaos wants unpredictability
     dominantAuthority = directionConflict > 0.7 ? 'chaos' : 'narrator';
   } else {
-    dominantAuthority = intent1.authority === 'narrator' ? 'narrator' : intent1.authority;
+    dominantAuthority = intent1.authority === 'narrator' ? 'narrator' : 
+                       intent1.authority === 'neutral' ? 'balanced' : 'chaos';
   }
 
   // Build synthesized narrative sections

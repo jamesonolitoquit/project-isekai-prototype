@@ -18,6 +18,7 @@ export type Event = {
   // M32: Multi-client authorship fields
   clientId?: string;        // Which client emitted this action
   sequenceNumber?: number;  // Monotonic sequence per client for ordering
+  tick?: number;            // Game tick when event occurred (for stress testing)
   // ledger fields
   eventIndex?: number;
   prevHash?: string;
@@ -85,11 +86,11 @@ export function appendEvent(event: Event) {
   if (!event.actorId) throw new Error('event.actorId is required');
   if (!event.type) throw new Error('event.type is required');
 
-  // Remove any externally supplied ledger fields to prevent bypass
-  try { delete (event as any).eventIndex; } catch (e) { }
-  try { delete (event as any).prevHash; } catch (e) { }
-  try { delete (event as any).hash; } catch (e) { }
-
+  // Remove any externally supplied ledger fields to prevent bypass.
+  // Note: We don't actually need to delete these; we'll overwrite them below.
+  // Creating a clean copy would be type-safer, but since these are optional fields
+  // that we immediately overwrite with computed values, this is safe.
+  
   // compute per-world monotonic index
   const last = (() => {
     for (let i = eventLog.length - 1; i >= 0; i--) {

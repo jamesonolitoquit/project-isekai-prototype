@@ -18,8 +18,7 @@ import {
 } from '../../engine/saveLoadEngine';
 import { 
   canonizeCharacter, 
-  calculateMythStatus,
-  createSoulEchoNpc 
+  calculateMythStatus
 } from '../../engine/legacyEngine';
 import { 
   initiateChronicleTransition, 

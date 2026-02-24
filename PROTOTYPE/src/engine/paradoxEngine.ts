@@ -51,8 +51,8 @@ export function calculateDrift(state: WorldState): number {
   }
 
   const suspicionLevel = state.player.beliefLayer.suspicionLevel || 0;
-  const temporalDebt = (state.player as any).temporalDebt || 0;
-  const soulStrain = (state.player as any).soulStrain || 0; // Phase 13: morphing strain
+  const temporalDebt = state.player.temporalDebt || 0;
+  const soulStrain = state.player.soulStrain || 0; // Phase 13: morphing strain
 
   // Weighted combination:
   // - Detection of metagaming (suspicion) weighted most (0.6)
@@ -168,8 +168,8 @@ export function detectMetagameAction(
       const npcId = action.payload?.npcId;
       const npc = state.npcs.find(n => n.id === npcId);
       // Interacting with NPC at wrong faction level
-      if (npc && (npc as any).factionId) {
-        const factionRep = state.player?.factionReputation?.[(npc as any).factionId] || 0;
+      if (npc && npc.factionId) {
+        const factionRep = state.player?.factionReputation?.[npc.factionId] || 0;
         if (factionRep < -50) {
           // Trying to interact with hostile faction NPC
           return {
@@ -662,4 +662,809 @@ export function createDebtCollectorNpc(temporalDebt: number) {
       description: `Defeat The Chronometer or pay ${temporalDebt * 10} gold to settle your debt with time itself.`
     }]
   };
+}
+
+/**
+ * Phase 17, Task 4: Temporal Anomaly Generation
+ * 
+ * When generationalParadox > 200, manifest "Historical Glitches"—
+ * NPCs from previous generations appearing as ghosts, or locations temporarily
+ * reverting to their "Epoch I" biome state.
+ */
+
+export interface TemporalAnomaly {
+  anomalyId: string;
+  anomalyType: 'npc_ghost' | 'location_glitch' | 'time_reversal' | 'paradox_storm';
+  description: string;
+  affectedEntity: string;       // NPC ID or Location ID
+  originalState: any;           // What it used to be
+  ghostState: any;              // What it appears as (ghost)
+  severity: number;             // 1-10
+  duration: number;             // Ticks the anomaly persists
+  generationalParadox: number;  // Paradox level that triggered it
+}
+
+/**
+ * Apply temporal anomalies based on paradox accumulation
+ */
+export function applyTemporalAnomalies(
+  state: WorldState,
+  generationalParadox: number = 0
+): TemporalAnomaly[] {
+  const anomalies: TemporalAnomaly[] = [];
+
+  // Threshold: > 200 generational paradox triggers anomalies
+  if (generationalParadox <= 200) {
+    return anomalies;
+  }
+
+  const anomalyStrength = Math.floor((generationalParadox - 200) / 50); // Scales with excess paradox
+  const baseProbability = Math.min(0.1 * anomalyStrength, 0.8); // 0-80% chance
+
+  // Manifest NPC ghosts from previous generations
+  if (state.npcs && Math.random() < baseProbability) {
+    const victimNpc = state.npcs[Math.floor(Math.random() * state.npcs.length)];
+    if (victimNpc && victimNpc.hp && victimNpc.hp <= 0) {
+      const anomaly: TemporalAnomaly = {
+        anomalyId: `temporal-npc-${victimNpc.id}-${Date.now()}`,
+        anomalyType: 'npc_ghost',
+        description: `${victimNpc.name} appears as a ghostly echo from a previous generation`,
+        affectedEntity: victimNpc.id,
+        originalState: { hp: 0, alive: false },
+        ghostState: {
+          hp: Math.floor(victimNpc.maxHp || 100 * 0.3), // Appear at 30% health
+          isGhost: true,
+          transparency: 0.5,
+          cannotInteract: true,
+          vanishesAt: Math.floor(Math.random() * 200) + 100 // Ticks
+        },
+        severity: Math.min(anomalyStrength, 10),
+        duration: Math.floor(Math.random() * 300) + 200,
+        generationalParadox
+      };
+
+      anomalies.push(anomaly);
+
+      // Add ghost to world temporarily
+      if (!state.npcs.find(n => n.id === victimNpc.id + '_ghost')) {
+        state.npcs.push({
+          ...victimNpc,
+          id: victimNpc.id + '_ghost',
+          name: `Ghost of ${victimNpc.name}`,
+          isGhost: true,
+          hp: anomaly.ghostState.hp,
+          _temporalAnomaly: true,
+          _anomalyDuration: anomaly.duration
+        });
+      }
+    }
+  }
+
+  // Create location biome glitches (revert to Epoch I state)
+  if (state.locations && Math.random() < baseProbability * 0.7) {
+    const glitchLocation = state.locations[Math.floor(Math.random() * state.locations.length)];
+    if (glitchLocation) {
+      const originalBiome = glitchLocation.biome || 'unknown';
+
+      const anomaly: TemporalAnomaly = {
+        anomalyId: `temporal-loc-${glitchLocation.id}-${Date.now()}`,
+        anomalyType: 'location_glitch',
+        description: `${glitchLocation.name} flickers between biomes as time becomes unstable`,
+        affectedEntity: glitchLocation.id,
+        originalState: { biome: originalBiome, discovered: glitchLocation.discovered },
+        ghostState: {
+          biome: 'corrupted', // Epoch I default or corrupted
+          flickeringBiome: true,
+          temporalDistortion: true,
+          navigationHazard: Math.random() < 0.3
+        },
+        severity: Math.min(anomalyStrength + 2, 10),
+        duration: Math.floor(Math.random() * 250) + 150,
+        generationalParadox
+      };
+
+      anomalies.push(anomaly);
+
+      // Temporarily change biome
+      glitchLocation._temporalGlitch = true;
+      glitchLocation._glitchBiome = anomaly.ghostState.biome;
+      glitchLocation._glitchDuration = anomaly.duration;
+      glitchLocation.biome = anomaly.ghostState.biome;
+    }
+  }
+
+  // Paradox storms - massive reality distortions
+  if (generationalParadox > 350 && Math.random() < (baseProbability * 0.4)) {
+    const affectedLocations = state.locations ? state.locations.length : 0;
+
+    const anomaly: TemporalAnomaly = {
+      anomalyId: `temporal-storm-${Date.now()}`,
+      anomalyType: 'paradox_storm',
+      description: 'A paradox storm sweeps across the world, corrupting time and space',
+      affectedEntity: 'world_global',
+      originalState: { factionPowers: (state.factions || []).map(f => ({ id: f.id, power: f.powerScore })) },
+      ghostState: {
+        allLocationsAffected: affectedLocations,
+        powerRandomization: true,
+        npcCollocationAnomaly: true,
+        itemDuplication: Math.random() < 0.3,
+        factionPowerFlux: Math.floor(Math.random() * 30) - 15 // ±15 power
+      },
+      severity: Math.floor(Math.min((generationalParadox - 350) / 50, 10)),
+      duration: Math.floor(Math.random() * 400) + 300,
+      generationalParadox
+    };
+
+    anomalies.push(anomaly);
+
+    // Apply faction power flux
+    if (state.factions) {
+      state.factions.forEach(faction => {
+        const flux = anomaly.ghostState.factionPowerFlux as number;
+        faction.powerScore = Math.max(1, (faction.powerScore || 50) + flux);
+      });
+    }
+  }
+
+  // Record anomalies in events
+  if (anomalies.length > 0) {
+    if (!state.metadata) state.metadata = {};
+    state.metadata._recordedTemporalAnomalies = (state.metadata._recordedTemporalAnomalies || 0) + anomalies.length;
+  }
+
+  return anomalies;
+}
+
+/**
+ * Clean up expired temporal anomalies from world state
+ */
+export function cleanExpiredAnomalies(state: WorldState, ticksElapsed: number = 1): void {
+  if (state.npcs) {
+    state.npcs = state.npcs.filter(npc => {
+      if (npc._temporalAnomaly && npc._anomalyDuration) {
+        npc._anomalyDuration -= ticksElapsed;
+        return npc._anomalyDuration > 0;
+      }
+      return true;
+    });
+  }
+
+  if (state.locations) {
+    state.locations.forEach(loc => {
+      if (loc._temporalGlitch && loc._glitchDuration) {
+        loc._glitchDuration -= ticksElapsed;
+        if ((loc._glitchDuration as number) <= 0) {
+          // Restore original biome
+          loc.biome = (loc as any)._originalBiome || 'plains';
+          loc._temporalGlitch = false;
+          loc._glitchBiome = undefined;
+          loc._glitchDuration = undefined;
+        }
+      }
+    });
+  }
+}
+/**
+ * Phase 18 Task 4: Sentinel of Time NPC - spawned when paradox > 200
+ * Offers quest to stabilize timeline by pruning corrupted branches
+ */
+export interface SentinelOfTime {
+  id: string;
+  name: string;
+  faction: 'Neutral';
+  maxHp: number;
+  hp: number;
+  stats: {
+    str: number;
+    agi: number;
+    int: number;
+    cha: number;
+    end: number;
+  };
+  knownAbilities: string[];     // TIMELINE_PRUNE, PARADOX_DRAIN
+  location: string;
+  questOffer: string;
+  isTemporalSentinel: boolean;
+  generationalParadoxTrigger: number;
+}
+
+/**
+ * Phase 18 Task 4: Create Sentinel of Time NPC template
+ */
+export function createSentinelOfTime(locationId: string, generationalParadox: number): SentinelOfTime {
+  return {
+    id: `sentinel-${locationId}-${Date.now()}`,
+    name: 'Sentinel of Time',
+    faction: 'Neutral',
+    maxHp: 150,
+    hp: 150,
+    stats: {
+      str: 12,
+      agi: 18,
+      int: 20,
+      cha: 16,
+      end: 14
+    },
+    knownAbilities: ['TIMELINE_PRUNE', 'PARADOX_DRAIN'],
+    location: locationId,
+    questOffer: 'Prune a corrupted timeline branch (select from BranchingTimeline UI)',
+    isTemporalSentinel: true,
+    generationalParadoxTrigger: generationalParadox
+  };
+}
+
+/**
+ * Phase 18 Task 4: Check if Sentinel should appear at a location
+ * Returns true if paradox > 200 and needs manifestation
+ */
+export function shouldSpawnSentinel(state: WorldState, generationalParadox: number): boolean {
+  return generationalParadox > 200 && 
+         !state.npcs?.some(n => (n as any).isTemporalSentinel === true);
+}
+
+/**
+ * Phase 18 Task 4: Manifest Sentinel of Time in world
+ * Should be called during location entry or anomaly spawning
+ */
+export function manifestSentinelOfTime(
+  state: WorldState,
+  currentLocationId: string,
+  generationalParadox: number
+): SentinelOfTime | null {
+  if (!shouldSpawnSentinel(state, generationalParadox)) {
+    return null;
+  }
+
+  const sentinel = createSentinelOfTime(currentLocationId, generationalParadox);
+
+  // Add to world NPCs
+  if (!state.npcs) {
+    state.npcs = [];
+  }
+  state.npcs.push(sentinel as any);
+
+  // Record event
+  if (!state.metadata) {
+    state.metadata = {};
+  }
+  if (state.metadata._temporalAnomalies) {
+    state.metadata._temporalAnomalies.sentinelAppearances = 
+      (state.metadata._temporalAnomalies.sentinelAppearances || 0) + 1;
+  }
+
+  return sentinel;
+}
+
+/**
+ * Phase 18 Task 4: Process timeline prune quest reward
+ * Player selects divergence node to collapse
+ */
+export interface TimelinePruneReward {
+  legacyPointsRecovered: number;      // 50-100
+  branchesCollapsed: number;  
+  generationalParadoxReduction: number;  // -20 to -40
+  description: string;
+}
+
+/**
+ * Phase 18 Task 4: Complete timeline prune quest
+ * Player collapses corrupted timeline branch
+ */
+export function completeTimelinePrune(
+  state: WorldState,
+  collapsedNodeId: string,
+  branchDepth: number = 1
+): TimelinePruneReward {
+  const legacyPointsRecovered = 50 + Math.floor(Math.random() * 50);
+  const paradoxReduction = Math.min(40, 20 + (branchDepth * 5));
+  const branchesCollapsed = 2 + branchDepth;
+
+  const reward: TimelinePruneReward = {
+    legacyPointsRecovered,
+    branchesCollapsed,
+    generationalParadoxReduction: -paradoxReduction,
+    description: `Successfully pruned ${branchesCollapsed} corrupted timeline branches, recovered ${legacyPointsRecovered} Legacy Points`
+  };
+
+  // Apply paradox reduction
+  if (state.metadata) {
+    state.metadata.generationalParadox = Math.max(
+      0,
+      (state.metadata.generationalParadox || 0) - paradoxReduction
+    );
+  }
+
+  // Mark node as collapsed
+  if (!state.metadata) {
+    state.metadata = {};
+  }
+  if (!state.metadata._prunedBranches) {
+    state.metadata._prunedBranches = [];
+  }
+  (state.metadata._prunedBranches as string[]).push(collapsedNodeId);
+
+  return reward;
+}
+
+/**
+ * Phase 18 Task 4: Get Sentinel encounter text
+ */
+export function getSentinelEncounterText(generationalParadox: number): string {
+  const severity = generationalParadox > 350 ? 'critical' : 'severe';
+  return `A shimmering figure materializes before you... "The timeline is fracturing. I am the Sentinel of Time. ${severity === 'critical' ? 'Reality itself trembles.' : 'The damage is still contained.'} Will you help me prune the corrupted branches?"`;
+}
+
+/**
+ * ============================================================================
+ * PHASE 27 TASK 1: The Paradox Engine - Age Rot Manifestation
+ * ============================================================================
+ * Focus: Invariant violations → Paradox Points → Age Rot Anomalies
+ */
+
+/**
+ * Phase 27 Task 1: Age Rot Anomaly Types
+ */
+export enum Phase27AgeRotAnomalyType {
+  INVERTED_HEALING = 'INVERTED_HEALING',
+  IDENTITY_SWAP = 'IDENTITY_SWAP',
+  TIME_LOOP = 'TIME_LOOP',
+  STAT_INVERSION = 'STAT_INVERSION',
+  PROPHECY_BREAK = 'PROPHECY_BREAK',
+  LOOT_DUPLICATION = 'LOOT_DUPLICATION',
+  NPC_MULTIPLICATION = 'NPC_MULTIPLICATION'
+}
+
+/**
+ * Phase 27 Task 1: Harvested paradox points from specific violations
+ */
+export interface ParadoxHarvestResult {
+  pointsAdded: number;
+  sources: Array<{ reason: string; points: number }>;
+  totalPoints: number;
+}
+
+/**
+ * Phase 27 Task 1: Check for duplicated unique items in player inventory
+ * Returns paradox points if violations found
+ */
+function checkForDuplicatedItems(player: any): { points: number; violations: string[] } {
+  const violations: string[] = [];
+  let points = 0;
+
+  if (!player.inventory) return { points, violations };
+
+  const seenInstanceIds = new Map<string, number>();
+
+  player.inventory.forEach((item: any) => {
+    // Only check unique items (have instanceId)
+    if (item.unique && item.instanceId) {
+      const count = (seenInstanceIds.get(item.instanceId) ?? 0) + 1;
+      seenInstanceIds.set(item.instanceId, count);
+
+      if (count > 1) {
+        violations.push(`Duplicate unique item: ${item.name} (instance ${item.instanceId})`);
+        points += 50; // Major violation: +50 per duplicate
+      }
+    }
+  });
+
+  return { points, violations };
+}
+
+/**
+ * Phase 27 Task 1: Check for quest state conflicts
+ * Returns paradox points if violations found
+ */
+function checkForQuestConflicts(player: any): { points: number; violations: string[] } {
+  const violations: string[] = [];
+  let points = 0;
+
+  if (!player.quests) return { points, violations };
+
+  Object.entries(player.quests).forEach(([questId, questState]: [string, any]) => {
+    // Conflict: Quest marked both in_progress and completed
+    if (questState.status === 'in_progress' && questState.completedAt) {
+      violations.push(`Quest conflict: ${questId} marked both in_progress and completed`);
+      points += 20; // Moderate violation: +20
+    }
+
+    // Conflict: Quest has contradictory objectives
+    if (questState.objectives && Array.isArray(questState.objectives)) {
+      const completed = questState.objectives.filter((obj: any) => obj.completed).length;
+      if (completed === questState.objectives.length && questState.status !== 'completed') {
+        violations.push(`Quest conflict: ${questId} all objectives done but not marked complete`);
+        points += 15;
+      }
+    }
+  });
+
+  return { points, violations };
+}
+
+/**
+ * Phase 27 Task 1: Check for NPC timeline violations
+ * Detects if an NPC was in two locations simultaneously
+ */
+function checkForTimelineViolations(state: WorldState): { points: number; violations: string[] } {
+  const violations: string[] = [];
+  let points = 0;
+
+  if (!state.npcs) return { points, violations };
+
+  // Build NPC location history from recent events
+  const recentEvents = (state as any)._recentEvents ?? [];
+  const npcLocationUpdates = new Map<string, Array<{ tick: number; locationId: string }>>();
+
+  recentEvents.forEach((evt: any) => {
+    if (evt.type === 'NPC_LOCATION_CHANGED') {
+      const npcId = evt.payload?.npcId;
+      if (npcId) {
+        if (!npcLocationUpdates.has(npcId)) {
+          npcLocationUpdates.set(npcId, []);
+        }
+        npcLocationUpdates.get(npcId)?.push({
+          tick: evt.payload?.tick ?? 0,
+          locationId: evt.payload?.to ?? ''
+        });
+      }
+    }
+  });
+
+  // Check for overlapping location updates at same tick
+  npcLocationUpdates.forEach((updates, npcId) => {
+    const tickToLocations = new Map<number, string[]>();
+    updates.forEach(update => {
+      if (!tickToLocations.has(update.tick)) {
+        tickToLocations.set(update.tick, []);
+      }
+      tickToLocations.get(update.tick)?.push(update.locationId);
+    });
+
+    tickToLocations.forEach((locations, tick) => {
+      if (locations.length > 1 && new Set(locations).size > 1) {
+        violations.push(`NPC ${npcId} reported at multiple locations in same tick`);
+        points += 30; // Severe violation: +30
+      }
+    });
+  });
+
+  return { points, violations };
+}
+
+/**
+ * Phase 27 Task 1: Harvest paradox points from invariant violations
+ * Call every 100 ticks from advanceTick()
+ */
+export function harvestPhase27ParadoxPoints(
+  state: WorldState
+): ParadoxHarvestResult {
+  const sources: Array<{ reason: string; points: number }> = [];
+  let pointsAdded = 0;
+
+  // Check 1: Duplicated unique items
+  const duplicationCheck = checkForDuplicatedItems(state.player ?? {});
+  if (duplicationCheck.points > 0) {
+    sources.push({
+      reason: `Item duplication: ${duplicationCheck.violations.join('; ')}`,
+      points: duplicationCheck.points
+    });
+    pointsAdded += duplicationCheck.points;
+  }
+
+  // Check 2: Quest state conflicts
+  const questCheck = checkForQuestConflicts(state.player ?? {});
+  if (questCheck.points > 0) {
+    sources.push({
+      reason: `Quest conflict: ${questCheck.violations.join('; ')}`,
+      points: questCheck.points
+    });
+    pointsAdded += questCheck.points;
+  }
+
+  // Check 3: Timeline violations
+  const timelineCheck = checkForTimelineViolations(state);
+  if (timelineCheck.points > 0) {
+    sources.push({
+      reason: `Timeline violation: ${timelineCheck.violations.join('; ')}`,
+      points: timelineCheck.points
+    });
+    pointsAdded += timelineCheck.points;
+  }
+
+  // Initialize paradoxState if not present
+  if (!state.paradoxState) {
+    state.paradoxState = {
+      totalParadoxPoints: 0,
+      activeAnomalies: new Map(),
+      lastManifestationTick: -1000,
+      manifestationThreshold: 100,
+      paradoxHistory: []
+    };
+  }
+
+  // Update paradox state
+  state.paradoxState.totalParadoxPoints += pointsAdded;
+  state.paradoxState.paradoxHistory.push({
+    tick: state.tick ?? 0,
+    points: state.paradoxState.totalParadoxPoints,
+    reason: sources.map(s => s.reason).join(' | ') || 'No violations'
+  });
+
+  return {
+    pointsAdded,
+    sources,
+    totalPoints: state.paradoxState.totalParadoxPoints
+  };
+}
+
+/**
+ * Phase 27 Task 1: Determine if we should manifest an anomaly
+ * Thresholds: 100, 200, 300...
+ */
+export function shouldManifestPhase27Anomaly(state: WorldState): boolean {
+  if (!state.paradoxState) return false;
+  if (state.paradoxState.totalParadoxPoints < 100) return false;
+
+  // Check if we've crossed a new 100-point threshold
+  const currentThreshold = Math.floor(state.paradoxState.totalParadoxPoints / 100) * 100;
+  const manifestationThreshold = state.paradoxState.manifestationThreshold;
+
+  return currentThreshold > manifestationThreshold;
+}
+
+/**
+ * Phase 27 Task 1: Select a random anomaly type
+ */
+function selectPhase27AnomalyType(): Phase27AgeRotAnomalyType {
+  const types = Object.values(Phase27AgeRotAnomalyType);
+  return types[Math.floor(random() * types.length)];
+}
+
+/**
+ * Phase 27 Task 1: Generate anomaly narrative based on type
+ */
+function generatePhase27AnomalyNarrative(type: Phase27AgeRotAnomalyType): string {
+  switch (type) {
+    case Phase27AgeRotAnomalyType.INVERTED_HEALING:
+      return 'Healing energies twist inward. Mending becomes wounding.';
+    case Phase27AgeRotAnomalyType.IDENTITY_SWAP:
+      return 'Souls become untethered. Identities shift like sand.';
+    case Phase27AgeRotAnomalyType.TIME_LOOP:
+      return 'Time spirals. The last hour repeats endlessly.';
+    case Phase27AgeRotAnomalyType.STAT_INVERSION:
+      return 'Causality inverts. All damage rebounds upon the caster.';
+    case Phase27AgeRotAnomalyType.PROPHECY_BREAK:
+      return 'Fate fractures. Contradictions become manifest.';
+    case Phase27AgeRotAnomalyType.LOOT_DUPLICATION:
+      return 'Greed manifests. Dropped items stack infinitely.';
+    case Phase27AgeRotAnomalyType.NPC_MULTIPLICATION:
+      return 'Identities multiply. Each NPC spawns duplicates hourly.';
+    default:
+      return 'Reality wavers at the edges.';
+  }
+}
+
+/**
+ * Phase 27 Task 1: Trigger Age Rot Anomaly when paradox points reach threshold
+ */
+export interface Phase27AgeRotAnomaly {
+  id: string;
+  type: Phase27AgeRotAnomalyType;
+  locationId: string;
+  severity: number;
+  createdAtTick: number;
+  expiresAtTick: number;
+  narrative: string;
+  affectedNpcIds: string[];
+  playerWarningsIssued: boolean;
+}
+
+export function triggerPhase27AgeRotAnomaly(
+  state: WorldState
+): Phase27AgeRotAnomaly | null {
+  if (!state.paradoxState) return null;
+  if (!state.locations || state.locations.length === 0) return null;
+
+  // Select random location
+  const corruptedLocation = state.locations[Math.floor(random() * state.locations.length)];
+  if (!corruptedLocation) return null;
+
+  // Select anomaly type
+  const anomalyType = selectPhase27AnomalyType();
+
+  // Calculate severity (0-100)
+  const severity = Math.min(100, Math.floor((state.paradoxState.totalParadoxPoints / 100) * 30) + 20);
+
+  // Create anomaly object
+  const anomaly: Phase27AgeRotAnomaly = {
+    id: `phase27_anomaly_${corruptedLocation.id}_${state.tick ?? 0}_${Math.floor(random() * 0xffffff).toString(16)}`,
+    type: anomalyType,
+    locationId: corruptedLocation.id,
+    severity,
+    createdAtTick: state.tick ?? 0,
+    expiresAtTick: (state.tick ?? 0) + 1000, // ~15-20 minutes game time
+    narrative: generatePhase27AnomalyNarrative(anomalyType),
+    affectedNpcIds: (state.npcs ?? [])
+      .filter(n => n.locationId === corruptedLocation.id)
+      .map(n => n.id),
+    playerWarningsIssued: false
+  };
+
+  // Add paradox scar to location
+  if (!corruptedLocation.activeScars) {
+    corruptedLocation.activeScars = [];
+  }
+  corruptedLocation.activeScars.push(anomaly.id);
+
+  // Update paradox state
+  state.paradoxState.activeAnomalies.set(anomaly.id, anomaly as any);
+  state.paradoxState.lastManifestationTick = state.tick ?? 0;
+  state.paradoxState.manifestationThreshold = Math.floor((state.paradoxState.totalParadoxPoints / 100) + 1) * 100;
+
+  return anomaly;
+}
+
+/**
+ * Phase 27 Task 1: Get active anomaly at a specific location
+ */
+export function getPhase27AnomalyAtLocation(
+  state: WorldState,
+  locationId: string
+): Phase27AgeRotAnomaly | undefined {
+  if (!state.paradoxState) return undefined;
+
+  for (const anomaly of state.paradoxState.activeAnomalies.values()) {
+    if ((anomaly as any).locationId === locationId) {
+      return anomaly as Phase27AgeRotAnomaly;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Phase 27 Task 1: Check if player is in an anomaly zone
+ */
+export function isPlayerInPhase27AnomalyZone(state: WorldState): Phase27AgeRotAnomaly | undefined {
+  const playerLocationId = state.player?.location;
+  if (!playerLocationId) return undefined;
+
+  return getPhase27AnomalyAtLocation(state, playerLocationId);
+}
+
+/**
+ * Phase 27 Task 1: Get summary of all active paradoxes
+ */
+export function getPhase27ParadoxSummary(state: WorldState): {
+  totalPoints: number;
+  activeAnomalies: number;
+  locations: string[];
+  severity: number;
+} {
+  if (!state.paradoxState) {
+    return { totalPoints: 0, activeAnomalies: 0, locations: [], severity: 0 };
+  }
+
+  const locations = Array.from(state.paradoxState.activeAnomalies.values()).map((a: any) => a.locationId);
+  const severity =
+    Array.from(state.paradoxState.activeAnomalies.values()).reduce((sum, a: any) => sum + a.severity, 0) /
+      Math.max(1, state.paradoxState.activeAnomalies.size) || 0;
+
+  return {
+    totalPoints: state.paradoxState.totalParadoxPoints,
+    activeAnomalies: state.paradoxState.activeAnomalies.size,
+    locations: [...new Set(locations)],
+    severity: Math.floor(severity)
+  };
+}
+
+/**
+ * Phase 29 Task 2: Reduce paradox points (Time Repair mechanics)
+ * Called when "Time Repair" quests are completed successfully
+ */
+export function reduceParadoxPoints(
+  state: WorldState,
+  amount: number,
+  reason: string
+): {
+  pointsReduced: number;
+  newTotal: number;
+  anomaliesDecayed: number;
+  description: string;
+} {
+  if (!state.paradoxState) {
+    state.paradoxState = {
+      totalParadoxPoints: 0,
+      activeAnomalies: new Map(),
+      lastManifestationTick: -1000,
+      manifestationThreshold: 100,
+      paradoxHistory: []
+    };
+  }
+
+  const oldTotal = state.paradoxState.totalParadoxPoints;
+  const reduction = Math.min(amount, oldTotal); // Can't reduce below 0
+  state.paradoxState.totalParadoxPoints = Math.max(0, oldTotal - reduction);
+
+  // Record in paradox history
+  state.paradoxState.paradoxHistory.push({
+    tick: state.tick ?? 0,
+    points: state.paradoxState.totalParadoxPoints,
+    reason: `Time Repair: ${reason} (-${reduction} points)`
+  });
+
+  // When paradox points reduced significantly, potentially decay anomalies
+  const anomaliesDecayed = decayMinorAnomalies(state);
+
+  return {
+    pointsReduced: reduction,
+    newTotal: state.paradoxState.totalParadoxPoints,
+    anomaliesDecayed,
+    description: `Paradox reduced by ${reduction} (${oldTotal} → ${state.paradoxState.totalParadoxPoints}). ${anomaliesDecayed} anomalies decayed.`
+  };
+}
+
+/**
+ * Phase 29 Task 2: Decay minor anomalies over time
+ * If paradoxLevel < 25 for extended period (500+ ticks tracking), minor anomalies fade
+ */
+export function decayMinorAnomalies(state: WorldState): number {
+  if (!state.paradoxState || !state.paradoxState.activeAnomalies || state.paradoxState.activeAnomalies.size === 0) {
+    return 0;
+  }
+
+  const currentTick = state.tick ?? 0;
+  const currentParadoxLevel = calculateDrift(state);
+  let anomaliesDecayed = 0;
+
+  // Only decay if paradox is low enough
+  if (currentParadoxLevel > 25) {
+    return 0; // No decay if paradox is still significant
+  }
+
+  // Track how long paradox has been low (in state.paradoxState metadata)
+  if (!state.paradoxState.lowParadoxStartTick) {
+    state.paradoxState.lowParadoxStartTick = currentTick;
+    return 0; // Just started tracking low paradox, don't decay yet
+  }
+
+  const ticksAtLowParadox = currentTick - (state.paradoxState.lowParadoxStartTick ?? 0);
+
+  // After 500 ticks of low paradox, start decaying minor anomalies
+  if (ticksAtLowParadox < 500) {
+    return 0;
+  }
+
+  // Calculate decay: 5% chance per tick after 500-tick threshold for minor anomalies (severity < 50)
+  const decayChance = 0.05; // 5% per tick
+  const anomaliesArray = Array.from(state.paradoxState.activeAnomalies.entries());
+
+  for (const [anomalyId, anomaly] of anomaliesArray) {
+    const anom = anomaly as any;
+    
+    // Only decay minor anomalies (severity < 50)
+    if (anom.severity && anom.severity < 50) {
+      if (Math.random() < decayChance) {
+        // Remove this minor anomaly
+        state.paradoxState.activeAnomalies.delete(anomalyId);
+        anomaliesDecayed++;
+      }
+    }
+  }
+
+  return anomaliesDecayed;
+}
+
+/**
+ * Phase 29 Task 2: Reset low paradox tracking when paradox becomes high again
+ */
+export function resetLowParadoxTracking(state: WorldState): void {
+  if (!state.paradoxState) return;
+
+  const currentParadoxLevel = calculateDrift(state);
+  
+  // If paradox has increased above 25, reset the low paradox tracking
+  if (currentParadoxLevel > 25) {
+    state.paradoxState.lowParadoxStartTick = undefined;
+  }
 }

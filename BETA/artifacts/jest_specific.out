@@ -1,0 +1,43 @@
+﻿node : ts-jest[ts-jest-transformer] (WARN) Define `ts-jest` config 
+under `globals` is deprecated. Please do
+At line:1 char:40
++ ... PROTOTYPE'; node ./node_modules/jest/bin/jest.js 
+--runTestsByPath 'C: ...
++                 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ts-jest[ts-jest...ated. P 
+   lease do:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+transform: {
+    <transform_regex>: ['ts-jest', { /* ts-jest config goes here in 
+Jest */ }],
+},
+See more at https://kulshekhar.github.io/ts-jest/docs/getting-started/p
+resets#advanced
+FAIL src/__tests__/mutationLog.invariants.test.ts
+  ΓùÅ Test suite failed to run
+
+    Cannot find module '../../events/mutationLog' from 
+'src/__tests__/mutationLog.invariants.test.ts'
+
+    [0m [90m 1 |[39m [36mimport[39m crypto [36mfrom[39m 
+[32m'crypto'[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m {
+     [90m   |[39m [31m[1m^[22m[39m
+     [90m 3 |[39m   appendEvent[33m,[39m
+     [90m 4 |[39m   canonicalize[33m,[39m
+     [90m 5 |[39m   clearEventLog[33m,[39m[0m
+
+      at Resolver._throwModNotFoundError 
+(node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> 
+(src/__tests__/mutationLog.invariants.test.ts:2:1)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        0.617 s
+Ran all test suites within paths "C:\Users\Jaoce\OneDrive\Documents\Git
+Hub\project-isekai-v2\PROTOTYPE\src\__tests__\mutationLog.invariants.te
+st.ts".

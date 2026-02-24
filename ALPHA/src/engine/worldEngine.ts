@@ -9,6 +9,7 @@ import { createSave, loadSave, verifySaveIntegrity } from "./saveLoadEngine";
 import { resolveNpcLocation, updateNpcLocations, applyLocationUpdates } from "./scheduleEngine";
 import { resolveWeather, getWeatherVisuals } from "./weatherEngine";
 import { resolveNpcTurns } from './aiTacticEngine';
+import { applyStrategyModifierToNpc } from './factionCommandEngine';
 import { checkLocationHazards, applyHazardDamage, applyHazardStatus } from "./hazardEngine";
 import { resolveSeason } from './seasonEngine';
 import { Faction, FactionRelationship, FactionConflict, initializeFactions, initializeFactionRelationships, resolveFactionTurns } from './factionEngine';
@@ -16,6 +17,12 @@ import { processDailyInfluenceDiffusion } from './influenceDiffusionEngine';
 import { Relic, RunicSlot, shouldRelicRebel, applyRelicRebellion, generateRelicDialogue } from './artifactEngine';
 import { initializeDirectorState, evaluateDirectorIntervention, type DirectorState } from './aiDmEngine';
 import { initializeAudioState, calculateRequiredAudio, applyAudioParameterMutation, type AudioState } from './audioEngine';
+import { Investigation, getInvestigationPipeline } from './investigationPipelineEngine';
+import { getGoalOrientedPlanner, type NpcGoal, type ActionPlan } from './goalOrientedPlannerEngine';
+import { getLegacyEngine, type SoulEcho } from './legacyEngine';
+import { type WorldScar } from './worldScarsEngine';
+import { resolveLocationSkirmishes } from './factionSkirmishEngine';
+import { processMacroEvents, applyMacroEventEffectsToNpc } from './macroEventsEngine';
 import templateJson from '../data/luxfier-world.json';
 import schemaJson from '../data/luxfier-world.schema.json';
 
@@ -81,6 +88,7 @@ export type Location = {
   discovered?: boolean;  // Fog of war tracking
   spiritDensity?: number;  // Lore: magical saturation (0-1)
   subAreas?: SubArea[];  // ALPHA_M9 Phase 3: Hidden nested locations
+  activeScars?: Array<{ description: string }>;  // M59-A1: World scars (narrative markers) visible at this location
 };
 
 // ALPHA_M9 Phase 3: Spatial Director System - Coordinate-based NPC orchestration zones
@@ -96,17 +104,81 @@ export type DirectorZone = {
   activeUntilTick?: number; // When this zone expires
 };
 
+/**
+ * M57-A1: PlayerAnalytics interface for tracking player playstyle and behavior
+ * Used by aiDmEngine for director interventions based on player patterns
+ */
+export interface PlayerAnalytics {
+  engagementScore?: number;    // Overall engagement metric
+  context?: string;            // Location or activity context
+  timestamp?: number;          // When this event was recorded
+  won?: boolean;               // Combat outcome
+  succeeded?: boolean;         // Action success
+  sessionStartTick?: number;
+  totalActionsPerformed?: number;
+  combatEngagements?: number;
+  dialogueInteractions?: number;
+  resourceGathering?: number;
+}
+
+/**
+ * M57-A1: PlaystyleVector represents player's archetype preferences
+ * Used to personalize director interventions and NPC encounters based on playstyle
+ */
+export interface PlaystyleVector {
+  combatant: number;           // 0-1: Preference for combat encounters
+  diplomat: number;            // 0-1: Preference for social interactions
+  explorer: number;            // 0-1: Preference for exploration & discovery
+  dominant?: string;           // Primary archetype: 'combatant' | 'diplomat' | 'explorer' | 'hybrid'
+}
+
+/**
+ * M57-A1: FactionConflict represents tension between factions
+ * Used by aiDmEngine for narrative tension calculations
+ */
+export interface FactionConflict {
+  id: string;
+  factionIds: string[];
+  type: 'military' | 'economic' | 'religious' | 'infiltration' | 'diplomatic';
+  active: boolean;
+  intensity?: number;
+}
+
+/**
+ * M57-A1: TemporalDebt represents player's violation of narrative causality
+ * Tracked by Ground Truth violation enforcement
+ */
+export interface TemporalDebt {
+  totalViolations: number;
+  unmetConsequences: number;  // Actions requiring narrative resolution
+  lastViolationTick: number;
+  pendingResolutions: Array<{
+    violationType: string;
+    severity: number;          // 1-5: Impact severity
+    triggeredAtTick: number;
+    resolvedAtTick?: number;
+  }>;
+}
+
 export type PersonalityType = 'aggressive' | 'cautious' | 'tactical' | 'healer' | 'balanced';
 export type NpcPersonality = {
-  type: PersonalityType;
-  attackThreshold: number;
-  defendThreshold: number;
-  riskTolerance: number;
+  type?: PersonalityType;
+  attackThreshold?: number;
+  defendThreshold?: number;
+  riskTolerance?: number;
+  // M49-A3: 6-dimension GOAP trait model
+  boldness?: number;        // 0-100: willingness to take risks
+  caution?: number;         // 0-100: tendency to avoid danger
+  sociability?: number;     // 0-100: preference for interaction
+  ambition?: number;        // 0-100: drive for power/status
+  curiosity?: number;       // 0-100: desire to explore/learn
+  honesty?: number;         // 0-100: adherence to truth/ethics
 };
 export type NPC = { 
   id: string; 
   name: string; 
   locationId: string; 
+  type?: 'NORMAL' | 'SOUL_ECHO'; // M53-D1: Ancestral Soul Echo NPCs
   questId?: string; 
   dialogue?: any[]; 
   availability?: { startHour?: number; endHour?: number }; 
@@ -117,6 +189,15 @@ export type NPC = {
   reputationRequired?: Record<string, number>; 
   statusEffects?: string[]; 
   personality?: NpcPersonality;
+  soulEchoData?: { // M53-D1: Data for Soul Echo NPCs
+    linkedLegacyId?: string;
+    inheritableMerit?: number;
+    ancestralAdvice?: string;
+    echoType?: 'faint' | 'clear' | 'resonant' | 'overwhelming';
+  };
+  // M49-A3: Autonomous planning fields
+  currentActionPlan?: any;
+  goals?: any[];
   factionId?: string; // Phase 11: NPC faction affiliation
   factionRole?: string; // e.g., 'leader', 'soldier', 'informant'
   // M19: Emotional state tracking
@@ -133,9 +214,25 @@ export type NPC = {
       reason: string;
     }>;
   };
+  // M55-B1: Rumor tracking for NPC gossip hubs
+  rumors?: Array<{
+    id: string;
+    content: string; // e.g., "Great Library discovered in mountains"
+    sourceNpcId?: string;
+    acquiredTick: number;
+    reliability: number; // 0-100: confidence in rumor accuracy
+    type: 'location' | 'deed' | 'scar' | 'faction' | 'generic';
+  }>;
+  // M55-B1: Track co-location ticks for gossip trigger
+  coLocationTicks?: Record<string, number>; // npcId -> ticks spent together
+  // M55-C1: NPC inventory for trade & harvesting
+  inventory?: InventoryItem[];
   importance?: 'critical' | 'major' | 'minor'; // M19: Quest criticality for attrition
   isDisplaced?: boolean; // M19: Temporarily vanished during conflict
   defectedFactionId?: string; // M19: faction switched to during warfare
+  lastEmotionalDecay?: number; // M59-A1: Tick when emotional state last decayed (for pacing emotional shifts)
+  // Phase 8: Soul strain tracking for NPC transformation/morphing
+  soulStrain?: number;  // Soul strain from morphing/transformations (0-100)
 };
 export type CombatState = {
   active: boolean;
@@ -163,6 +260,9 @@ export type Quest = {
   expiresInHours?: number;
   currentObjectiveIndex?: number;
   gatedReward?: { location?: string; access?: boolean };
+  // Phase 8: NPC giver and quest status tracking
+  giverNpcId?: string;  // NPC ID of quest giver
+  status?: 'active' | 'completed' | 'abandoned' | 'available';  // Quest status
 };
 
 export type ResourceNode = {
@@ -193,6 +293,18 @@ export type WorldEvent = {
 };
 
 export type PlayerQuestState = { status: "not_started" | "in_progress" | "completed" | "failed"; startedAt?: number; completedAt?: number; expiresAt?: number; currentObjectiveIndex?: number };
+
+/**
+ * M47-E1: Dialogue Entry Interface
+ * Represents a single dialogue exchange between player and NPC
+ * Extracted from PlayerState.dialogueHistory for type safety
+ */
+export type DialogueEntry = {
+  npcId: string;
+  text: string;
+  timestamp: number;
+  options?: { id: string; text: string }[];
+};
 
 // Phase 14.5: Discriminated union for inventory items
 export type StackableItem = {
@@ -285,6 +397,27 @@ export type PlayerState = {
   unlockedAbilities?: string[]; // IDs of unlocked abilities (from skillEngine)
   equippedAbilities?: string[]; // Currently active abilities (max 6)
   abilityCooldowns?: Record<string, number>; // Remaining ticks on ability cooldowns
+  // M49-A4: Soul Resonance State
+  activeResonanceEchoId?: string; // ID of the currently active "Echo" apparition
+  activeResonanceAdvice?: string; // Current content of the apparition's advice
+  lastSoulResonanceTick?: number; // Last time a resonance event occurred
+  soulResonanceLevel?: number; // 0-100: current alignment with ancestral spirits
+  // M51-A1: Merit System (Player Interactivity)
+  merit?: number; // 0+: Meta-currency earned through deeds for faction commands
+  factionCommands?: Record<string, { strategy: 'CONQUEST' | 'ESPIONAGE' | 'ISOLATIONISM'; appliedAt: number }>; // factionId -> active strategy
+  // M55-A1: AI Analytics & Playstyle (M57-A1: Strict typing)
+  analytics?: PlayerAnalytics[];   // M57-A1: Renamed from Analytics
+  playstyleVector?: PlaystyleVector;
+  inactionCounter?: number;        // M57-A1: Ticks of continuous no-op activity for pacing detection
+  lastEmotionalDecay?: number; // Tick of last emotional decay update
+  recentCombatOutcomes?: Array<{ won: boolean; timestamp?: number }>;
+  recentDialogueOutcomes?: Array<{ succeeded: boolean; timestamp?: number }>;
+  locationsDiscoveredRecently?: string[];
+  bloodlineData?: { canonicalName: string; inheritedPerks: string[]; mythStatus: number; epochsLived: number; deeds: string[] };
+  // M55-A: Player position for Director logic
+  x?: number;
+  y?: number;
+  name?: string;
 };
 
 export type WorldState = {
@@ -330,10 +463,43 @@ export type WorldState = {
   rules?: any[]; // Template support: world rules/game rules
   events?: any[]; // Template support: predefined world events
   lore?: string; // Template support: world lore/background
+  // M47-A1: Belief Registry - Tracks rumors, facts, and confidence scores
+  beliefRegistry?: Record<string, { fact: string; confidence: number; source: string; isRumor: boolean }>;
+  // M47-A1: Unlocked Soul Echoes - Tracks discovered legacy entries with rarity/power
+  unlockedSoulEchoes?: SoulEcho[];
+  // M48-A4: Macro Events - World-scale events with faction impact
+  macroEvents?: Array<{ id: string; priority?: number; locationId?: string; [key: string]: any }>;
+  // M48-A4: Director State - Track director intervention system
+  directorState?: DirectorState;
+  // M48-A4: Epoch Transition Tracking
+  lastEpochTransitionTick?: number;
+  // M48-A4: Epoch ID - Track current epoch identifier
+  epochId?: string;
+  // M48-A4: Chronicle ID - Track current chronicle sequence
+  chronicleId?: string;
+  // M48-A4: Epoch metadata - Track epoch progression and narrative context
+  epochMetadata?: {
+    chronologyYear: number; // In-world year for the epoch
+    theme: string; // Narrative focus (e.g., "Fracture", "Restoration", "Waning Light")
+    description?: string; // OOC epoch context
+    sequenceNumber: number; // 1 for Epoch I, 2 for Epoch II, etc.
+  };
+  // Phase 8: Hazards tracking in world state
+  hazards?: any[];  // Environmental hazards affecting the world
+  // M48-A4: Heirloom Caches - Track legacy heirloom placements
+  heirloomCaches?: any[];
+  // M48-A4: Paradox Debt - Track accumulated paradox cost
+  paradoxDebt?: number;
+  // M49-A2: Active Investigations - Track ongoing rumor investigations
+  investigations?: Investigation[];
   audio: AudioState; // ALPHA_M8 Phase 1: Deterministic audio state tracking
   player: PlayerState;
   needsCharacterCreation?: boolean;
   metadata?: any;
+  // M51-D1: World Scarring - Persistent environmental markers from macro events
+  worldScars?: WorldScar[];
+  // M55-A1: Global Dialogue Cache - Prevents duplicate LLM API hits
+  dialogueCache?: Record<string, { response: string; timestamp: number }>;
 };
 
 type Subscriber = (s: WorldState) => void;
@@ -504,6 +670,9 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
       boundRelicId: undefined, // Phase 15: Not bound to any relic
       infusionHistory: [], // Phase 15: No infusions yet
       itemCorruption: {}, // Phase 15: No item corruption yet
+      // M51-A1: Merit & Faction Command System
+      merit: 0, // Start with 0 merit
+      factionCommands: {}, // No active faction commands initially
     },
     needsCharacterCreation: true,
     time: { tick: 0, baseHour: 8, baseDay: 1, hour: 8, day: 1, season: baseSeason as WorldState['season'] },
@@ -554,7 +723,12 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     })(),
     relics: {}, // Phase 15: Empty initially; relics are added to inventory or equipped
     relicEvents: [], // Phase 15: Track all relic-related events
+    beliefRegistry: {}, // M47-A1: Initialize empty belief registry (populated by beliefEngine)
+    unlockedSoulEchoes: [], // M47-A1: Initialize empty soul echoes (populated by legacyEngine)
+    investigations: [], // M49-A2: Initialize empty investigations array
     audio: initializeAudioState(), // ALPHA_M8 Phase 1: Initialize audio state for deterministic audio engine
+    // M51-D1: Initialize world scars array
+    worldScars: [],
     lastFactionTick: 0,
     metadata,
   };
@@ -614,6 +788,37 @@ export function reinitializeWorldFromTemplate(
       ];
 
   const newNpcs = template.npcs ? structuredCloneSafe(template.npcs) : [];
+  
+  // M55-C1: Initialize NPC inventories from biome-specific resources
+  const biomeResources: Record<string, { name: string; quantity: number }[]> = {
+    'Corrupted': [{ name: 'Cursed Locus', quantity: 2 }],
+    'Caves': [{ name: 'Blessed Crystal', quantity: 3 }],
+    'Forest': [{ name: 'Moonleaf', quantity: 4 }],
+    'Plains': [{ name: 'Golden Wheat', quantity: 5 }],
+    'Mountains': [{ name: 'Iron Ore', quantity: 3 }],
+    'Swamp': [{ name: 'Marsh Herb', quantity: 2 }]
+  };
+  
+  newNpcs.forEach((npc: NPC) => {
+    if (!npc.inventory) {
+      npc.inventory = [];
+    }
+    // Determine biome from location or assign random resources
+    const locationBiome = template.locations?.find((l: any) => l.id === npc.locationId)?.biome || 'Forest';
+    const resources = biomeResources[locationBiome] || biomeResources['Forest'];
+    
+    // Add 1-2 starter items to NPC inventory
+    resources.forEach((resource) => {
+      npc.inventory!.push({
+        id: `${npc.id}_${resource.name.replace(/\s/g, '_')}`,
+        name: resource.name,
+        quantity: resource.quantity,
+        type: 'stackable' as const,
+        rarity: 'common'
+      } as any);
+    });
+  });
+  
   const newQuests = template.quests ? structuredCloneSafe(template.quests) : [];
   const newFactions = template.factions
     ? structuredCloneSafe(template.factions)
@@ -740,6 +945,12 @@ export function createWorldController(initial?: WorldState, dev = false) {
   // Initialize Director AI state
   let directorState: DirectorState = initializeDirectorState();
   
+  // Initialize Legacy Engine from template if provided
+  const legacyEngine = getLegacyEngine(state.seed);
+  if (state.metadata?.templateOrigin && templateJson) {
+     legacyEngine.initFromTemplate(templateJson as any);
+  }
+
   // Initialize Audio Engine state
   let audioState: AudioState = initializeAudioState();
   if (!state.audio) {
@@ -793,9 +1004,62 @@ export function createWorldController(initial?: WorldState, dev = false) {
     // ALPHA_M15 Step 2: Store old NPC locations before updating (for transit events)
     const npcLocationMapBefore = new Map(state.npcs.map(npc => [npc.id, npc.locationId]));
     
+    // M50-A4: Process macro events (world-scale modifiers)
+    const { activeEvents: activeMacroEvents, effects: macroEffects, newEvents: macroEventTicks, createdScars: scarsDuringMacroEvents } = processMacroEvents(state);
+    const npcsWithMacroEffects = state.npcs.map(npc => applyMacroEventEffectsToNpc(npc, macroEffects));
+    // M51-D1: Accumulate world scars in state
+    const accumulatedScars = [...(state.worldScars || []), ...(scarsDuringMacroEvents || [])];
+    state = { ...state, npcs: npcsWithMacroEffects, worldScars: accumulatedScars };
+    
+    // M49-A3: Process autonomous NPCs (GOAP planning)
+    // M51-A1: Apply faction strategy modifiers before GOAP planning
+    let stateWithModifiers = state;
+    if (state.factions && state.factions.length > 0) {
+      const npcsWithStrategyModifiers = state.npcs.map(npc => {
+        const npcFaction = state.factions?.find(f => f.id === npc.factionId);
+        if (npcFaction && npcFaction.playerStrategy) {
+          return applyStrategyModifierToNpc(npc, npcFaction);
+        }
+        return npc;
+      });
+      stateWithModifiers = { ...state, npcs: npcsWithStrategyModifiers };
+    }
+    let stateAfterAutonomy = processAutonomousNpcs(stateWithModifiers);
+    
+    // M49-A4: Process Soul Resonance (Ancestral Echoes)
+    let stateAfterResonance = processSoulResonance(stateAfterAutonomy);
+    state = stateAfterResonance;
+    
     // Update NPC locations via scheduleEngine
     const npcLocationUpdates = updateNpcLocations(state.npcs, nextHour);
     const updatedNpcs = applyLocationUpdates(state.npcs, npcLocationUpdates);
+
+    // M55-B1: Update NPC social relationships (co-location tracking)
+    // This increments coLocationTicks for NPCs at the same location
+    const { npcSocialEngine } = require('./npcSocialAutonomyEngine');
+    npcSocialEngine.updateRelationshipsTick(updatedNpcs, nextTick);
+
+    // M55-B1/C1: Process NPC autonomous actions (gossip, harvest, trade)
+    // NPCs with active plans execute their next action
+    const { getGoalOrientedPlanner } = require('./goalOrientedPlannerEngine');
+    const planner = getGoalOrientedPlanner();
+    for (const npc of updatedNpcs) {
+      const plan = planner.getPlanForNpc(npc.id);
+      if (plan && plan.isExecuting && plan.currentActionIndex < plan.actions.length) {
+        const action = plan.actions[plan.currentActionIndex];
+        // Process action via actionPipeline for HARVEST_RESOURCE, move, etc.
+        // This will be called next in the main action resolution pipeline
+        // For now, actions are queued in the plan and executed via processAction
+      }
+    }
+
+    // M50-A1: Process faction skirmishes at locations with hostile NPCs
+    const tempStateForSkirmishes = { ...state, npcs: updatedNpcs };
+    const skirmishResults = resolveLocationSkirmishes(tempStateForSkirmishes);
+    const skirmishEvents: Event[] = [];
+    for (const result of skirmishResults) {
+      skirmishEvents.push(...result.events);
+    }
 
     // Filter available locations based on season conditions
     const availableLocations = state.locations.filter(loc => 
@@ -834,6 +1098,16 @@ export function createWorldController(initial?: WorldState, dev = false) {
       timestamp: Date.now(),
     };
     appendEvent(ev);
+
+    // M50-A1: Append faction skirmish events
+    for (const skirmishEvent of skirmishEvents) {
+      appendEvent(skirmishEvent);
+    }
+
+    // M50-A4: Append macro event activity logs
+    for (const macroEvent of macroEventTicks) {
+      appendEvent(macroEvent);
+    }
 
     // Emit WEATHER_CHANGED if weather changed
     if (weatherChanged) {
@@ -1384,9 +1658,9 @@ export function createWorldController(initial?: WorldState, dev = false) {
 
         equippedRelicIds.forEach(relicId => {
           const relic = state.relics?.[relicId];
-          if (relic && (relic as any).factionId) {
+          if (relic && relic.factionId) {
             // Relic is faction-aligned: grant +10 power bonus to associated faction
-            const factionIndex = updatedFactions.findIndex(f => f.id === (relic as any).factionId);
+            const factionIndex = updatedFactions.findIndex(f => f.id === relic.factionId);
             if (factionIndex >= 0) {
               const faction = updatedFactions[factionIndex];
               faction.powerScore = (faction.powerScore || 0) + 10;
@@ -1400,7 +1674,7 @@ export function createWorldController(initial?: WorldState, dev = false) {
                 payload: {
                   relicId,
                   relicName: relic.name,
-                  factionId: (relic as any).factionId,
+                  factionId: relic.factionId,
                   factionName: faction.name,
                   powerBonus: 10,
                   message: `${relic.name} channels mystical power to ${faction.name}, increasing their strength.`
@@ -1744,7 +2018,98 @@ export function createWorldController(initial?: WorldState, dev = false) {
     return JSON.parse(JSON.stringify(state));
   }
 
-  const devApi = Object.freeze({ start, stop, performAction, advanceTick, subscribe, save, load, getState: getStateClone, replayEvents, switchTemplate, getRecentMutations });
+  /**
+   * M49-A5: Dev toggle to force-trigger a Soul Echo for manual narrative testing
+   */
+  function triggerSoulEcho(echoId?: string): Event | null {
+    const legacyEngine = getLegacyEngine(state.seed);
+    const allEchoes: any[] = [];
+    
+    // Collect all available echoes
+    for (const registry of (legacyEngine as any).soulEchoRegistries?.values?.() || []) {
+      if (registry.echoes) {
+        allEchoes.push(...registry.echoes);
+      }
+    }
+
+    if (allEchoes.length === 0) {
+      console.warn('[DEV] No soul echoes available');
+      return null;
+    }
+
+    // Select echo by ID or random
+    const selectedEcho = echoId 
+      ? allEchoes.find(e => e.id === echoId) || allEchoes[0]
+      : allEchoes[Math.floor(Math.random() * allEchoes.length)];
+
+    if (!selectedEcho) {
+      console.warn('[DEV] Could not select echo');
+      return null;
+    }
+
+    // Apply resonance boost and echo trigger
+    const advice = selectedEcho.ancestralAdvice || `Ancestral wisdom from ${selectedEcho.originalNpcName}`;
+    state = {
+      ...state,
+      player: {
+        ...state.player,
+        activeResonanceEchoId: selectedEcho.id,
+        activeResonanceAdvice: advice,
+        soulResonanceLevel: Math.min(100, (state.player as any).soulResonanceLevel || 50 + 20)
+      }
+    };
+
+    const echoEvent: Event = {
+      id: `dev-echo-${Date.now()}`,
+      worldInstanceId: state.id,
+      actorId: 'system',
+      type: 'DEV_SOUL_ECHO_TRIGGERED',
+      payload: {
+        echoId: selectedEcho.id,
+        echoName: selectedEcho.originalNpcName,
+        echoType: selectedEcho.echoType,
+        advice
+      },
+      templateOrigin: 'dev',
+      timestamp: Date.now()
+    };
+
+    appendEvent(echoEvent);
+    emit();
+
+    console.log(`[DEV] Soul Echo triggered: ${selectedEcho.originalNpcName} (${selectedEcho.echoType})`);
+    return echoEvent;
+  }
+
+  function triggerMacroEvent(eventType: string, duration?: number, epicenter?: string): any {
+    const { triggerMacroEvent: trigger } = require('./macroEventsEngine');
+    const macroEvent = trigger(state, eventType as any, duration, epicenter);
+    
+    const event: Event = {
+      id: `dev-macro-${Date.now()}`,
+      worldInstanceId: state.id,
+      actorId: 'system',
+      type: 'DEV_MACRO_EVENT_TRIGGERED',
+      payload: {
+        eventId: macroEvent.id,
+        eventType: macroEvent.type,
+        name: macroEvent.name,
+        severity: macroEvent.severity,
+        epicenter,
+        affectedLocationCount: macroEvent.affectedLocationIds?.length || 0
+      },
+      templateOrigin: 'dev',
+      timestamp: Date.now()
+    };
+
+    appendEvent(event);
+    emit();
+
+    console.log(`[DEV] Macro Event triggered: ${macroEvent.name} (severity: ${macroEvent.severity.toFixed(0)})`);
+    return event;
+  }
+
+  const devApi = Object.freeze({ start, stop, performAction, advanceTick, subscribe, save, load, getState: getStateClone, replayEvents, switchTemplate, getRecentMutations, triggerSoulEcho, triggerMacroEvent });
 
   const kernelApi = Object.freeze({ getState: getStateClone, performAction, advanceTick, load, getRecentMutations });
 
@@ -1752,6 +2117,201 @@ export function createWorldController(initial?: WorldState, dev = false) {
 }
 
 export default createWorldController;
+
+/**
+ * M49-A3: Process Autonomous NPC Planning via GOAP
+ * 
+ * For NPCs without static routines or those needing new plans,
+ * generate goals and action plans based on their personality traits.
+ * Plans are stored on the NPC object for persistence via Save/Load.
+ */
+export function processAutonomousNpcs(state: WorldState): WorldState {
+  const planner = getGoalOrientedPlanner(state.seed);
+  let updatedNpcs = [...state.npcs];
+
+  for (let i = 0; i < updatedNpcs.length; i++) {
+    const npc = updatedNpcs[i];
+    
+    // Skip NPCs with static routines (they rely on scheduleEngine)
+    if (npc.routine && Object.keys(npc.routine).length > 0) {
+      continue;
+    }
+
+    // M49-A3: Check if NPC needs a new plan or plan execution reset
+    const shouldGeneratePlan = !npc.currentActionPlan || 
+      (npc.currentActionPlan.currentActionIndex >= npc.currentActionPlan.actions.length);
+
+    if (shouldGeneratePlan && npc.personality) {
+      // Generate a personality-based goal
+      const goal = generateGoalFromPersonality(npc, state);
+      
+      if (goal) {
+        // Create plan via GOAP
+        const plan = planner.createPlan(npc, goal, npc.personality, state);
+        
+        if (plan) {
+          updatedNpcs[i] = { ...npc, currentActionPlan: plan };
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[GOAP] NPC '${npc.name}' plans goal '${goal.goalType}' -> location '${goal.targetLocationId}'`);
+          }
+        }
+      }
+    } else if (npc.currentActionPlan && npc.currentActionPlan.isExecuting) {
+      // Advance plan execution on each tick
+      const updatedPlan = {
+        ...npc.currentActionPlan,
+        currentActionIndex: npc.currentActionPlan.currentActionIndex + 1
+      };
+      updatedNpcs[i] = { ...npc, currentActionPlan: updatedPlan };
+    }
+  }
+
+  return { ...state, npcs: updatedNpcs };
+}
+
+/**
+ * M49-A4: Process Soul Resonance and Ancestral Echoes
+ */
+export function processSoulResonance(state: WorldState): WorldState {
+  const legacyEngine = getLegacyEngine(state.seed);
+  const resonanceResult = legacyEngine.calculateResonance(state);
+
+  if (resonanceResult.resonanceDelta === 0 && !resonanceResult.triggeredEchoId) {
+    return state;
+  }
+
+  const updatedPlayer = {
+    ...state.player,
+    soulResonanceLevel: Math.min(100, Math.max(0, ((state.player as any).soulResonanceLevel || 0) + resonanceResult.resonanceDelta)),
+    activeResonanceEchoId: resonanceResult.triggeredEchoId || state.player.activeResonanceEchoId,
+    activeResonanceAdvice: resonanceResult.advice || state.player.activeResonanceAdvice,
+    lastSoulResonanceTick: resonanceResult.triggeredEchoId ? state.tick : (state.player as any).lastSoulResonanceTick
+  };
+
+  // If a new echo was triggered, log it
+  if (resonanceResult.triggeredEchoId && resonanceResult.advice) {
+    // eslint-disable-next-line no-console
+    console.log(`[SOUL RESONANCE] Ancestral advice: "${resonanceResult.advice}" (Echo: ${resonanceResult.triggeredEchoId})`);
+  }
+
+  return {
+    ...state,
+    player: updatedPlayer
+  };
+}
+
+/**
+ * M49-A3: Generate a goal from NPC personality traits
+ * Uses the 6-dimension trait model to decide what the NPC wants to do.
+ */
+function generateGoalFromPersonality(npc: NPC, state: WorldState): NpcGoal | null {
+  const p = npc.personality || {
+    boldness: 50,
+    caution: 50,
+    sociability: 50,
+    ambition: 50,
+    curiosity: 50,
+    honesty: 50
+  };
+
+  // Weighted goal selection based on traits
+  const goalWeights: { type: string; weight: number; targetFinder: () => string | undefined }[] = [];
+
+  // High curiosity -> explore
+  if ((p.curiosity || 0) > 60) {
+    goalWeights.push({
+      type: 'explore',
+      weight: (p.curiosity || 0) - 50,
+      targetFinder: () => findRandomUndiscoveredLocation(state)
+    });
+  }
+
+  // High sociability -> socialize
+  if ((p.sociability || 0) > 60) {
+    goalWeights.push({
+      type: 'socialize',
+      weight: (p.sociability || 0) - 50,
+      targetFinder: () => findNearbyNpc(npc, state)
+    });
+  }
+
+  // High boldness -> seek combat/challenge
+  if ((p.boldness || 0) > 70 && (p.caution || 0) < 40) {
+    goalWeights.push({
+      type: 'combat',
+      weight: (p.boldness || 0) - 50,
+      targetFinder: () => findEnemyOrChallenge(npc, state)
+    });
+  }
+
+  // Default: rest or gather
+  goalWeights.push({
+    type: 'rest',
+    weight: 30,
+    targetFinder: () => npc.locationId
+  });
+
+  if (goalWeights.length === 0) {
+    return null;
+  }
+
+  // Random weighted selection
+  const totalWeight = goalWeights.reduce((sum, gw) => sum + gw.weight, 0);
+  let roll = Math.random() * totalWeight;
+  let selectedGoal = goalWeights[0];
+
+  for (const gw of goalWeights) {
+    roll -= gw.weight;
+    if (roll <= 0) {
+      selectedGoal = gw;
+      break;
+    }
+  }
+
+  const targetId = selectedGoal.targetFinder();
+
+  const goal: NpcGoal = {
+    id: `goal_${npc.id}_${Date.now()}`,
+    goalType: selectedGoal.type as any,
+    priority: 50,
+    targetLocationId: selectedGoal.type === 'explore' ? targetId : undefined,
+    targetNpcId: selectedGoal.type === 'socialize' ? targetId : undefined,
+    isCompleted: false,
+    progressValue: 0
+  };
+
+  return goal;
+}
+
+/**
+ * Helper: Find a random undiscovered location
+ */
+function findRandomUndiscoveredLocation(state: WorldState): string | undefined {
+  const undiscovered = state.locations.filter(loc => !loc.discovered);
+  if (undiscovered.length === 0) {
+    // Fallback to any location
+    return state.locations[Math.floor(Math.random() * state.locations.length)]?.id;
+  }
+  return undiscovered[Math.floor(Math.random() * undiscovered.length)].id;
+}
+
+/**
+ * Helper: Find a nearby NPC for socialization
+ */
+function findNearbyNpc(npc: NPC, state: WorldState): string | undefined {
+  const nearbyNpcs = state.npcs.filter(n => n.id !== npc.id && n.locationId === npc.locationId);
+  return nearbyNpcs.length > 0 ? nearbyNpcs[Math.floor(Math.random() * nearbyNpcs.length)].id : undefined;
+}
+
+/**
+ * Helper: Find an enemy or challenge location
+ */
+function findEnemyOrChallenge(npc: NPC, state: WorldState): string | undefined {
+  // For now, return a random location other than current
+  const otherLocations = state.locations.filter(loc => loc.id !== npc.locationId);
+  return otherLocations.length > 0 ? otherLocations[Math.floor(Math.random() * otherLocations.length)].id : undefined;
+}
 
 /**
  * ALPHA_M8 Phase 1, Step 3: Narrative Audio Triggers

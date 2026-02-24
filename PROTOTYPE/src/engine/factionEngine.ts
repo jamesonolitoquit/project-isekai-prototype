@@ -33,11 +33,17 @@ export interface Faction {
   coreBeliefs: string[]; // Ideological pillars
   memberCount?: number;
   controlledLocationIds: string[]; // Territories under faction dominance
+  baseColor?: string; // Hex color code for UI representation
   resourcePool?: {
     gold: number;
     magicNodes: number; // Magic resource access
     relics: number; // Relic count held
   };
+  // Internal properties for faction genealogy
+  _originEpochId?: string; // Original faction ID from epoch creation
+  _isExtinct?: boolean; // Whether faction has gone extinct
+  _isSchism?: boolean; // Whether this faction was created from a schism
+  _parentFactionId?: string; // Parent faction ID if this is a schism
 }
 
 export interface FactionRelationship {
@@ -345,7 +351,7 @@ export function getNpcFaction(
   npcId: string
 ): string | undefined {
   const npc = state.npcs.find(n => n.id === npcId);
-  return npc ? (npc as any).factionId : undefined;
+  return npc ? npc.factionId : undefined;
 }
 
 /**
@@ -526,11 +532,11 @@ export function applyLocationScars(state: any, scars: any[]): void {
     if (!location) continue;
 
     // Initialize scars array if missing
-    if (!(location as any).activeScars) {
-      (location as any).activeScars = [];
+    if (!location.activeScars) {
+      location.activeScars = [];
     }
 
-    (location as any).activeScars.push({
+    location.activeScars.push({
       ...scar,
       appliedAt: state.tick ?? 0
     });
@@ -542,10 +548,10 @@ export function applyLocationScars(state: any, scars: any[]): void {
  */
 export function expireLocationScars(state: any): void {
   for (const location of state.locations || []) {
-    const scars = (location as any).activeScars;
+    const scars = location.activeScars;
     if (!scars || scars.length === 0) continue;
 
-    (location as any).activeScars = scars.filter((scar: any) => {
+    location.activeScars = scars.filter((scar: any) => {
       const elapsed = (state.tick ?? 0) - scar.appliedAt;
       return elapsed < scar.duration;
     });
@@ -900,7 +906,7 @@ export function processFactionTurn(
             type: 'infiltration',
             trigger: 'Sabotage attempt discovered',
             active: true,
-            startedAt: worldState.currentTick || 0,
+            startedAt: worldState.tick || 0,
           });
         }
       }

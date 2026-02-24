@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { createWorldController, createInitialWorld } from "../engine/public";
 import { useGlobalVisuals } from "../client/hooks/useGlobalVisuals";
+import ClientOnly from "../client/components/ClientOnly";
 import SeasonPanel from "../client/components/SeasonPanel";
 import WeatherPanel from "../client/components/WeatherPanel";
 import QuestPanel from "../client/components/QuestPanel";
@@ -30,6 +31,11 @@ import GlobalHeader from "../client/components/GlobalHeader";
 import NarrativeStimulus from "../client/components/NarrativeStimulus";
 import DiceAltar from "../client/components/DiceAltar";
 import FactionVisualOverlay from "../client/components/FactionVisualOverlay";
+import { ChronicleMap } from "../client/components/ChronicleMap";
+import { EnhancedDialogPanel } from "../client/components/EnhancedDialogPanel";
+import RumorMillUI from "../client/components/RumorMillUI";
+import SoulMirrorOverlay from "../client/components/SoulMirrorOverlay";
+import PerceptionGlitchOverlay from "../client/components/PerceptionGlitchOverlay";
 
 export default function HomePage() {
   const [devDockOpen, setDevDockOpen] = useState(false);
@@ -405,7 +411,8 @@ export default function HomePage() {
   };
 
   return (
-    <div className={appRootClasses} style={appRootStyle as any}>
+    <ClientOnly>
+      <div className={appRootClasses} style={appRootStyle as any}>
       {/* M15 Step 4: Global flash overlay for spell casting */}
       {visuals.flashActive && (
         <div
@@ -420,6 +427,9 @@ export default function HomePage() {
 
       {/* M15 Step 4: Chromatic aberration overlay */}
       {visuals.chromaActive && <div id="chromatic-overlay" style={{ opacity: visuals.glitchIntensity }} />}
+
+      {/* M47-B1: Perception Glitch Overlay - Reality distortion effects based on chaos score */}
+      {state && <PerceptionGlitchOverlay appState={state} />}
 
       {/* Global Paradox Indicator Overlay */}
       {state && <ParadoxIndicator state={state} />}
@@ -548,6 +558,20 @@ export default function HomePage() {
                       <DialogPanel state={state} onChoose={doDialogChoice} />
                     </div>
                     <div className="context-panels">
+                      {/* M47-D1: Chronicle Map - World Fragment Visualization */}
+                      <ChronicleMap 
+                        worldState={state} 
+                        onLocationSelect={(locId) => doMove(locId)}
+                        showLegend={true}
+                        useAbsolutePositioning={true}
+                      />
+                      {/* M47-E1: Enhanced Dialog Panel - Sensory Cues */}
+                      <EnhancedDialogPanel
+                        dialogue={state?.dialogueHistory || []}
+                        playerPerceptionLevel={state?.player?.perception || 50}
+                        enableGoalVisibility={true}
+                        showOracleView={false}
+                      />
                       <QuestPanel state={state} />
                       <PlayerState state={state} />
                       {showInventory && (
@@ -590,7 +614,18 @@ export default function HomePage() {
               {/* POLITICS TAB */}
               {activeTab === 'politics' && (
                 <div className="tab-content politics-tab">
-                  <FactionPanel state={state} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '100%' }}>
+                    <div style={{ borderRight: '1px solid #444', paddingRight: '12px', overflowY: 'auto' }}>
+                      <FactionPanel state={state} />
+                    </div>
+                    <div style={{ paddingLeft: '12px', overflowY: 'auto' }}>
+                      <h3>Rumor Mill - Intelligence Layer</h3>
+                      <RumorMillUI 
+                        state={state}
+                        playerPerceptionLevel={state?.player?.perception || 50}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -611,7 +646,20 @@ export default function HomePage() {
               {/* CODEX TAB */}
               {activeTab === 'codex' && (
                 <div className="tab-content codex-tab">
-                  <Codex state={state} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', height: '100%' }}>
+                    <div style={{ borderRight: '1px solid #444', paddingRight: '12px', overflowY: 'auto' }}>
+                      <Codex state={state} />
+                    </div>
+                    <div style={{ paddingLeft: '12px', overflowY: 'auto' }}>
+                      <h3>Soul Mirror - Legacy Archives</h3>
+                      <SoulMirrorOverlay 
+                        character={state?.player}
+                        unlockedSoulEchoes={state?.unlockedSoulEchoes || []}
+                        activeResonanceEchoId={state?.player?.activeResonanceEchoId}
+                        resonanceAdvice={state?.player?.activeResonanceAdvice}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -836,7 +884,7 @@ export default function HomePage() {
                       style={{ padding: 4, fontSize: 12, marginTop: 4, width: '100%' }}
                     >
                       <option value="">-- Select Location --</option>
-                      {(controller.getState().locations || []).map((loc: any) => (
+                      {(controller?.getState?.()?.locations || []).map((loc: any) => (
                         <option key={loc.id} value={loc.id}>{loc.name}</option>
                       ))}
                     </select>
@@ -918,5 +966,8 @@ export default function HomePage() {
         </div>
       )}
     </div>
+    </ClientOnly>
   );
 }
+
+export const dynamic = 'force-dynamic'; // [M48-A4: Disable static generation for interactive page]

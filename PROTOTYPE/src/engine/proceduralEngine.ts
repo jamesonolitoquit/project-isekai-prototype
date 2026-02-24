@@ -534,7 +534,7 @@ export function generateQuestPoolFromConflicts(
  */
 export function checkAlphaTheBindOneManifest(state: WorldState): ProceduralEncounter | null {
   // Check trigger conditions
-  const paradoxLevel = (state.player as any).temporalDebt ?? 0;
+  const paradoxLevel = state.player?.temporalDebt ?? 0;
   if (paradoxLevel <= 75) {
     return null; // Insufficient paradox
   }
@@ -547,7 +547,7 @@ export function checkAlphaTheBindOneManifest(state: WorldState): ProceduralEncou
   }
 
   // Check time (night only)
-  const hour = (state as any).hour ?? 12;
+  const hour = state.hour ?? 12;
   const isNight = hour >= 20 || hour < 6;
   if (!isNight) {
     return null; // Wrong time
@@ -555,7 +555,7 @@ export function checkAlphaTheBindOneManifest(state: WorldState): ProceduralEncou
 
   // All conditions met - Alpha manifests!
   // Retrieve player's most impactful narrative pivots
-  const journal = (state as any).canonJournal as { narrativePivots?: any[] };
+  const journal = (state as any).canonJournal as { narrativePivots?: any[] } | undefined;
   const pivots = journal?.narrativePivots ?? [];
   const topPivots = pivots.slice(-3); // Last 3 most recent high-impact moments
 

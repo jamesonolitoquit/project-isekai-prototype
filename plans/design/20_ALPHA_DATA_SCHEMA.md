@@ -64,6 +64,45 @@ to the design layer that defines its usage.
 | current_cycle | INT | | Lux-Ar pulse cycle |
 | temporal_debt | DECIMAL(10,2) | | Accumulated time distortion |
 
+### DialogueCache (ALPHA-M55)
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| cache_id | UUID | PK | |
+| npc_id | INT | FK | |
+| prompt_hash | VARCHAR(64) | UNIQUE | SHA-256 of cleaned player prompt |
+| response_text | TEXT | | Sanitized AI response |
+| created_tick | INT | | |
+| provider | ENUM('gemini','groq','ollama','template') | | |
+
+### AiConfigByPlayer (ALPHA-M55)
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| player_id | UUID | PK | |
+| preferred_provider| ENUM('gemini','groq','ollama','fallback')| | |
+| encrypted_api_key | VARCHAR(255) | | Local-only or BYOK stored in player state |
+| model_name | VARCHAR(50) | | e.g., 'gemini-1.5-flash', 'llama3' |
+| temperature | DECIMAL(3,2) | | default 0.7 |
+
+### Rumors (ALPHA-M55)
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| rumor_id | UUID | PK | |
+| owner_id | INT | FK | NPC or Player |
+| owner_type | ENUM('npc','player') | | |
+| content | TEXT | | The rumor text |
+| reliability | INT | | 0-100 |
+| distortion | INT | | 0-100 (increases with gossip) |
+| acquired_tick | INT | | |
+
+### NPC_Inventories (ALPHA-M55)
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| inv_id | UUID | PK | |
+| npc_id | INT | FK | |
+| item_id | INT | FK | Reference to Items table |
+| quantity | INT | | |
+| condition | INT | | 0-100 |
+
 ### Epochs
 | Column | Type | Key | Notes |
 |---|---|---|---|
@@ -198,6 +237,29 @@ to the design layer that defines its usage.
 | resource_pool_json | JSONB | | Gold, materials, population |
 | beliefs_json | JSONB | | Faction-level belief state |
 | leader_npc_id | INT | FK → NPC_Master (nullable) | |
+| warfare_traits_json | JSONB | | Aggression, expansionism, threshold effects (M44) |
+| diffusion_rate | DECIMAL(3,2) | | How fast belief/influence spreads |
+
+### WorldFragments (M43 Persistence)
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| fragment_id | UUID | PK | |
+| epoch_id | INT | FK → Epochs | |
+| region_id | INT | FK → Regions | |
+| type | ENUM('ruin','scar','monument','architectural') | | |
+| durability | DECIMAL(3,2) | | 0.00–1.00 (weathering) |
+| canonical_seal | BOOLEAN | | Is this part of Iron Canon? |
+| creation_tick | INT | | Tock of creation |
+| state_snapshot | JSONB | | Visual/narrative metadata |
+
+### LegacyTraits
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| trait_id | VARCHAR(50) | PK | |
+| trait_name | VARCHAR(100) | | |
+| requirements_json | JSONB | | Ancestor deeds/skills needed |
+| effects_json | JSONB | | Combat/Social modifiers |
+| inheritance_weight | INT | | Difficulty to pass down |
 
 ### FactionRelationships
 | Column | Type | Key | Notes |
@@ -211,7 +273,30 @@ to the design layer that defines its usage.
 
 ---
 
-## 20.7 NPC Domain
+## 20.7 Economic & Systemic Domain (BETA)
+
+### RegionalMarkets
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| region_id | INT | PK, FK → Regions | |
+| price_modifiers_json | JSONB | | Category:Multiplier mapping |
+| scarcity_bias | ENUM('low','med','high') | | Affects vendor restocking |
+| last_trade_tick | INT | | For volatility calcs |
+
+### ResourceNodes
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| node_id | INT | PK | |
+| region_id | INT | FK → Regions | |
+| resource_type | VARCHAR(50) | | Iron, Herb, Spirit Essence |
+| max_capacity | INT | | |
+| current_capacity | INT | | |
+| regrowth_rate | INT | | Ticks to +1 |
+| discovery_dc | INT | | Luck/INT check requirement |
+
+---
+
+## 20.8 NPC Domain
 
 ### NPC_Master
 | Column | Type | Key | Notes |
@@ -623,13 +708,13 @@ erDiagram
 | Magic & Combat | MagicDisciplines, Spells, Weapons, CombatStyles | 4 |
 | Belief & WTOL | BeliefLayers, WTOLState | 2 |
 | Factions | Factions, FactionRelationships | 2 |
-| NPCs | NPC_Master, NPC_Location, NPC_Dialogue | 3 |
+| NPCs | NPC_Master, NPC_Location, NPC_Dialogue, Rumors, NPC_Inventories | 5 |
 | Quests | QuestMaster, QuestObjectives, QuestProgress | 3 |
-| Player/Character | Characters, PlayerProgress, Inventory, Items | 4 |
-| Encounters | Encounter_Master, Encounter_Instance | 2 |
+| Player/Character | Characters, PlayerProgress, Inventory, Items, AiConfigByPlayer | 5 |
+| Encounters | Encounter_Master, Encounter_Instance, DialogueCache | 3 |
 | Timeline/History | HistoricalEvents, EmergentHistory | 2 |
 | Session/Persistence | MutationLog, Checkpoints, SaveSlots, SessionMeta | 4 |
 | Crafting | CraftingRecipes, CraftingLog | 2 |
 | Anti-Exploit | AntiExploitLog, ReloadTracker | 2 |
 | Legacy/Endgame | PlayerLegacy, PlaythroughSummary, LegacyImpact | 3 |
-| **Total** | | **40** |
+| **Total** | | **44** |
