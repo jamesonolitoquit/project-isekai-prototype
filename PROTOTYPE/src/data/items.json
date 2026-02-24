@@ -1,0 +1,240 @@
+{
+  "items": [
+    {
+      "id": "healing-potion-minor",
+      "name": "Minor Healing Potion",
+      "type": "consumable",
+      "rarity": "common",
+      "description": "Restores 25 HP when consumed",
+      "effect": {
+        "type": "heal_hp",
+        "amount": 25
+      },
+      "stackable": true,
+      "weight": 0.5
+    },
+    {
+      "id": "healing-potion-major",
+      "name": "Major Healing Potion",
+      "type": "consumable",
+      "rarity": "rare",
+      "description": "Restores 75 HP when consumed",
+      "effect": {
+        "type": "heal_hp",
+        "amount": 75
+      },
+      "stackable": true,
+      "weight": 0.5
+    },
+    {
+      "id": "stamina-tonic",
+      "name": "Stamina Tonic",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "description": "Temporarily increases combat endurance",
+      "effect": {
+        "type": "stat_buff",
+        "stat": "end",
+        "amount": 5,
+        "duration": 3600
+      },
+      "stackable": true,
+      "weight": 0.3
+    },
+    {
+      "id": "morph-essence",
+      "name": "Beastkin Morphing Essence",
+      "type": "material",
+      "rarity": "uncommon",
+      "description": "Used in advanced crafting recipes",
+      "weight": 0.2,
+      "stackable": true
+    },
+    {
+      "id": "rare-herb",
+      "name": "Rare Luminous Herb",
+      "type": "material",
+      "rarity": "uncommon",
+      "description": "Glowing herb harvested from magical locations",
+      "weight": 0.1,
+      "stackable": true
+    },
+    {
+      "id": "iron-ore",
+      "name": "Iron Ore",
+      "type": "material",
+      "rarity": "common",
+      "description": "Raw iron ore for smelting and crafting",
+      "weight": 2.0,
+      "stackable": true
+    },
+    {
+      "id": "copper-ingot",
+      "name": "Copper Ingot",
+      "type": "material",
+      "rarity": "common",
+      "description": "Processed copper for crafting",
+      "weight": 0.5,
+      "stackable": true
+    },
+    {
+      "id": "rusty-sword",
+      "name": "Rusty Iron Sword",
+      "type": "weapon",
+      "rarity": "common",
+      "description": "A worn blade. Deals 8 damage. +0 STR bonus.",
+      "equipmentSlot": "mainhand",
+      "stats": {
+        "str": 0
+      },
+      "baseDamage": 8,
+      "weight": 3.0,
+      "stackable": false
+    },
+    {
+      "id": "steel-sword",
+      "name": "Steel Longsword",
+      "type": "weapon",
+      "rarity": "uncommon",
+      "description": "A well-forged steel blade. Deals 12 damage. +2 STR bonus when equipped.",
+      "equipmentSlot": "mainhand",
+      "stats": {
+        "str": 2
+      },
+      "baseDamage": 12,
+      "weight": 2.5,
+      "stackable": false
+    },
+    {
+      "id": "steel-buckler",
+      "name": "Steel Buckler",
+      "type": "armor",
+      "rarity": "uncommon",
+      "description": "A sturdy shield. +1 END for defense, +2 to block rolls when equipped.",
+      "equipmentSlot": "offhand",
+      "stats": {
+        "end": 1
+      },
+      "blockBonus": 2,
+      "weight": 1.5,
+      "stackable": false
+    },
+    {
+      "id": "iron-breastplate",
+      "name": "Iron Breastplate",
+      "type": "armor",
+      "rarity": "uncommon",
+      "description": "Full plate chest armor. +3 END, +10% damage reduction.",
+      "equipmentSlot": "chest",
+      "stats": {
+        "end": 3
+      },
+      "damageReduction": 0.1,
+      "weight": 5.0,
+      "stackable": false
+    },
+    {
+      "id": "leather-boots",
+      "name": "Leather Boots",
+      "type": "armor",
+      "rarity": "common",
+      "description": "Light footwear. +1 AGI for movement and evasion.",
+      "equipmentSlot": "feet",
+      "stats": {
+        "agi": 1
+      },
+      "weight": 0.5,
+      "stackable": false
+    },
+    {
+      "id": "potion-recipe-basic",
+      "name": "Recipe: Basic Healing Potion",
+      "type": "recipe",
+      "rarity": "common",
+      "description": "Recipe for crafting basic healing potions",
+      "crafting": {
+        "recipeId": "craft-healing-potion",
+        "materials": [
+          { "itemId": "rare-herb", "quantity": 2 }
+        ],
+        "result": {
+          "itemId": "healing-potion-minor",
+          "quantity": 2
+        },
+        "difficulty": 5
+      },
+      "stackable": false,
+      "weight": 0.1
+    },
+    {
+      "id": "potion-recipe-advanced",
+      "name": "Recipe: Stamina Tonic",
+      "type": "recipe",
+      "rarity": "uncommon",
+      "description": "Recipe for advanced stamina enhancement",
+      "crafting": {
+        "recipeId": "craft-stamina-tonic",
+        "materials": [
+          { "itemId": "rare-herb", "quantity": 1 },
+          { "itemId": "copper-ingot", "quantity": 1 }
+        ],
+        "result": {
+          "itemId": "stamina-tonic",
+          "quantity": 1
+        },
+        "difficulty": 8
+      },
+      "stackable": false,
+      "weight": 0.1
+    }
+  ],
+  "recipes": [
+    {
+      "id": "craft-healing-potion",
+      "name": "Basic Healing Potion",
+      "materials": [
+        { "itemId": "rare-herb", "quantity": 2 }
+      ],
+      "result": { "itemId": "healing-potion-minor", "quantity": 2 },
+      "difficulty": 5,
+      "description": "Combine rare herbs to create a basic healing potion"
+    },
+    {
+      "id": "craft-stamina-tonic",
+      "name": "Stamina Tonic",
+      "materials": [
+        { "itemId": "rare-herb", "quantity": 1 },
+        { "itemId": "copper-ingot", "quantity": 1 }
+      ],
+      "result": { "itemId": "stamina-tonic", "quantity": 1 },
+      "difficulty": 8,
+      "description": "Blend rare herbs with processed copper to enhance stamina"
+    },
+    {
+      "id": "craft-steel-sword",
+      "name": "Steel Longsword",
+      "materials": [
+        { "itemId": "iron-ore", "quantity": 3 },
+        { "itemId": "copper-ingot", "quantity": 1 }
+      ],
+      "result": { "itemId": "steel-sword", "quantity": 1 },
+      "difficulty": 10,
+      "description": "Forge iron and copper into a superior blade"
+    }
+  ],
+  "loot_tables": {
+    "forest-herbs": [
+      { "itemId": "rare-herb", "chance": 0.6, "minQuantity": 1, "maxQuantity": 3 },
+      { "itemId": "iron-ore", "chance": 0.2, "minQuantity": 1, "maxQuantity": 2 }
+    ],
+    "mine-ore": [
+      { "itemId": "iron-ore", "chance": 0.7, "minQuantity": 2, "maxQuantity": 5 },
+      { "itemId": "copper-ingot", "chance": 0.4, "minQuantity": 1, "maxQuantity": 2 }
+    ],
+    "combat-npc": [
+      { "itemId": "healing-potion-minor", "chance": 0.5, "minQuantity": 1, "maxQuantity": 2 },
+      { "itemId": "rusty-sword", "chance": 0.15, "minQuantity": 1, "maxQuantity": 1 },
+      { "itemId": "gold", "chance": 1.0, "minQuantity": 10, "maxQuantity": 50 }
+    ]
+  }
+}
