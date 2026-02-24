@@ -1,13 +1,4 @@
 # ============================================
-# DEPLOYMENT STRUCTURE
-# ============================================
-# BETA is the primary deployment folder (Railway ready)
-# PROTOTYPE is archived locally only (not deployed)
-# ALPHA contains legacy reference files
-/PROTOTYPE/
-/ALPHA/
-
-# ============================================
 # NODE & PACKAGE MANAGEMENT
 # ============================================
 node_modules/
