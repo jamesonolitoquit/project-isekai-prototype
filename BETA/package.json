@@ -12,6 +12,7 @@
     "stress-test": "tsx scripts/m43-stress-test.ts",
     "millennium": "tsx scripts/ten-thousand-year-sim.ts",
     "setup-db": "tsx scripts/setup-db.ts",
+    "dev-mode": "tsx scripts/dev-mode-start.ts",
     "server:dev": "tsx server-start.ts",
     "server": "node -r ts-node/register server-start.ts"
   },

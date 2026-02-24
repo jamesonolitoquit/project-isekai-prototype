@@ -35,35 +35,21 @@ async function setupDatabase(): Promise<SetupResult> {
   };
 
   const client = new pg.Client({
-    connectionString: process.env.DATABASE_URL || 'postgresql://isekai:isekai_beta_password@localhost:5432/isekai'
+    connectionString: process.env.DATABASE_URL || 'postgresql://isekai:isekai_beta_password@localhost:5432/isekai',
+    connectionTimeoutMillis: 5000,
+    commandTimeoutMillis: 10000
   });
 
   try {
     console.log(`\n🔌 Connecting to database: ${process.env.DATABASE_URL?.split('@')[1] || 'localhost:5432/isekai'}`);
-    await client.connect();
+    await Promise.race([
+      client.connect(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 6000))
+    ]);
     console.log('✅ Connected to PostgreSQL');
 
-    // Create players table
-    console.log('\n📋 Creating table: players');
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS players (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        username VARCHAR(255) UNIQUE NOT NULL,
-        email VARCHAR(255) UNIQUE,
-        passwordHash VARCHAR(255),
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lastLogin TIMESTAMP,
-        worldInstanceId UUID,
-        currentSaveId UUID,
-        metadata JSONB DEFAULT '{}',
-        
-        CONSTRAINT fk_world_instance FOREIGN KEY (worldInstanceId) REFERENCES world_states(id) ON DELETE SET NULL
-      );
-    `);
-    result.tablesCreated.push('players');
-
-    // Create world_states table
-    console.log('📋 Creating table: world_states');
+    // Create world_states table FIRST (referenced by players and other tables)
+    console.log('\n📋 Creating table: world_states');
     await client.query(`
       CREATE TABLE IF NOT EXISTS world_states (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,6 +68,25 @@ async function setupDatabase(): Promise<SetupResult> {
       );
     `);
     result.tablesCreated.push('world_states');
+
+    // Create players table
+    console.log('📋 Creating table: players');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS players (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE,
+        passwordHash VARCHAR(255),
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        lastLogin TIMESTAMP,
+        worldInstanceId UUID,
+        currentSaveId UUID,
+        metadata JSONB DEFAULT '{}',
+        
+        CONSTRAINT fk_world_instance FOREIGN KEY (worldInstanceId) REFERENCES world_states(id) ON DELETE SET NULL
+      );
+    `);
+    result.tablesCreated.push('players');
 
     // Create mutation_events table
     console.log('📋 Creating table: mutation_events');
@@ -201,6 +206,27 @@ async function setupDatabase(): Promise<SetupResult> {
     if (errorMsg.includes('already exists')) {
       result.success = true;
       console.log('ℹ️  Tables already exist (skipped creation)');
+    } else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('connect ECONNREFUSED')) {
+      result.success = false;
+      result.errors.push('PostgreSQL connection refused');
+      console.error('\n❌ Cannot connect to PostgreSQL at localhost:5432');
+      console.error('\n📋 PostgreSQL is not running. To fix this:');
+      console.error('\n   On Windows:');
+      console.error('   1. Download PostgreSQL from https://www.postgresql.org/download/windows/');
+      console.error('   2. Run the installer and use these settings:');
+      console.error('      - Port: 5432');
+      console.error('      - Username: postgres');
+      console.error('      - Database: isekai');
+      console.error('   3. After installation, start PostgreSQL service');
+      console.error('\n   On macOS:');
+      console.error('   1. Install via Homebrew: brew install postgresql@16');
+      console.error('   2. Start service: brew services start postgresql@16');
+      console.error('\n   On Linux (WSL):');
+      console.error('   1. sudo apt-get install postgresql postgresql-contrib');
+      console.error('   2. sudo service postgresql start');
+      console.error('   3. Create user: sudo -u postgres createuser -P isekai');
+      console.error('   4. Create database: sudo -u postgres createdb -O isekai isekai');
+      console.error('\n   Then run: npm run setup-db');
     } else {
       result.success = false;
       result.errors.push(errorMsg);
