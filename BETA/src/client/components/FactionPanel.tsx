@@ -25,7 +25,7 @@ interface DisplayFaction {
 interface DisplayRelationship {
   factionAId: string;
   factionBId: string;
-  type: 'alliance' | 'war' | 'neutral';
+  type: 'alliance' | 'war' | 'neutral' | 'rivalry' | 'dependency';
   weight: number;
 }
 

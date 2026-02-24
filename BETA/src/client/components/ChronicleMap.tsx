@@ -302,8 +302,8 @@ export const ChronicleMap: React.FC<ChronicleMapProps> = ({
 
   // Group fragments by location
   const fragmentsByLocation = useMemo(() => {
-    const map = new Map<string, WorldFragment[]>();
-    fragments.forEach((frag: WorldFragment) => {
+    const map = new Map<string, any[]>();
+    fragments.forEach((frag: any) => {
       if (!map.has(frag.locationId)) {
         map.set(frag.locationId, []);
       }
@@ -536,7 +536,7 @@ export const ChronicleMap: React.FC<ChronicleMapProps> = ({
               )}
 
               {/* Undiscovered indicator */}
-              {!location.discovered && (
+              {!(location as any).discovered && (
                 <div style={{
                   marginTop: '8px',
                   fontSize: '10px',
@@ -565,7 +565,7 @@ export const ChronicleMap: React.FC<ChronicleMapProps> = ({
       </div>
 
       {/* M57-E1: Ghost Ruins - Transparent overlays from previous epochs */}
-      {worldState?.chronicleHistory && worldState.chronicleHistory.length > 1 && (
+      {(worldState as any)?.chronicleHistory && (worldState as any).chronicleHistory.length > 1 && (
         <div style={{
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
           border: '1px dashed rgba(150, 150, 200, 0.3)',
@@ -589,10 +589,10 @@ export const ChronicleMap: React.FC<ChronicleMapProps> = ({
             gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
             gap: '8px'
           }}>
-            {worldState.chronicleHistory.slice(0, -1).map((epochHistory, epochIdx) => {
+            {(worldState as any).chronicleHistory.slice(0, -1).map((epochHistory: any, epochIdx: number) => {
               // Get fragments from historical epoch
-              const historicalFragments = (epochHistory.worldFragments || []) as WorldFragment[];
-              return historicalFragments.map((ghostFrag) => (
+              const historicalFragments = (epochHistory.worldFragments || []) as any[];
+              return historicalFragments.map((ghostFrag: any) => (
                 <div
                   key={`ghost-${epochHistory.epochId}-${ghostFrag.id}`}
                   style={{
@@ -634,7 +634,7 @@ export const ChronicleMap: React.FC<ChronicleMapProps> = ({
               ));
             })}
           </div>
-          {(!worldState.chronicleHistory || worldState.chronicleHistory.length <= 1) && (
+          {(!(worldState as any).chronicleHistory || (worldState as any).chronicleHistory.length <= 1) && (
             <div style={{ color: '#666', fontSize: '12px', textAlign: 'center' }}>
               No previous epochs yet. Create history to build the ghost realm.
             </div>

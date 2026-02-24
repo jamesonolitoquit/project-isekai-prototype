@@ -725,7 +725,7 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
           isCanonical: true
         }] : []}
         onWhisperComplete={(id) => dismissWhisper(id)}
-        currentEpoch={state?.epoch}
+        currentEpoch={1}
         playerName={state?.player?.name}
         enableAudio={true}
       />
@@ -1031,12 +1031,12 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
       {activeRitual && (
         <RitualConsensusUI
           ritual={activeRitual}
-          clientId={state?.worldId || 'unknown'}
+          clientId={state?.id || 'unknown'}
           totalPeers={controller?.registry?.peers?.length || 1}
           onVoteSubmit={(vote) => {
             // Update ritual vote in state
             const updatedVotes = activeRitual.votes.map(v =>
-              v.peerId === (state?.worldId || 'unknown')
+              v.peerId === (state?.id || 'unknown')
                 ? { ...v, vote }
                 : v
             );

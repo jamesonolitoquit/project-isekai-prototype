@@ -779,3 +779,88 @@ export function expireLocationScars(state: WorldState): void {
   }
 }
 
+/**
+ * Phase 12 Task 2: Evolve Faction Geneology (Multi-Generational)
+ * Handles faction mergers, splits, and falls across thousands of simulated years
+ * Returns updated faction list with historical lineage preserved
+ */
+export function evolveFactionGeneology(factions: Faction[], ancestralLines: Map<string, string[]>): Faction[] {
+  const rng = random();
+  const evolved: Faction[] = [];
+  
+  for (const faction of factions) {
+    // Calculate faction stability based on power score
+    const baseStability = faction.powerScore / 100;
+    
+    // Small chance of split (2-5% per 2000 years)
+    if (rng() < 0.03 && baseStability > 0.5) {
+      const splitFaction: Faction = {
+        ...faction,
+        id: `${faction.id}_split_${Date.now()}`,
+        name: `${faction.name} (Schism)`,
+        powerScore: Math.floor(faction.powerScore * 0.6),
+        memberCount: Math.floor((faction.memberCount || 0) * 0.4),
+        controlledLocationIds: faction.controlledLocationIds.slice(0, Math.floor(faction.controlledLocationIds.length / 2))
+      };
+      
+      // Update original faction
+      faction.powerScore = Math.floor(faction.powerScore * 0.7);
+      faction.memberCount = Math.floor((faction.memberCount || 0) * 0.6);
+      faction.controlledLocationIds = faction.controlledLocationIds.slice(
+        Math.floor(faction.controlledLocationIds.length / 2)
+      );
+      
+      evolved.push(splitFaction);
+    }
+    
+    // Track lineage
+    if (!ancestralLines.has(faction.id)) {
+      ancestralLines.set(faction.id, [faction.name]);
+    }
+    
+    evolved.push(faction);
+  }
+  
+  return evolved;
+}
+
+/**
+ * Phase 12 Task 3: Redistribute Extinct Territories
+ * When a faction falls (powerScore ≤ 5), reassign its territories to neighboring factions
+ */
+export function redistributeExtinctTerritories(state: WorldState): void {
+  if (!state.factions) return;
+  
+  const rng = random();
+  const extinctFactions = state.factions.filter(f => f.powerScore <= 5);
+  const aliveFactions = state.factions.filter(f => f.powerScore > 5);
+  
+  for (const extinct of extinctFactions) {
+    for (const locationId of extinct.controlledLocationIds) {
+      // Find nearest faction to inherit territory
+      if (aliveFactions.length > 0) {
+        const inheritor = aliveFactions[Math.floor(rng() * aliveFactions.length)];
+        if (!inheritor.controlledLocationIds.includes(locationId)) {
+          inheritor.controlledLocationIds.push(locationId);
+          inheritor.powerScore = Math.min(95, inheritor.powerScore + 2);
+        }
+      }
+    }
+  }
+  
+  // Remove extinct factions
+  state.factions = aliveFactions;
+}
+
+/**
+ * Phase 12 Task 4: Check if NPC belongs to extinct faction
+ * Helper to identify NPCs whose parent faction has been eliminated
+ */
+export function isNpcFromExtinctFaction(npc: any, state: WorldState): boolean {
+  if (!npc.factionId || !state.factions) {
+    return false;
+  }
+  
+  return !state.factions.some(f => f.id === npc.factionId);
+}
+

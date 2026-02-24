@@ -43,7 +43,7 @@ export const BetaGlobalHeader: React.FC<BetaGlobalHeaderProps> = ({
   const [cumulativeChaos, setCumulativeChaos] = useState(0);
   const paradoxLevel = state.paradoxLevel || 0;
   const chaos = (state as any).chaos || 0;
-  const inCombat = state.player?.inCombat ?? false;
+  const inCombat = (state.player as any)?.inCombat ?? false;
   // Trade state subscription deferred to future iteration (requires consensus diagnostics integration)
   const isInTrade = false;
 

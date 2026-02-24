@@ -10,7 +10,7 @@ import type { WorldState, Quest, UniqueItem, InventoryItem, NPC } from './worldE
 import type { LegacyImpact } from './legacyEngine';
 import type { WorldScar } from './worldScarsEngine';
 import { SeededRng } from './prng';
-// import { evolveFactionGeneology, redistributeExtinctTerritories, isNpcFromExtinctFaction } from './factionEngine'; // [M48-A4: Functions not exported]
+import { evolveFactionGeneology, redistributeExtinctTerritories, isNpcFromExtinctFaction } from './factionEngine';
 // import { redistributeExtinctTerritories, isNpcFromExtinctFaction } from './factionEngine'; // [M48-A4: Functions not exported]
 import type { SessionRegistry, EpochVoteState } from './multiplayerEngine';
 import { createEpochVote, recordEpochVote, hasEpochVoteConsensus } from './multiplayerEngine';

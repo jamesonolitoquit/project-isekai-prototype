@@ -20,6 +20,14 @@ import { awardMerit, calculateMeritReward } from './factionCommandEngine';
 import { initiateChronicleTransition, getNextEpoch, EPOCH_DEFINITIONS } from './chronicleEngine';
 import { healWorldScar, restoreScarLocation } from './worldScarsEngine';
 
+// Helper function to check knowledge base (handles Map or Array)
+function hasKnowledge(kb: any, key: string): boolean {
+  if (!kb) return false;
+  if (kb instanceof Map) return kb.has(key);
+  if (Array.isArray(kb)) return kb.includes(key);
+  return (kb as Record<string, any>)[key] !== undefined;
+}
+
 // Dice roll context for action resolution
 interface DiceRollContext {
   actionType: 'attack' | 'defend' | 'skillcheck' | 'ritual' | 'magic' | 'craft';
@@ -279,7 +287,11 @@ function validateMetagaming(state: WorldState, action: Action): {
     case 'MOVE': {
       const targetLocation = action.payload?.to;
       // Check if player hasn't discovered this location through gameplay
-      if (targetLocation && !hasItem(visitedLocations, targetLocation) && !knowledgeBase?.has(`location:${targetLocation}`)) {
+      const hasKnowledge = knowledgeBase instanceof Map 
+        ? knowledgeBase.has(`location:${targetLocation}`)
+        : (knowledgeBase as any)?.[`location:${targetLocation}`];
+      
+      if (targetLocation && !hasItem(visitedLocations, targetLocation) && !hasKnowledge) {
         isSuspicious = true;
         reason = 'Moved to undiscovered location - possible metagaming';
         suspicionIncrement = 15;
@@ -290,7 +302,7 @@ function validateMetagaming(state: WorldState, action: Action): {
     case 'INTERACT_NPC': {
       const npcId = action.payload?.npcId;
       // Check if NPC hasn't been identified yet
-      if (npcId && !knowledgeBase?.has(`npc:${npcId}`)) {
+      if (npcId && !hasKnowledge(knowledgeBase, `npc:${npcId}`)) {
         isSuspicious = true;
         reason = 'Interacted with unknown NPC - possible metagaming';
         suspicionIncrement = 10;
@@ -303,7 +315,7 @@ function validateMetagaming(state: WorldState, action: Action): {
       // WTOL Enforcement: Block dialogue with masked NPCs
       if (targetId && targetId !== state.player.id) {
         const targetNpc = state.npcs.find(n => n.id === targetId);
-        if (targetNpc && !knowledgeBase?.has(`npc:${targetId}`)) {
+        if (targetNpc && !hasKnowledge(knowledgeBase, `npc:${targetId}`)) {
           isSuspicious = true;
           actionAllowed = false;
           reason = 'Attempted dialogue with masked NPC - Ground Truth violation';
@@ -325,7 +337,7 @@ function validateMetagaming(state: WorldState, action: Action): {
       // Check if targeting NPC that hasn't been identified
       if (targetId && targetId !== state.player.id) {
         const isNpc = state.npcs.some(n => n.id === targetId);
-        if (isNpc && !knowledgeBase?.has(`npc:${targetId}`)) {
+        if (isNpc && !hasKnowledge(knowledgeBase, `npc:${targetId}`)) {
           isSuspicious = true;
           reason = 'Cast spell on unknown NPC - possible metagaming';
           suspicionIncrement = 12;
@@ -339,8 +351,8 @@ function validateMetagaming(state: WorldState, action: Action): {
       // WTOL Enforcement: Block attacks on masked NPCs (unless proximity revealed)
       if (targetId && targetId !== state.player.id) {
         const targetNpc = state.npcs.find(n => n.id === targetId);
-        const isIdentified = knowledgeBase?.has(`npc:${targetId}`);
-        const isProximityRevealed = knowledgeBase?.has(`proximity:${targetId}`);
+        const isIdentified = hasKnowledge(knowledgeBase, `npc:${targetId}`);
+        const isProximityRevealed = hasKnowledge(knowledgeBase, `proximity:${targetId}`);
         
         if (targetNpc && !isIdentified && !isProximityRevealed) {
           isSuspicious = true;
@@ -984,13 +996,13 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const dependencies = quest.dependencies ?? [];
       for (const depId of dependencies) {
         const depQuest = state.player.quests[depId];
-        if (!depQuest?.id || depQuest.status !== 'completed') {
+        if (!depQuest || (depQuest as any).status !== 'completed') {
           events.push(createEvent(state, action, 'QUEST_LOCKED', {
             questId,
             reason: 'dependencies-not-met',
             missingDependencies: dependencies.filter(d => {
               const depQ = state.player.quests[d];
-              return !depQ?.id || depQ.status !== 'completed';
+              return !depQ || (depQ as any).status !== 'completed';
             }),
           }));
           return events;
@@ -1238,10 +1250,11 @@ export function processAction(state: WorldState, action: Action): Event[] {
         if (lootTable && Array.isArray(lootTable)) {
           const roll = Math.floor(random() * 100);
           for (const lootEntry of lootTable) {
-            if (roll >= lootEntry.chance_min && roll <= lootEntry.chance_max) {
+            const entry = lootEntry as any;
+            if (roll >= (entry.chance_min || 0) && roll <= (entry.chance_max || 100)) {
               events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
-                itemId: lootEntry.item_id,
-                quantity: lootEntry.quantity || 1
+                itemId: entry.item_id,
+                quantity: entry.quantity || 1
               }));
               break;
             }
@@ -3347,8 +3360,8 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
           }
           nearestNodes.forEach((node: any) => {
             const knowledgeKey = `wilderness:${node.id}`;
-            if (state.player.knowledgeBase?.has(knowledgeKey)) {
-              state.player.knowledgeBase?.set(knowledgeKey, true);
+            if (state.player.knowledgeBase && state.player.knowledgeBase instanceof Map) {
+              state.player.knowledgeBase.set(knowledgeKey, true);
             }
           });
         }

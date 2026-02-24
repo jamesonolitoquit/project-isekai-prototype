@@ -330,19 +330,20 @@ function LegacySummaryPanel({
         </div>
         
         {/* Show ancestor chain if available */}
-        {bloodlineData?.legacyImpacts && bloodlineData.legacyImpacts.length > 0 && (
+        {bloodlineData?.canonicalName && (
           <div style={{ marginTop: '20px', paddingLeft: '20px', borderLeft: '2px solid #4a5568' }}>
-            <div style={{ color: '#a0aec0', marginBottom: '12px', fontSize: '13px' }}>Ancestors:</div>
-            {bloodlineData.legacyImpacts.slice(-3).reverse().map((ancestor, idx) => (
-              <div key={idx} style={styles.ancestorCard}>
-                <div style={{ color: '#60a5fa', fontWeight: 'bold' }}>
-                  Generation {generation - idx - 1}: {ancestor.canonicalName}
-                </div>
-                <div style={{ fontSize: '12px', color: '#cbd5e0', marginTop: '4px' }}>
-                  Myth Status: {ancestor.mythStatus}
-                </div>
+            <div style={{ color: '#a0aec0', marginBottom: '12px', fontSize: '13px' }}>Previous Generation:</div>
+            <div style={styles.ancestorCard}>
+              <div style={{ color: '#60a5fa', fontWeight: 'bold' }}>
+                Generation {generation - 1}: {bloodlineData.canonicalName}
               </div>
-            ))}
+              <div style={{ fontSize: '12px', color: '#cbd5e0', marginTop: '4px' }}>
+                Inherited Perks: {bloodlineData.inheritedPerks?.join(', ') || 'None'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#cbd5e0', marginTop: '2px' }}>
+                Myth Status: {bloodlineData.mythStatus}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -528,10 +529,10 @@ export function AscensionProtocolView(props: AscensionProtocolProps) {
       case 'heirloom':
         return (
           <HeirloomVaultPanel
-            items={character.inventory?.map(item => ({
-              itemId: item.id,
-              name: item.name,
-              rarity: item.rarity
+            items={character.inventory?.map((item, idx) => ({
+              itemId: (item as any).itemName || `item_${idx}`,
+              name: (item as any).itemName || (item as any).name || `Item ${idx}`,
+              rarity: (item as any).rarity || 'common'
             })) || []}
             selectedHeirloom={panelState.selectedHeirloom}
             onSelectHeirloom={(itemId) => {

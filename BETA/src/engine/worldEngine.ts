@@ -34,15 +34,15 @@ try {
   // validate against schema if possible
   let valid = true;
   try {
-    // const Ajv = require('ajv');
-    // const ajv = new Ajv({ allErrors: true, strict: false });
-    // const schema = schemaJson;
-    // const validate = ajv.compile(schema);
-    // valid = validate(maybe);
-    // if (!valid) {
-    //   // eslint-disable-next-line no-console
-    //   console.error('[worldEngine] World template validation errors:', validate.errors);
-    // }
+    const Ajv = require('ajv');
+    const ajv = new Ajv({ allErrors: true, strict: false });
+    const schema = schemaJson;
+    const validate = ajv.compile(schema);
+    valid = validate(maybe);
+    if (!valid) {
+      // eslint-disable-next-line no-console
+      console.error('[worldEngine] World template validation errors:', validate.errors);
+    }
   } catch (error_) {
     // if ajv isn't available or validation fails to run, continue but log
     // eslint-disable-next-line no-console
