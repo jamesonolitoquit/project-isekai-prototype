@@ -435,7 +435,6 @@ function ActionButton({ icon, label, sub, color, textColor, onClick }: {
     </button>
   );
 }
-  const isInCombat = !!worldState?.combatState;
   const directorFeed: any[] = [...(worldState?.narrativeInterventions || []), ...narrativeLog];
 
   const feedEndRef = useRef<HTMLDivElement>(null);
