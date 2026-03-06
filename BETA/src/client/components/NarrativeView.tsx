@@ -269,6 +269,45 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chronicle.length]);
 
+  // ─── Compact action button ────────────────────────────────────────────────────
+  function ActionButton({ icon, label, sub, color, textColor, onClick }: {
+    icon: string; label: string; sub: string; color: string; textColor: string; onClick: () => void;
+  }) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          flex: '1 1 auto',
+          minWidth: '100px',
+          padding: '0.55rem 0.75rem',
+          background: `rgba(${color},0.13)`,
+          border: `1px solid rgba(${color},0.4)`,
+          color: textColor,
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.35rem',
+          transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLElement).style.background = `rgba(${color},0.25)`;
+          (e.currentTarget as HTMLElement).style.boxShadow = `0 0 10px rgba(${color},0.3)`;
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLElement).style.background = `rgba(${color},0.13)`;
+          (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+        }}
+      >
+        <span>{icon}</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.5, flexShrink: 0 }}>{sub}</span>
+      </button>
+    );
+  }
+
   return (
     <div style={{
       height: '100%',
@@ -394,3 +433,5 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
         }
       `}</style>
     </div>
+  );
+}
