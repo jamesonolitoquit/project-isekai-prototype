@@ -87,6 +87,10 @@ src/
 
 public/               # Static assets
 docs/                 # Documentation
+
+**Folder Breakdown**
+- **BETA**: The active Next.js / closed-beta web application and current development branch. Contains the UI, current engine integrations, and builds used for the live beta work. Treat this as the canonical working code for ongoing UI and integration tasks.
+- **PROTOTYPE**: Historical prototype code and archived experiments. This folder preserves older architectures, experiments, and historical artifacts for reference. Do not delete; use it to recover or inspect legacy implementations.
 ```
 
 ## Architecture
