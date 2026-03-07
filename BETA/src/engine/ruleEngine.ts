@@ -1,6 +1,10 @@
 import type { Event } from '../events/mutationLog';
 import { random } from './prng';
 import crypto from 'crypto';
+import { getRuleIngestionEngine } from './ruleIngestionEngine';
+import { getEquipmentBonusesWithMutation } from './itemMutationEngine';
+import type { PlayerState } from './worldEngine';
+import type { NarrativeCodec } from '../client/services/themeManager';
 
 export interface CombatantStats {
   str: number;
@@ -40,6 +44,41 @@ export function getEquipmentBonuses(
 }
 
 /**
+ * Phase 44: Calculate total stat bonuses from equipped items with mutation effects
+ * Accounts for: echoes, resonance, proficiency scaling, and dormant traits
+ * @param equipment Object with equipment slot IDs
+ * @param itemTemplates Map of item ID to item template
+ * @param itemInstances Map of unique item instances
+ * @param player Current player state
+ * @param currentCodec Current narrative codec for resonance
+ * @returns Combined stat bonuses with mutation effects
+ */
+export function getEquipmentBonusesPhase44(
+  equipment: Record<string, string>,
+  itemTemplates: Record<string, any>,
+  itemInstances: Map<string, any>,
+  player: PlayerState,
+  currentCodec: NarrativeCodec
+): Partial<CombatantStats> {
+  const bonuses = getEquipmentBonusesWithMutation(
+    equipment,
+    itemTemplates,
+    itemInstances,
+    player,
+    currentCodec
+  );
+
+  return {
+    str: bonuses.str,
+    agi: bonuses.agi,
+    int: bonuses.int,
+    cha: bonuses.cha,
+    end: bonuses.end,
+    luk: bonuses.luk
+  };
+}
+
+/**
  * Apply equipment bonuses to base stats
  */
 export function applyEquipmentBonuses(baseStats: CombatantStats, bonuses: Partial<CombatantStats>): CombatantStats {
@@ -68,14 +107,27 @@ export function calculateStatCurve(baseStat: number, level: number): number {
 /**
  * Check for critical strike
  * Based on LUK and AGI, with diminishing returns
+ * Phase 22: Checks RuleIngestionEngine for crit multiplier overrides
  */
 export function rollCriticalStrike(attackerStats: CombatantStats): { critical: boolean; multiplier: number } {
-  const baseCritChance = 0.05; // 5% base
+  const engine = getRuleIngestionEngine();
+  const overriddenCritMult = engine.getCombatFormulaOverride('critMultiplier');
+  const overriddenBaseCrit = engine.getCombatFormulaOverride('baseCritChance');
+  
+  const baseCritChance = overriddenBaseCrit !== undefined ? overriddenBaseCrit / 100 : 0.05; // 5% base
   const lukBonus = Math.min(0.2, attackerStats.luk * 0.01); // LUK adds up to 20%
   const agiBonus = Math.min(0.1, attackerStats.agi * 0.005); // AGI adds up to 10%
   const totalCritChance = baseCritChance + lukBonus + agiBonus;
 
   if (random() < totalCritChance) {
+    // Phase 22: Use override or calculate default
+    if (overriddenCritMult !== undefined) {
+      return {
+        critical: true,
+        multiplier: overriddenCritMult
+      };
+    }
+    
     // Critical multiplier: 1.5x to 2.0x based on LUK
     const multiplier = 1.5 + (attackerStats.luk / 100) * 0.5;
     return {
@@ -90,9 +142,13 @@ export function rollCriticalStrike(attackerStats: CombatantStats): { critical: b
 /**
  * Check for armor piercing
  * High armor penetration bypasses END-based defense
+ * Phase 22: Checks RuleIngestionEngine for armor piercing overrides
  */
 export function rollArmorPiercing(attackerStats: CombatantStats, armor: number = 0): { pierces: boolean; penetration: number } {
-  const baseArmorPiercing = 0.1; // 10% base penetration
+  const engine = getRuleIngestionEngine();
+  const overriddenArmorPiercing = engine.getCombatFormulaOverride('baseArmorPiercing');
+  
+  const baseArmorPiercing = overriddenArmorPiercing !== undefined ? overriddenArmorPiercing / 100 : 0.1; // 10% base penetration
   const strPenetration = Math.min(0.3, attackerStats.str * 0.015); // STR adds up to 30%
   const totalPenetration = baseArmorPiercing + strPenetration;
 
@@ -127,8 +183,13 @@ export function rollCheck(stat: number, difficulty: number, modifier: number = 0
 /**
  * Calculate damage based on attacker and defender stats
  * Incorporates critical strikes, armor piercing, and scaling
+ * Phase 22: Checks for damage scale factor override
  */
 export function calculateDamage(attackerStats: CombatantStats, defenderStats: CombatantStats): number {
+  const engine = getRuleIngestionEngine();
+  const damageScale = engine.getCombatFormulaOverride('damageScaleFactor') ?? 1.0;
+  const defenseScale = engine.getCombatFormulaOverride('defenseScaleFactor') ?? 1.0;
+  
   const attackerMultiplier = 1 + attackerStats.str / 100;
   
   // Base defense calculation with armor piercing
@@ -137,15 +198,15 @@ export function calculateDamage(attackerStats: CombatantStats, defenderStats: Co
   
   if (armorPiercing.pierces) {
     // Armor piercing bypasses some defense
-    defenseMultiplier = 1 + Math.max(0, (defenderStats.end / 150) * (1 - armorPiercing.penetration));
+    defenseMultiplier = 1 + Math.max(0, ((defenderStats.end / 150) * (1 - armorPiercing.penetration)) * defenseScale);
   } else {
-    defenseMultiplier = 1 + Math.max(0, defenderStats.end / 150);
+    defenseMultiplier = 1 + Math.max(0, (defenderStats.end / 150) * defenseScale);
   }
   
   const baseDamage = 8 + attackerStats.str / 10;
   const luckBonus = attackerStats.luk > 10 ? 2 : attackerStats.luk < 5 ? -2 : 0;
   
-  let finalDamage = Math.max(1, Math.floor((baseDamage + luckBonus) * attackerMultiplier / defenseMultiplier));
+  let finalDamage = Math.max(1, Math.floor((baseDamage + luckBonus) * attackerMultiplier / defenseMultiplier * damageScale));
   
   // Check for critical strike
   const critRoll = rollCriticalStrike(attackerStats);

@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
+import type { NPC } from '../../engine/worldEngine';
 import OracleView from './OracleView';
 
 interface DialogPanelProps {
   state?: any;
   onChoose?: (npcId: string, choiceId: string) => void;
+  onPerformAction?: (action: any) => void;
   isDeveloperMode?: boolean;
 }
 
@@ -121,13 +123,13 @@ function DialogueEntry({ entry }: { entry: ParsedDialogueEntry }): React.ReactEl
   );
 }
 
-export default function DialogPanel({ state, onChoose, isDeveloperMode = false }: DialogPanelProps) {
+export default function DialogPanel({ state, onChoose, onPerformAction, isDeveloperMode = false }: DialogPanelProps) {
   const [showOracleView, setShowOracleView] = useState(true);
   const dialogueHistory = state?.player?.dialogueHistory ?? [];
 
   const parsedEntries = useMemo(() => {
     return dialogueHistory.map((entry: any) => {
-      const npc = state?.npcs?.find((n: any) => n.id === entry.npcId);
+      const npc = state?.npcs?.find((n: NPC) => n.id === entry.npcId) as NPC | undefined;
       const { stageDirection, dialogue } = parseStageDirection(entry.text);
 
       return {
@@ -135,7 +137,7 @@ export default function DialogPanel({ state, onChoose, isDeveloperMode = false }
         npcName: getNpcName(entry.npcId, state),
         stageDirection,
         text: dialogue,
-        emotionalState: (npc as any)?.emotionalState,
+        emotionalState: npc?.emotionalState,
         timestamp: entry.timestamp
       } as ParsedDialogueEntry;
     });
@@ -228,7 +230,7 @@ export default function DialogPanel({ state, onChoose, isDeveloperMode = false }
         {/* Oracle View Section - M23 Scene Visualization */}
         {showOracleView && state && (
           <div style={{ flex: '1', display: 'flex', minWidth: 0, borderLeft: '1px solid #333' }}>
-            <OracleView state={state} isDeveloperMode={isDeveloperMode} />
+            <OracleView state={state} isDeveloperMode={isDeveloperMode} onPerformAction={onPerformAction} />
           </div>
         )}
       </div>

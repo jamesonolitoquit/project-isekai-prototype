@@ -634,7 +634,7 @@ export const ChronicleMap: React.FC<ChronicleMapProps> = ({
               ));
             })}
           </div>
-          {(!(worldState as any).chronicleHistory || (worldState as any).chronicleHistory.length <= 1) && (
+          {(!(worldState as any).unlockedSoulEchoes || (worldState as any).unlockedSoulEchoes.length <= 1) && (
             <div style={{ color: '#666', fontSize: '12px', textAlign: 'center' }}>
               No previous epochs yet. Create history to build the ghost realm.
             </div>

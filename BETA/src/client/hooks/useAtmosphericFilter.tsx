@@ -13,6 +13,7 @@
  */
 
 import React, { createContext, useContext, useMemo } from 'react';
+import type { WorldState } from '../../engine/worldEngine';
 
 export interface AtmosphericFilterState {
   paradoxLevel: number;
@@ -25,6 +26,9 @@ export interface AtmosphericFilterState {
   swirlEffect: boolean;
   scanlineIntensity: number; // 0-1
   cssClasses: string[];
+  manifestationText?: string; // Beta Phase 9: Diegetic text manifestation
+  activeFilterType?: string; // e.g., 'void-violet', 'bleached'
+  soundscapeOverride?: string; // Optional soundscape change
   // For compatibility with existing code
   glitchClass?: string;
   combinedFilter?: string;
@@ -34,9 +38,18 @@ export interface AtmosphericFilterState {
 const AtmosphericFilterContext = createContext<AtmosphericFilterState | null>(null);
 
 /**
- * Calculate atmospheric filter state based on paradox level
+ * Calculate atmospheric filter state based on paradox level and location sinks
  */
-function calculateFilterState(paradoxLevel: number = 0, ageRotSeverity: number = 0): AtmosphericFilterState {
+function calculateFilterState(
+  paradoxLevel: number = 0, 
+  ageRotSeverity: number = 0,
+  sinks?: Array<{
+    paradoxThreshold: number;
+    manifestation: string;
+    visualFilter: string;
+    soundscapeOverride?: string;
+  }>
+): AtmosphericFilterState {
   const clampedParadox = Math.max(0, Math.min(100, paradoxLevel));
   const clampedAgeRot = Math.max(0, Math.min(100, ageRotSeverity));
   
@@ -48,6 +61,22 @@ function calculateFilterState(paradoxLevel: number = 0, ageRotSeverity: number =
   let hueRotationAmount = 0;
   let swirlEffect = false;
   let scanlineIntensity = 0;
+  let manifestationText = '';
+  let activeFilterType = '';
+  let soundscapeOverride = undefined;
+
+  // Beta Phase 9: Find the highest active sink based on current paradox
+  if (sinks && sinks.length > 0) {
+    const activeSink = [...sinks]
+      .sort((a, b) => b.paradoxThreshold - a.paradoxThreshold)
+      .find(s => clampedParadox >= s.paradoxThreshold);
+    
+    if (activeSink) {
+      manifestationText = activeSink.manifestation;
+      activeFilterType = activeSink.visualFilter;
+      soundscapeOverride = activeSink.soundscapeOverride;
+    }
+  }
   
   if (clampedParadox > 75) {
     glitchLevel = 'severe';
@@ -117,6 +146,21 @@ function calculateFilterState(paradoxLevel: number = 0, ageRotSeverity: number =
     // Slight brightness flicker for scanline effect
     filterParts.push(`brightness(${1 - (scanlineIntensity * 0.08)})`);
   }
+
+  // Beta Phase 9: Apply active filter type overrides
+  if (activeFilterType === 'sepia') {
+    filterParts.push('sepia(60%)');
+  } else if (activeFilterType === 'bleached') {
+    filterParts.push('brightness(1.5) contrast(0.8) saturate(0.2)');
+  } else if (activeFilterType === 'void-violet') {
+    filterParts.push('hue-rotate(280deg) saturate(1.5) contrast(1.1)');
+  } else if (activeFilterType === 'glitched') {
+    filterParts.push('opacity(0.9) invert(0.05) contrast(1.2)');
+  } else if (activeFilterType === 'static') {
+    filterParts.push('contrast(1.4) brightness(1.2)');
+  } else if (activeFilterType === 'pulsing-red') {
+    filterParts.push('hue-rotate(340deg) saturate(2.0)');
+  }
   
   const combinedFilter = filterParts.length > 0 ? filterParts.join(' ') : 'none';
   
@@ -126,7 +170,7 @@ function calculateFilterState(paradoxLevel: number = 0, ageRotSeverity: number =
   };
   
   // Add secondary effects
-  if (swirlEffect) {
+  if (swirlEffect || activeFilterType === 'glitched') {
     filterStyle.animation = 'reality-pulse 1.2s ease-in-out infinite';
   }
   
@@ -141,6 +185,9 @@ function calculateFilterState(paradoxLevel: number = 0, ageRotSeverity: number =
     swirlEffect,
     scanlineIntensity,
     cssClasses,
+    manifestationText,
+    activeFilterType,
+    soundscapeOverride,
     glitchClass,
     combinedFilter,
     filterStyle
@@ -152,13 +199,25 @@ function calculateFilterState(paradoxLevel: number = 0, ageRotSeverity: number =
  */
 export const AtmosphericFilterProvider: React.FC<{
   children: React.ReactNode;
+  state?: Partial<WorldState>;
   paradoxLevel?: number;
   ageRotSeverity?: number;
-}> = ({ children, paradoxLevel = 0, ageRotSeverity = 0 }) => {
-  const filterState = useMemo(
-    () => calculateFilterState(paradoxLevel, ageRotSeverity),
-    [paradoxLevel, ageRotSeverity]
-  );
+}> = ({ children, state, paradoxLevel: propParadox, ageRotSeverity: propAgeRot }) => {
+  const filterState = useMemo(() => {
+    const paradox = state?.paradoxLevel ?? propParadox ?? 0;
+    const ageRot = state?.metadata?.ageRotSeverity ?? propAgeRot ?? 0;
+    
+    // Find current location's sinks from world state
+    const currentLocationId = state?.player?.locationId;
+    const currentLocation = state?.locations?.find(l => l.id === currentLocationId);
+    const sinks = currentLocation?.atmosphericSinks;
+    
+    return calculateFilterState(
+      paradox, 
+      typeof ageRot === 'number' ? ageRot : (ageRot === 'severe' ? 90 : ageRot === 'moderate' ? 60 : ageRot === 'mild' ? 30 : 0),
+      sinks
+    );
+  }, [state, propParadox, propAgeRot]);
   
   return (
     <AtmosphericFilterContext.Provider value={filterState}>
@@ -174,16 +233,23 @@ export const AtmosphericFilterProvider: React.FC<{
  */
 export function useAtmosphericFilter(params?: {
   paradoxLevel?: number;
-  ageRotSeverity?: number;
+  ageRotSeverity?: number | string;
+  state?: Partial<WorldState>;
 }): AtmosphericFilterState {
-  const paradoxLevel = params?.paradoxLevel ?? 0;
-  const ageRotSeverity = params?.ageRotSeverity ?? 0;
-  
   // If parameters provided, calculate directly
   if (params !== undefined) {
+    const paradox = params?.state?.paradoxLevel ?? params?.paradoxLevel ?? 0;
+    const ageRotParam = params?.state?.metadata?.ageRotSeverity ?? params?.ageRotSeverity ?? 0;
+    const ageRotNum = typeof ageRotParam === 'number' ? ageRotParam : (ageRotParam === 'severe' ? 90 : ageRotParam === 'moderate' ? 60 : ageRotParam === 'mild' ? 30 : 0);
+    
+    // Find current location's sinks from world state
+    const currentLocationId = params?.state?.player?.locationId;
+    const currentLocation = params?.state?.locations?.find(l => l.id === currentLocationId);
+    const sinks = currentLocation?.atmosphericSinks;
+    
     return useMemo(
-      () => calculateFilterState(paradoxLevel, ageRotSeverity),
-      [paradoxLevel, ageRotSeverity]
+      () => calculateFilterState(paradox, ageRotNum, sinks),
+      [paradox, ageRotNum, sinks]
     );
   }
   

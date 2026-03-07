@@ -18,13 +18,11 @@
 
 | Signal (keywords / intent) | Route To | Role File |
 |---|---|---|
-| implement, write code, build, create component, add feature, function, API, endpoint, UI | **Coder** | `roles/coder.md` |
-| bug, error, fix, broken, failing, crash, undefined, null, stack trace, test failure | **Debugger** | `roles/debugger.md` |
-| plan, architecture, design, roadmap, breakdown, milestone, phase, scope, spec | **Planner** | `roles/planner.md` |
-| review, PR, pull request, check, audit, consistency, validate, quality | **Reviewer** | `roles/reviewer.md` |
-| monetize, pricing, revenue, business model, subscription, freemium, growth | **Monetizer** | `roles/monetizer.md` |
-| security, auth, vulnerability, threat, compliance, encryption, permissions, OWASP | **Security** | `roles/security.md` |
-| integration, scalability, trade-off, dependency, cross-cutting, performance, infra | **System Thinker** | `roles/system-thinker.md` |
+| implement, write code, build, create component, add feature, function, API, endpoint, UI | **Engineer (Build Mode)** | `roles/engineer.md` |
+| bug, error, fix, broken, failing, crash, undefined, null, stack trace, test failure | **Engineer (Debug Mode)** | `roles/engineer.md` |
+| plan, architecture, design, roadmap, breakdown, scope, spec, system structure, scalability, monetize, business model, integration | **Architect** | `roles/architect.md` |
+| review, PR, check, audit, validate, quality, security, auth, vulnerability, compliance, threat | **QA Specialist** | `roles/qa-specialist.md` |
+| world template, json world, faction, location, npc, initial quest, narrative seed | **World Author** | `roles/world-author.md` |
 
 ---
 

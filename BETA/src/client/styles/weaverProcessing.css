@@ -1,0 +1,319 @@
+/**
+ * weaverProcessing.css - Weaver Processing Indicator Styles
+ * 
+ * Handles multiple display modes:
+ * - diegetic: Full immersive UI panel
+ * - hud: Compact corner badge
+ * - minimal: Subtle pulse indicator
+ * 
+ * Integrates with atmosphere filters for paradox-aware visual effects
+ */
+
+@keyframes weaver-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+@keyframes weaver-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(106, 229, 255, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(106, 229, 255, 0.8); }
+}
+
+@keyframes weaver-flicker {
+  0%, 100% { opacity: 1; }
+  10%, 20%, 30%, 40%, 60%, 80%, 90% { opacity: 0.8; }
+  15%, 25%, 35% { opacity: 0.3; }
+}
+
+@keyframes weaver-glitch-line {
+  0% { transform: translateX(0); opacity: 0; }
+  10% { opacity: 0.5; }
+  90% { opacity: 0.5; }
+  100% { transform: translateX(8px); opacity: 0; }
+}
+
+@keyframes weaver-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ===== DIEGETIC MODE ===== */
+.weaver-processing {
+  position: fixed;
+  font-family: 'Courier New', monospace;
+  z-index: 8000;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.weaver-processing-bottom-right {
+  bottom: 30px;
+  right: 30px;
+}
+
+.weaver-processing-bottom-left {
+  bottom: 30px;
+  left: 30px;
+}
+
+.weaver-processing-top-right {
+  top: 30px;
+  right: 30px;
+}
+
+.weaver-processing-top-left {
+  top: 30px;
+  left: 30px;
+}
+
+.weaver-processing-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Diegetic panel styling */
+.weaver-processing-diegetic .weaver-diegetic-panel {
+  background: linear-gradient(135deg, rgba(29, 53, 87, 0.95), rgba(27, 94, 125, 0.95));
+  border: 2px solid rgba(106, 229, 255, 0.4);
+  border-radius: 4px;
+  padding: 16px;
+  min-width: 200px;
+  backdrop-filter: blur(8px);
+  box-shadow: 
+    0 0 20px rgba(106, 229, 255, 0.2),
+    inset 0 0 20px rgba(106, 229, 255, 0.05);
+}
+
+.weaver-processing-fast .weaver-diegetic-panel {
+  border-color: rgba(106, 229, 255, 0.6);
+  background: linear-gradient(135deg, rgba(29, 53, 87, 0.95), rgba(27, 94, 125, 0.95));
+}
+
+.weaver-processing-normal .weaver-diegetic-panel {
+  border-color: rgba(157, 78, 221, 0.5);
+  background: linear-gradient(135deg, rgba(45, 35, 75, 0.95), rgba(67, 40, 110, 0.95));
+}
+
+.weaver-processing-slow .weaver-diegetic-panel {
+  border-color: rgba(255, 0, 110, 0.6);
+  animation: weaver-flicker 0.4s infinite;
+  background: linear-gradient(135deg, rgba(75, 35, 55, 0.95), rgba(95, 40, 70, 0.95));
+}
+
+.weaver-processing-critical .weaver-diegetic-panel {
+  border-color: rgba(255, 190, 11, 0.8);
+  animation: weaver-flicker 0.2s infinite;
+  background: linear-gradient(135deg, rgba(85, 70, 25, 0.95), rgba(105, 80, 30, 0.95));
+}
+
+/* Header styling */
+.weaver-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #6ae5ff;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+}
+
+.weaver-icon {
+  font-size: 14px;
+  display: inline-block;
+  min-width: 12px;
+}
+
+.weaver-icon.weaver-glitch-active {
+  animation: weaver-flicker 0.3s infinite;
+}
+
+.weaver-label {
+  flex: 1;
+}
+
+/* Progress bar */
+.weaver-progress-bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(106, 229, 255, 0.1);
+  border: 1px solid rgba(106, 229, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.weaver-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6ae5ff, #9d4edd);
+  border-radius: 2px;
+  transition: width 0.2s ease-out;
+  box-shadow: 0 0 8px rgba(106, 229, 255, 0.5);
+}
+
+/* Latency display */
+.weaver-latency {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-top: 1px solid rgba(106, 229, 255, 0.1);
+  border-bottom: 1px solid rgba(106, 229, 255, 0.1);
+  margin-bottom: 8px;
+  color: #9d4edd;
+  font-size: 11px;
+}
+
+.weaver-latency-value {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  color: #6ae5ff;
+}
+
+.weaver-latency-tier {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.8;
+}
+
+/* Status text */
+.weaver-status-text {
+  color: rgba(106, 229, 255, 0.7);
+  font-size: 10px;
+  font-style: italic;
+  text-align: center;
+  animation: weaver-pulse 2s infinite;
+}
+
+/* ===== HUD MODE ===== */
+.weaver-processing-hud .weaver-hud-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(106, 229, 255, 0.2), rgba(106, 229, 255, 0.05));
+  border: 2px solid rgba(106, 229, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: weaver-glow 1.5s infinite;
+  position: relative;
+}
+
+.weaver-spinner {
+  font-size: 20px;
+  animation: weaver-spin 2s linear infinite;
+  display: inline-block;
+  color: #6ae5ff;
+}
+
+.weaver-processing-normal .weaver-spinner { color: #9d4edd; }
+.weaver-processing-slow .weaver-spinner { color: #ff006e; }
+.weaver-processing-critical .weaver-spinner { color: #ffbe0b; }
+
+.weaver-tooltip {
+  display: none;
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(29, 53, 87, 0.95);
+  border: 1px solid rgba(106, 229, 255, 0.5);
+  border-radius: 4px;
+  padding: 4px 8px;
+  white-space: nowrap;
+  color: #6ae5ff;
+  font-size: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.weaver-hud-badge:hover .weaver-tooltip {
+  display: block;
+  opacity: 1;
+}
+
+/* ===== MINIMAL MODE ===== */
+.weaver-processing-minimal .weaver-pulse {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(106, 229, 255, 0.4);
+  animation: weaver-pulse 1.5s infinite;
+}
+
+/* ===== GLITCH OVERLAY ===== */
+.weaver-glitch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: 4px;
+}
+
+.weaver-glitch-line {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  left: 0;
+  background: rgba(255, 0, 110, 0.6);
+  animation: weaver-glitch-line 0.4s linear infinite;
+}
+
+/* ===== RESPONSIVE & ACCESSIBILITY ===== */
+@media (prefers-reduced-motion: reduce) {
+  .weaver-diegetic-panel,
+  .weaver-hud-badge,
+  .weaver-pulse,
+  .weaver-icon,
+  .weaver-spinner {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+
+  .weaver-spinner {
+    transform: none;
+  }
+}
+
+/* Mobile viewport adjustments */
+@media (max-width: 768px) {
+  .weaver-processing {
+    font-size: 11px;
+  }
+
+  .weaver-processing-bottom-right {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  .weaver-processing-bottom-left {
+    bottom: 16px;
+    left: 16px;
+  }
+
+  .weaver-processing-top-right {
+    top: 16px;
+    right: 16px;
+  }
+
+  .weaver-processing-top-left {
+    top: 16px;
+    left: 16px;
+  }
+
+  .weaver-processing-diegetic .weaver-diegetic-panel {
+    min-width: 160px;
+    padding: 12px;
+  }
+
+  .weaver-hud-badge {
+    width: 36px;
+    height: 36px;
+  }
+
+  .weaver-spinner {
+    font-size: 18px;
+  }
+}

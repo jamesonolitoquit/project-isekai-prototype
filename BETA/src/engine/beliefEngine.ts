@@ -104,6 +104,12 @@ class BeliefEngineImpl {
    * This is called whenever a major event occurs (faction siege, NPC death, etc.)
    */
   recordHardFact(fact: HardFact): void {
+    // Validate required fields
+    if (!fact.id || !fact.description || !fact.factionIds) {
+      console.warn('[BeliefEngine] Invalid HardFact - missing required fields:', fact);
+      return;
+    }
+    
     this.registry.hardFacts[fact.id] = fact;
     
     // Automatically create regional rumors from this fact
@@ -130,7 +136,7 @@ class BeliefEngineImpl {
         originalFactId: fact.id,
         description: this.addNoiseToDescription(fact.description, 0.2),
         claimedLocationId: fact.originLocationId,
-        claimedFactionIds: [...fact.factionIds],
+        claimedFactionIds: [...(fact.factionIds || [])],
         confidenceLevel: 80,
         distanceFromOrigin: innerRingDistance,
         factionRelevance: 0.9,
@@ -144,7 +150,7 @@ class BeliefEngineImpl {
         originalFactId: fact.id,
         description: this.addNoiseToDescription(fact.description, 0.5),
         claimedLocationId: this.distortLocation(fact.originLocationId, middleRingDistance),
-        claimedFactionIds: this.distortFactionList(fact.factionIds),
+        claimedFactionIds: this.distortFactionList(fact.factionIds || []),
         confidenceLevel: 40,
         distanceFromOrigin: middleRingDistance,
         factionRelevance: 0.5,
@@ -158,7 +164,7 @@ class BeliefEngineImpl {
         originalFactId: fact.id,
         description: this.addNoiseToDescription(fact.description, 0.8),
         claimedLocationId: this.distortLocation(fact.originLocationId, middleRingDistance * 2),
-        claimedFactionIds: this.distortFactionList(fact.factionIds, 0.7),
+        claimedFactionIds: this.distortFactionList(fact.factionIds || [], 0.7),
         confidenceLevel: 10,
         distanceFromOrigin: middleRingDistance * 2,
         factionRelevance: 0.2,

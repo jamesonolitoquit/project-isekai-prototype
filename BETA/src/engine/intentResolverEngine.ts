@@ -353,6 +353,16 @@ class IntentResolverEngine {
           `${target.name} dismissed the threat.`,
           `The threat had no effect.`
         ]
+      },
+      'GOSSIP': {
+        success: [
+          `${target.name} listened intently to ${initiator.name}'s gossip.`,
+          `The gossip was shared successfully.`
+        ],
+        failure: [
+          `${target.name} showed little interest in the gossip.`,
+          `The gossip fell on deaf ears.`
+        ]
       }
     };
 

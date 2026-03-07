@@ -277,7 +277,7 @@ function pruneOldSnapshots(ledger: SnapshotLedger): number {
   }
 
   // Keep only the most recent maxStoredSnapshots
-  ledger.snapshots = ledger.snapshots.toSorted((a, b) => b.tick - a.tick);
+  ledger.snapshots = ledger.snapshots.toSorted((a, b) => b.tick - a.tick)
     .slice(0, ledger.maxStoredSnapshots);
 
   return initialCount - ledger.snapshots.length;

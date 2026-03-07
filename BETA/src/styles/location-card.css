@@ -1,0 +1,207 @@
+/* ============================================
+   LOCATION CARD: Center Stage Selection Cards
+   ============================================ */
+
+.location-card {
+  background: var(--card-bg, rgba(20, 25, 40, 0.6));
+  border: var(--card-border, 1px solid rgba(100, 200, 255, 0.2));
+  border-radius: var(--layout-radius, 12px);
+  padding: 16px;
+  box-shadow: var(--card-shadow, 0 8px 32px rgba(0, 0, 0, 0.3));
+  backdrop-filter: blur(8px);
+  transition: var(--layout-transition, all 0.3s ease);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+}
+
+.location-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(100, 200, 255, 0.08), transparent);
+  pointer-events: none;
+}
+
+.location-card:hover {
+  box-shadow: var(--card-hover-shadow, 0 12px 48px rgba(100, 200, 255, 0.2));
+  transform: translateY(-6px) scale(1.03);
+  border-color: var(--wizard-accent, #74b9ff);
+}
+
+.location-card.selected {
+  border-color: var(--wizard-highlight, #8b5cf6);
+  box-shadow:
+    0 0 20px rgba(139, 92, 246, 0.4),
+    inset 0 0 20px rgba(139, 92, 246, 0.1);
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.location-card-icon {
+  font-size: 3rem;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 4px 8px rgba(100, 200, 255, 0.2));
+}
+
+.location-card-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--wizard-accent, #74b9ff);
+  position: relative;
+  z-index: 1;
+  margin-top: 0.75rem;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.location-card-biome {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+  z-index: 1;
+  margin-top: 0.25rem;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.location-card-desc {
+  display: none; /* Content lives in hover tooltip */
+}
+
+/* Gear Card variant */
+.gear-card {
+  background: var(--card-bg, rgba(20, 25, 40, 0.6));
+  border: var(--card-border, 1px solid rgba(100, 200, 255, 0.2));
+  border-radius: var(--layout-radius, 12px);
+  padding: 1rem;
+  box-shadow: var(--card-shadow, 0 8px 32px rgba(0, 0, 0, 0.3));
+  backdrop-filter: blur(8px);
+  transition: var(--layout-transition, all 0.3s ease);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.4rem;
+  min-height: 140px;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.gear-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(100, 200, 255, 0.06), transparent);
+  pointer-events: none;
+}
+
+.gear-card:hover {
+  box-shadow: var(--card-hover-shadow, 0 12px 48px rgba(100, 200, 255, 0.2));
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--wizard-accent, #74b9ff);
+}
+
+.gear-card.selected {
+  border-color: var(--wizard-highlight, #8b5cf6);
+  box-shadow:
+    0 0 20px rgba(139, 92, 246, 0.4),
+    inset 0 0 20px rgba(139, 92, 246, 0.1);
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.gear-card.selected::after {
+  content: '\2713';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: var(--wizard-highlight, #8b5cf6);
+  color: #fff;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.gear-card-icon {
+  font-size: 2.5rem;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 4px 8px rgba(100, 200, 255, 0.2));
+}
+
+.gear-card-name {
+  font-weight: 600;
+  color: var(--wizard-accent, #74b9ff);
+  font-size: 0.95rem;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  position: relative;
+  z-index: 1;
+}
+
+.gear-card-desc {
+  display: none; /* Content lives in hover tooltip */
+}
+
+.gear-card-stats {
+  font-size: 0.7rem;
+  color: rgba(160, 217, 149, 0.9);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  position: relative;
+  z-index: 1;
+}
+
+.gear-card-category {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+}
+
+.gear-card-category.offense {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.gear-card-category.defense {
+  color: #74b9ff;
+  background: rgba(116, 185, 255, 0.1);
+  border: 1px solid rgba(116, 185, 255, 0.3);
+}

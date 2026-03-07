@@ -784,7 +784,7 @@ export class LegacyEngine {
     if (state.player?.inventory) {
       for (const item of state.player.inventory) {
         // Check if item is marked as a relic (relics have enhanced properties)
-        if (item && 'kind' in item && item.kind === 'equipment') {
+        if (item && 'enchantments' in item) {
           const eqItem = item as any;
           if (eqItem.enchantments?.some((e: string) => e.includes('ancestral') || e.includes('virtue'))) {
             relicsOfVirtue.push({

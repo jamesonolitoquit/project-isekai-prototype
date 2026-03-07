@@ -6,7 +6,7 @@
  * M53-B1: The Great Library - Archive Grand Deeds as Lore Tomes
  */
 
-import type { WorldState, Quest, UniqueItem, InventoryItem, NPC } from './worldEngine';
+import { WorldState, Quest, UniqueItem, InventoryItem, NPC, getWorldTemplate } from './worldEngine';
 import type { LegacyImpact } from './legacyEngine';
 import type { WorldScar } from './worldScarsEngine';
 import { SeededRng } from './prng';
@@ -17,6 +17,7 @@ import { createEpochVote, recordEpochVote, hasEpochVoteConsensus } from './multi
 import { extractGrandDeeds } from './eventCompactionEngine';
 import { archiveLegacyAsLoreTomes } from './loreEngine';
 import { getEventsForWorld } from '../events/mutationLog';
+import { applyEpochEvolution } from './epochEvolutionEngine';  // Phase 20: Epoch Evolution
 
 export interface EpochDefinition {
   id: string;
@@ -1201,16 +1202,43 @@ export function isChronicleComplete(currentEpochId: string): boolean {
 }
 
 /**
+ * Phase 40: Epoch to Codec Mapping
+ * Links each epoch to a narrative codec that provides mechanical modifiers (cost multiplier, power bonus)
+ * and visual aesthetic to make the world's progression mechanically and visually distinct
+ */
+export const EPOCH_CODEC_MAP: Record<string, string> = {
+  'epoch_i_fracture': 'CODENAME_MEDIEVAL',      // Recovery from paradox - back to basics
+  'epoch_ii_waning': 'CODENAME_MINIMAL',        // Waning magic - efficient protocols
+  'epoch_iii_twilight': 'CODENAME_NOIR',        // Darkness - gritty, precise noir
+  'epoch_iv_renewal': 'CODENAME_STORYBOOK',     // Rebirth of magic and hope
+  'epoch_v_ascension': 'CODENAME_CYBERPUNK',    // Rise of tech-infused civilization
+  'epoch_vi_zenith': 'CODENAME_VINTAGE',        // Golden age - classic elegance
+  'epoch_vii_eclipse': 'CODENAME_GLITCH',       // Reality breaks - paradox emerges
+  'epoch_viii_void': 'CODENAME_VOIDSYNC',       // Emptiness - cosmic void echoes
+  'epoch_ix_rebirth': 'CODENAME_SOLARPUNK',     // Life returns - solar optimism
+  'epoch_x_eternity': 'CODENAME_DREAMSCAPE'     // Final epoch - reality bending
+};
+
+/**
  * Phase 12 Task 3: World Aging (Centuries Transition)
  * Simulates passage of ~2,000 years between playable epochs
  * Applies stochastic shifts to faction power and location health based on previous paradox level
  */
 export function advanceToNextEpoch(state: WorldState, legacy: LegacyImpact | null): WorldState {
   const rng = new SeededRng(state.seed + (state.tick || 0));
-  const currentEpoch = EPOCH_DEFINITIONS[state.epochId || 'epoch_i_fracture'];
+  const worldTemplate = (state as any).template || getWorldTemplate();
+  
+  // Use template baseEpoch if state.epochId is missing
+  const currentEpochId = state.epochId || worldTemplate?.baseEpoch || 'epoch_i_awakening';
+  
+  // Try to find epoch in template first (Phase 20)
+  const templateEpoch = worldTemplate?.epochs?.[currentEpochId];
+  const staticEpoch = EPOCH_DEFINITIONS[currentEpochId];
+  
+  const currentEpoch = templateEpoch || staticEpoch;
   
   if (!currentEpoch) {
-    console.warn('[chronicleEngine] Current epoch not found:', state.epochId);
+    console.warn('[chronicleEngine] Current epoch not found:', currentEpochId);
     return state;
   }
   
@@ -1276,15 +1304,15 @@ export function advanceToNextEpoch(state: WorldState, legacy: LegacyImpact | nul
       }
       
       // Mutation: High erosion can change biome type
-      if (location.spiritDensity === 0 && rng.nextDouble() < 0.3) {
+      if (location.spiritDensity === 0 && rng.next() < 0.3) {
         const biomeDecay: Record<string, string> = {
           'forest': 'corrupted',
           'mountain': 'corrupted',
           'coast': 'corrupted',
           'cave': 'void',
-          'plains': 'barren'
+          'plains': 'corrupted'
         };
-        location.biome = biomeDecay[location.biome || 'plains'] || 'corrupted';
+        location.biome = biomeDecay[location.biome || 'plains'] as any || 'corrupted';
       }
     }
   }
@@ -1293,17 +1321,24 @@ export function advanceToNextEpoch(state: WorldState, legacy: LegacyImpact | nul
   // Phase 13: Preserve generationalParadox (cumulative across all epochs)
   const currentGenerationalParadox = (state as any).generationalParadox || 0;
   const newGenerationalParadox = currentGenerationalParadox + paradoxLevel;
+
+  // === Phase 20: Apply Comprehensive Epoch Evolution ===
+  // Material Ascension, Bloodline Divergence, and Environmental Transformation
+  let evolvedState = applyEpochEvolution(state, newGenerationalParadox);
   
   const updatedState = {
-    ...state,
+    ...evolvedState,
     epochId: nextEpochId,
     chronicleId: `chronicle_${state.id}_${nextEpochId}`,
+    player: evolvedState.player ? {
+      ...evolvedState.player,
+      knowledgeBase: evolvedState.player.knowledgeBase, // Preserve knowledge across epochs
+      // Phase 40: Automatically switch to epoch's codec (visual and mechanical modifiers shift)
+      currentCodec: EPOCH_CODEC_MAP[nextEpochId] || 'CODENAME_MEDIEVAL'
+    } : evolvedState.player,
     generationalParadox: newGenerationalParadox,  // Phase 13: Accumulate total paradox
-    epochGenerationIndex: ((state as any).epochGenerationIndex || 0) + 1,  // Phase 13: Increment generation
-    player: {
-      ...state.player,
-      knowledgeBase: state.player.knowledgeBase // Preserve knowledge across epochs
-    }
+    tick: (state.tick || 0) + 1440,
+    epochGenerationIndex: ((state as any).epochGenerationIndex || 0) + 1  // Phase 13: Increment generation
   } as WorldState;
   
   // Increment chronology year (~2,000 years per epoch)
@@ -1321,6 +1356,7 @@ export function advanceToNextEpoch(state: WorldState, legacy: LegacyImpact | nul
     console.log(`  Location Health Degraded (paradoxLevel: ${paradoxLevel})`);
     console.log(`  Phase 13: Generational Paradox: ${newGenerationalParadox} (prev: ${currentGenerationalParadox} + current: ${paradoxLevel})`);
     console.log(`  Phase 13: Epoch Generation Index: ${updatedState.epochGenerationIndex}`);
+    console.log(`  Phase 40: Codec Shifted to: ${EPOCH_CODEC_MAP[nextEpochId] || 'CODENAME_MEDIEVAL'}`);
   }
   
   return updatedState;

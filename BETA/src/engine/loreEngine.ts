@@ -55,7 +55,16 @@ export function unlockLoreEntry(
   trigger: LoreUnlockTrigger,
   loreEntry: LoreEntry
 ): { unlocked: boolean; wasNew: boolean } {
-  const knowledgeBase = state.player?.knowledgeBase || new Map();
+  // Ensure knowledgeBase is a Map for consistent API
+  let knowledgeBase = state.player?.knowledgeBase || new Map();
+  if (Array.isArray(knowledgeBase)) {
+    const map = new Map();
+    knowledgeBase.forEach(item => map.set(item, true));
+    knowledgeBase = map;
+    if (state.player) {
+      state.player.knowledgeBase = knowledgeBase;
+    }
+  }
   
   // Already discovered
   if (knowledgeBase.has(loreId)) {
@@ -182,9 +191,19 @@ export function getRelatedLoreEntries(
   state: WorldState,
   loreId: string
 ): LoreEntry[] {
-  const knowledgeBase = state.player?.knowledgeBase;
+  let knowledgeBase = state.player?.knowledgeBase;
   if (!knowledgeBase) {
     return [];
+  }
+
+  // Ensure knowledgeBase is a Map
+  if (Array.isArray(knowledgeBase)) {
+    const map = new Map();
+    knowledgeBase.forEach(item => map.set(item, true));
+    knowledgeBase = map;
+    if (state.player) {
+      state.player.knowledgeBase = knowledgeBase;
+    }
   }
 
   const entry = knowledgeBase.get(loreId);
@@ -210,9 +229,19 @@ export function getSuggestedLoreEntries(
     // For now, return empty - actual lore entries are added dynamically
   ];
 
-  const knowledgeBase = state.player?.knowledgeBase;
+  let knowledgeBase = state.player?.knowledgeBase;
   
-  // Filter to undisc covered entries only
+  // Ensure knowledgeBase is a Map
+  if (Array.isArray(knowledgeBase)) {
+    const map = new Map();
+    knowledgeBase.forEach(item => map.set(item, true));
+    knowledgeBase = map;
+    if (state.player) {
+      state.player.knowledgeBase = knowledgeBase;
+    }
+  }
+  
+  // Filter to undiscovered entries only
   const undiscovered = allLore.filter(entry => 
     !knowledgeBase?.has(entry.id)
   );
@@ -230,9 +259,19 @@ export function getLoreByCategory(
   state: WorldState,
   category: string
 ): Array<LoreEntry & { unlocked: boolean; unlockedAt?: number }> {
-  const knowledgeBase = state.player?.knowledgeBase;
+  let knowledgeBase = state.player?.knowledgeBase;
   if (!knowledgeBase) {
     return [];
+  }
+
+  // Ensure knowledgeBase is a Map
+  if (Array.isArray(knowledgeBase)) {
+    const map = new Map();
+    knowledgeBase.forEach(item => map.set(item, true));
+    knowledgeBase = map;
+    if (state.player) {
+      state.player.knowledgeBase = knowledgeBase;
+    }
   }
 
   return Array.from(knowledgeBase.values())
@@ -253,7 +292,18 @@ export function getLoreProgressForCategory(
   category: string,
   totalInCategory: number
 ): { unlocked: number; total: number; percentage: number } {
-  const knowledgeBase = state.player?.knowledgeBase;
+  let knowledgeBase = state.player?.knowledgeBase;
+  
+  // Ensure knowledgeBase is a Map
+  if (Array.isArray(knowledgeBase)) {
+    const map = new Map();
+    knowledgeBase.forEach(item => map.set(item, true));
+    knowledgeBase = map;
+    if (state.player) {
+      state.player.knowledgeBase = knowledgeBase;
+    }
+  }
+
   const unlockedInCategory = knowledgeBase
     ? Array.from(knowledgeBase.values()).filter(e => e.category === category).length
     : 0;

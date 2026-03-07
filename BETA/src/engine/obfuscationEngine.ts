@@ -1,13 +1,13 @@
-import { WorldState, PlayerState, NPC } from './worldEngine';
+import { WorldState, PlayerState, NPC, CraftingRecipe } from './worldEngine';
 import type { WildernessNode } from './wildernessEngine';
-import type { Recipe } from './craftingEngine';
 
 /**
  * M12: Obfuscated Recipe - hides materials and results if not discovered
  */
-export interface ObfuscatedRecipe extends Omit<Recipe, 'materials' | 'result'> {
-  materials: Array<{ itemId: string; quantity: number }> | string; // String "???" if not discovered
-  result: { itemId: string; quantity: number } | string; // String "???" if not discovered
+export interface ObfuscatedRecipe extends Omit<CraftingRecipe, 'ingredients' | 'resultItemId' | 'resultQuantity'> {
+  ingredients: Array<{ itemId: string; quantity: number }> | string; // String "???" if not discovered
+  resultItemId: string; // Shown or "???" if not discovered
+  resultQuantity: number | string; // Shown or "???" if not discovered
   discovered: boolean;
 }
 
@@ -469,7 +469,7 @@ export function filterWildernessNodes(
  * High-tier recipes only show materials and results if player has discovered them
  */
 export function filterRecipes(
-  recipes: Recipe[],
+  recipes: CraftingRecipe[],
   knowledgeBase: Set<string> | string[]
 ): ObfuscatedRecipe[] {
   const kbSet = Array.isArray(knowledgeBase) ? new Set(knowledgeBase) : knowledgeBase;
@@ -479,13 +479,13 @@ export function filterRecipes(
 
     return {
       id: recipe.id,
-      name: recipe.name,
-      difficulty: recipe.difficulty,
-      description: recipe.description,
-      materials: isDiscovered ? recipe.materials : '???',
-      result: isDiscovered ? recipe.result : '???',
+      resultItemId: isDiscovered ? recipe.resultItemId : '???',
+      resultQuantity: isDiscovered ? recipe.resultQuantity : ('???' as any),
+      ingredients: isDiscovered ? recipe.ingredients : '???',
+      requiredFacility: recipe.requiredFacility,
+      discoveryHardFactId: recipe.discoveryHardFactId,
       discovered: isDiscovered
-    };
+    } as ObfuscatedRecipe;
   });
 }
 

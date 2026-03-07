@@ -1,6 +1,7 @@
 /**
  * questSynthesisAI.ts - M46-A1: Procedural Quest Generation
  * Synthesizes quests from faction warfare, NPC memory, rumors, and world fragments.
+ * Enhanced with Pillar 2.3: AI Weaver integration for dynamic quest prologues.
  */
 
 import { SeededRng } from './prng';
@@ -8,6 +9,17 @@ import { getFactionWarfareEngine } from './factionWarfareEngine';
 import { getNpcMemoryEngine } from './npcMemoryEngine';
 import { getBeliefEngine } from './beliefEngine';
 import type { WorldState, Quest } from './worldEngine';
+
+// Import AI Weaver service (note: only imported for async enhancement, not required)
+let AIService: any = null;
+try {
+  // Attempt to import AIService - will work in server context
+  const { getAIService } = require('../client/services/AIService');
+  const tempAI = getAIService;
+  if (tempAI) AIService = tempAI;
+} catch (e) {
+  // AI service not available in this context, quests will use static descriptions
+}
 
 export interface ProceduralQuest extends Quest {
   synthesisSource: 'faction_warfare' | 'npc_memory' | 'rumor_investigation' | 'world_fragment' | 'hybrid';
@@ -304,6 +316,69 @@ class QuestSynthesisAI {
     allQuests.push(...this.synthesizeHybridQuests(worldState));
 
     return allQuests;
+  }
+
+  /**
+   * Enhance quest with AI-generated prologue (Pillar 2.3)
+   * This is an async operation that should be called after quest creation
+   * if AI is available. Falls back gracefully to static descriptions if AI unavailable.
+   */
+  async enhanceQuestWithAI(quest: ProceduralQuest, worldState: WorldState): Promise<void> {
+    if (!AIService) {
+      return; // AI service not available, keep static description
+    }
+
+    try {
+      const aiService = AIService();
+      
+      // Determine context factors from quest
+      const factionInvolved = (quest.parentFactors || []).filter(f => 
+        worldState.factions?.some(fac => fac.id === f)
+      ) || [];
+
+      // Build player background from available properties
+      const playerBackground = worldState.player?.currentRace 
+        ? `${worldState.player.currentRace} Adventurer`
+        : 'Adventurer';
+
+      const result = await aiService.synthesize({
+        type: 'quest_prologue',
+        factors: {
+          questTitle: quest.title,
+          questTemplate: quest.synthesisSource,
+          factionInvolved,
+          playerBackground,
+          difficulty: quest.difficultyRating,
+        },
+        paradoxLevel: worldState.paradoxLevel,
+      });
+
+      // Only update if synthesis was successful
+      if (result.content && result.provider !== 'static_fallback') {
+        quest.description = `${result.content}\n\n[Weaver Synthesis]`;
+      }
+    } catch (error) {
+      console.warn('AI enhancement of quest failed, keeping static description:', error);
+      // Quest retains its static description if AI fails
+    }
+  }
+
+  /**
+   * Batch enhance multiple quests with AI (Pillar 2.3)
+   * Use this for initial quest generation to add immersive prologues
+   */
+  async batchEnhanceQuestsWithAI(quests: ProceduralQuest[], worldState: WorldState): Promise<void> {
+    // Limit concurrent AI calls to avoid rate limiting
+    const maxConcurrent = 3;
+    
+    for (let i = 0; i < quests.length; i += maxConcurrent) {
+      const batch = quests.slice(i, i + maxConcurrent);
+      await Promise.all(
+        batch.map(quest => this.enhanceQuestWithAI(quest, worldState).catch(() => {
+          // Silently catch individual failures, don't block other enhancements
+        }))
+      );
+    }
   }
 
   getQuest(questId: string): ProceduralQuest | undefined {

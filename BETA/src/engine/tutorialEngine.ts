@@ -1,5 +1,5 @@
 /**
- * M41 Task 2: Onboarding Engine
+ * M41 Task 2: Onboarding Engine (Phase 30 Enhancement: AI Weaver Integration)
  * 
  * Tracks player milestone achievements and provides lore-compliant tutorials:
  * - First Roll: Dice ritual introduction
@@ -8,9 +8,13 @@
  * 
  * Integrates with WorldState event log to detect milestones automatically.
  * Provides localized tutorial overlays and help text.
+ * 
+ * Phase 30: Now wires AIService for dynamic, knowledge-gated tutorial synthesis.
+ * Gracefully falls back to static TUTORIAL_DATABASE if AI unavailable.
  */
 
 import { WorldState } from './worldEngine';
+import type { SynthesisResult } from '../client/services/AIService';
 
 /**
  * M41: Milestone identifiers for tutorial progression
@@ -319,6 +323,93 @@ export function getNextTutorialOverlay(tutorialState: TutorialState): TutorialOv
 }
 
 /**
+ * Phase 30 Task 3: Synthesize tutorial with optional AI enhancement
+ * 
+ * If AIService is available, generates dynamic, knowledge-gated tutorial text
+ * that adapts to player's knowledge level and world paradox state.
+ * 
+ * Falls back to TUTORIAL_DATABASE if AI unavailable or times out.
+ * 
+ * @param tutorialState - Current tutorial state
+ * @param worldState - Current world state (for paradox awareness)
+ * @param playerKnowledgeLevel - Player's current knowledge stat (0-20)
+ * @returns Promise<TutorialOverlay | undefined>
+ */
+export async function getNextTutorialOverlayAsync(
+  tutorialState: TutorialState,
+  worldState: WorldState,
+  playerKnowledgeLevel: number = 0
+): Promise<TutorialOverlay | undefined> {
+  // First check if we have any milestone to show
+  const staticOverlay = getNextTutorialOverlay(tutorialState);
+  if (!staticOverlay) {
+    return undefined;
+  }
+
+  // Try to enhance with AI synthesis if available
+  try {
+    // Dynamically import AIService to avoid circular dependencies
+    const { getAIService } = await import('../client/services/AIService');
+    const aiService = getAIService?.();
+    
+    if (!aiService) {
+      // AI service not available, return static version
+      return staticOverlay;
+    }
+
+    // Prepare synthesis context
+    const baseText = staticOverlay.text;
+    const milestoneId = staticOverlay.milestoneId;
+    
+    const synthesisContext = {
+      type: 'knowledge_gated_tutorial' as const,
+      factors: {
+        milestoneId,
+        baseText,
+        knowledgeLevel: playerKnowledgeLevel,
+        paradoxLevel: worldState.paradoxLevel || 0,
+        itemCorruption: worldState.ageRotSeverity === 'severe' ? 60 : 
+                        worldState.ageRotSeverity === 'moderate' ? 30 : 0
+      },
+      paradoxLevel: worldState.paradoxLevel || 0
+    };
+
+    // Call AI service with timeout protection
+    const timeoutPromise = new Promise<SynthesisResult>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          content: baseText,
+          provider: 'static_fallback',
+          latency: 5000,
+          error: 'AI synthesis timeout'
+        });
+      }, 5000);
+    });
+
+    const result = await Promise.race([
+      aiService.synthesize(synthesisContext),
+      timeoutPromise
+    ]);
+
+    // If synthesis succeeded, use the generated text
+    if (result.provider !== 'static_fallback' || !result.error) {
+      return {
+        ...staticOverlay,
+        text: result.content || baseText,
+        loreText: `[AI-Synthesized] ${staticOverlay.loreText} (Knowledge-gated for level ${playerKnowledgeLevel})`
+      };
+    }
+
+    // Fall back to static if synthesis failed
+    return staticOverlay;
+  } catch (error) {
+    // Any error during AI synthesis results in fallback to static
+    console.warn('[tutorialEngine] AI synthesis failed:', error);
+    return staticOverlay;
+  }
+}
+
+/**
  * M41: Suppress tutorial overlay
  * Called when user closes the overlay
  */
@@ -408,30 +499,6 @@ export function deserializeTutorialState(data: Record<string, any>): TutorialSta
 // ============ M42 TIER 2: MILESTONE HELPERS ============
 
 /**
- * M42: Manually trigger Diplomat milestone
- * Called when player makes a significant faction influence decision
- */
-export function triggerDiplomatMilestone(tutorialState: TutorialState): TutorialState {
-  if (tutorialState.milestones.diplomat.achieved) {
-    return tutorialState;
-  }
-  
-  return updateTutorialState(tutorialState, ['diplomat'], Date.now());
-}
-
-/**
- * M42: Manually trigger Weaver milestone
- * Called when player completes a grand ritual with 3+ participants
- */
-export function triggerWeaverMilestone(tutorialState: TutorialState): TutorialState {
-  if (tutorialState.milestones.weaver.achieved) {
-    return tutorialState;
-  }
-  
-  return updateTutorialState(tutorialState, ['weaver'], Date.now());
-}
-
-/**
  * M42: Check if player has earned faction influence status
  * Returns true if player has influenced at least one faction
  */
@@ -461,4 +528,76 @@ export function getTier2Progress(tutorialState: TutorialState): { completed: num
     completed,
     total: tier2Milestones.length
   };
+}
+
+/**
+ * Phase 19 Task 3: Quest-Tutorial Sync Helpers
+ * Trigger specific milestones based on quest completion events
+ */
+
+/**
+ * Trigger first_combat milestone when any combat quest is completed
+ */
+export function triggerCombatMilestone(tutorialState: TutorialState, questId: string, currentTick: number): TutorialState {
+  if (tutorialState.milestones.first_combat.achieved) {
+    return tutorialState;
+  }
+  
+  // Mark as achieved and trigger overlay
+  return updateTutorialState(tutorialState, ['first_combat'], currentTick);
+}
+
+/**
+ * Trigger first_trade milestone when any trading quest is completed
+ */
+export function triggerTradeMilestone(tutorialState: TutorialState, questId: string, currentTick: number): TutorialState {
+  if (tutorialState.milestones.first_trade.achieved) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['first_trade'], currentTick);
+}
+
+/**
+ * Trigger first_spell milestone when ability/spell is first used
+ */
+export function triggerSpellMilestone(tutorialState: TutorialState, abilityId: string, currentTick: number): TutorialState {
+  if (tutorialState.milestones.first_spell.achieved) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['first_spell'], currentTick);
+}
+
+/**
+ * Trigger epoch_shift milestone when epoch changes
+ */
+export function triggerEpochShiftMilestone(tutorialState: TutorialState, newEpochId: string, currentTick: number): TutorialState {
+  if (tutorialState.milestones.epoch_shift.achieved) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['epoch_shift'], currentTick);
+}
+
+/**
+ * Trigger diplomat milestone when faction influence decision is made
+ */
+export function triggerDiplomatMilestone(tutorialState: TutorialState, factionId: string, currentTick: number): TutorialState {
+  if (tutorialState.milestones.diplomat.achieved) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['diplomat'], currentTick);
+}
+
+/**
+ * Trigger weaver milestone when grand ritual with 3+ participants completes
+ */
+export function triggerWeaverMilestone(tutorialState: TutorialState, participantCount: number, currentTick: number): TutorialState {
+  if (tutorialState.milestones.weaver.achieved || participantCount < 3) {
+    return tutorialState;
+  }
+  
+  return updateTutorialState(tutorialState, ['weaver'], currentTick);
 }

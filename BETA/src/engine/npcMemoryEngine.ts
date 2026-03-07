@@ -31,6 +31,9 @@ export interface SocialScar {
   activeEffects: string[];
   healingProgress: number;
   createdAt: number;
+  // Phase 7: Narrative Hardening - Temporal & Discovery tracking
+  lastTriggeredTick?: number;
+  discoveryStatus: 'dormant' | 'emerging' | 'active' | 'processing' | 'resolved';
 }
 
 export interface RelationshipTierData {
@@ -166,7 +169,9 @@ class NpcMemoryEngine {
       apparitionChance: severity / 100,
       activeEffects: this.generateScarEffects(scarType, severity),
       healingProgress: 0,
-      createdAt: this.rng.nextInt(0, 100000)
+      createdAt: this.rng.nextInt(0, 100000),
+      lastTriggeredTick: undefined,
+      discoveryStatus: 'dormant'
     };
 
     this.socialScars.set(scar.id, scar);
@@ -182,18 +187,6 @@ class NpcMemoryEngine {
     }
 
     return scar;
-  }
-
-  private generateScarEffects(scarType: SocialScar['scarType'], severity: number): string[] {
-    const effects: Record<SocialScar['scarType'], string[]> = {
-      'trauma': ['Anxiety in crowds', 'Heightened vigilance', 'Trust issues'],
-      'betrayal': ['Paranoia', 'Doubled betrayal sensitivity', 'Isolation tendency'],
-      'shame': ['Reduced charisma', 'Avoidance of public places', 'Imposter syndrome'],
-      'regret': ['Difficulty making decisions', 'Second-guessing', 'Melancholy'],
-      'guilt': ['Self-sabotage tendency', 'Compulsive atonement seeking', 'Self-loathing']
-    };
-
-    return effects[scarType] || [];
   }
 
   healSocialScar(scarId: string, healingAmount: number): void {
@@ -251,6 +244,63 @@ class NpcMemoryEngine {
     return avgReliability;
   }
 
+  /**
+   * Phase 7: Record Narrative Attrition
+   * 
+   * Scales SocialScar severity based on world paradoxLevel and ageRotSeverity.
+   * This ties structural environmental pressure directly to NPC psychology.
+   * 
+   * @param npcId - The NPC affected by the attrition
+   * @param scarType - Type of scar being created or deepened
+   * @param baseDescription - Base narrative description
+   * @param paradoxLevel - Current world paradoxLevel (0-100)
+   * @param ageRotSeverity - Age/reality rot multiplier from lifespan system (0.5-2.0)
+   * @param tick - Current world tick
+   */
+  recordNarrativeAttrition(
+    npcId: string,
+    scarType: SocialScar['scarType'],
+    baseDescription: string,
+    paradoxLevel: number,
+    ageRotSeverity: number,
+    tick: number
+  ): SocialScar {
+    // Calculate severity scaling from paradox and age rot
+    const paradoxMultiplier = Math.min(1.5, 1 + (paradoxLevel / 100) * 0.5); // Up to 1.5x at max paradox
+    const ageRotMultiplier = ageRotSeverity; // Direct multiplier (0.5-2.0)
+    const baseSeverity = 30 + this.rng.nextInt(10, 30); // Base 30-60
+    const scaledSeverity = Math.min(100, baseSeverity * paradoxMultiplier * ageRotMultiplier);
+
+    const scar: SocialScar = {
+      id: `scar_${npcId}_${tick}_${this.rng.nextInt(0, 9999)}`,
+      npcId,
+      scarType,
+      description: `${baseDescription} (paradox-amplified: ${Math.round(paradoxMultiplier * 100)}%, age-rot: ${Math.round(ageRotMultiplier * 100)}%)`,
+      severity: scaledSeverity,
+      apparitionChance: Math.min(0.8, 0.2 + (scaledSeverity / 100) * 0.6),
+      activeEffects: this.generateScarEffects(scarType, scaledSeverity),
+      healingProgress: 0,
+      createdAt: tick,
+      lastTriggeredTick: tick,
+      discoveryStatus: 'emerging'
+    };
+
+    this.socialScars.set(scar.id, scar);
+    return scar;
+  }
+
+  private generateScarEffects(scarType: SocialScar['scarType'], severity: number): string[] {
+    const effects: Record<SocialScar['scarType'], string[]> = {
+      'trauma': ['paranoia', 'isolation', severity > 60 ? 'memory-fragmentation' : 'heightened-awareness'],
+      'betrayal': ['distrust', 'protective-cynicism', severity > 60 ? 'revenge-obsession' : 'cautious-relationships'],
+      'shame': ['withdrawal', 'self-doubt', severity > 60 ? 'self-sabotage' : 'perfectionism'],
+      'regret': ['rumination', 'time-obsession', severity > 60 ? 'temporal-dissociation' : 'over-compensation'],
+      'guilt': ['self-punishment', 'atonement-drive', severity > 60 ? 'martyrdom' : 'protective-vigilance']
+    };
+
+    return effects[scarType] || [];
+  }
+
   getAllInteractions(): UniversalInteraction[] {
     return Array.from(this.interactions.values());
   }
@@ -303,7 +353,7 @@ export const NpcMemoryEngineExports = {
  * BETA Phase 2: Export all social scars from memory engine to world state format
  * This bridges the internal memory map with the global WorldState for persistence
  */
-export function exportSocialScarsToWorldState(engine: NpcMemoryEngine): any[] {
+export function exportSocialScarsToWorldState(engine: NpcMemoryEngine): SocialScar[] {
   return Array.from(engine.getAllSocialScars());
 }
 
@@ -311,7 +361,7 @@ export function exportSocialScarsToWorldState(engine: NpcMemoryEngine): any[] {
  * BETA Phase 2: Hydrate social scars from world state back into memory engine
  * Call this when loading a saved game to restore psychological state
  */
-export function hydrateScarsFromWorldState(engine: NpcMemoryEngine, scars: any[]): void {
+export function hydrateScarsFromWorldState(engine: NpcMemoryEngine, scars: SocialScar[]): void {
   if (!Array.isArray(scars)) return;
   
   for (const scar of scars) {
@@ -329,7 +379,7 @@ export function hydrateScarsFromWorldState(engine: NpcMemoryEngine, scars: any[]
 /**
  * Get all scars from an NPC by their ID (for NPC context loading)
  */
-export function getNpcSocialScars(engine: NpcMemoryEngine, npcId: string): any[] {
+export function getNpcSocialScars(engine: NpcMemoryEngine, npcId: string): SocialScar[] {
   return engine.getSocialScarsOf(npcId);
 }
 

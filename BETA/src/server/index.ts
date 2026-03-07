@@ -231,6 +231,25 @@ io.on('connection', (socket) => {
     socket.emit('action:processed', { success: true });
   });
 
+  // Phase 7: Director command event listener
+  socket.on('director:command', (commandData: any) => {
+    console.log(`🎬 Director command received:`, commandData);
+    
+    // Broadcast command to all connected clients for world state mutation
+    io.emit('world:director-update', {
+      command: commandData,
+      executedAt: Date.now(),
+      broadcastedFrom: socketId
+    });
+    
+    socket.emit('director:command:ack', { success: true });
+  });
+
+  // Phase 7: Latency tracking (ping/pong for telemetry)
+  socket.on('ping', (data: any, callback: any) => {
+    callback(); // Echo back immediately for latency measurement
+  });
+
   // Handle disconnect
   socket.on('disconnect', () => {
     socketConnections.delete(socketId);

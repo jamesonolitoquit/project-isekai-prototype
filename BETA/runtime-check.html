@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BETA Runtime Error Capture</title>
+    <style>
+        body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; padding: 20px; }
+        .error { color: #ff4444; margin: 10px 0; padding: 10px; background: #2a1a1a; border-left: 3px solid #ff4444; }
+        .warning { color: #ffaa44; margin: 10px 0; padding: 10px; background: #2a2a1a; border-left: 3px solid #ffaa44; }
+        .info { color: #44aa44; margin: 10px 0; padding: 10px; background: #1a2a1a; border-left: 3px solid #44aa44; }
+        .header { font-size: 18px; font-weight: bold; margin-bottom: 20px; color: #c084fc; }
+    </style>
+</head>
+<body>
+    <div class="header">🔍 BETA Runtime Error Monitor</div>
+    <div id="logs"></div>
+    <script>
+        const logsDiv = document.getElementById('logs');
+        
+        // Capture console errors
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        const originalLog = console.log;
+        
+        console.error = function(...args) {
+            const msg = args.join(' ');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = '❌ ERROR: ' + msg;
+            logsDiv.appendChild(errorDiv);
+            originalError.apply(console, args);
+        };
+        
+        console.warn = function(...args) {
+            const msg = args.join(' ');
+            const warnDiv = document.createElement('div');
+            warnDiv.className = 'warning';
+            warnDiv.textContent = '⚠️ WARNING: ' + msg;
+            logsDiv.appendChild(warnDiv);
+            originalWarn.apply(console, args);
+        };
+        
+        // Capture global errors
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = `❌ RUNTIME ERROR: ${message} (${source}:${lineno}:${colno})`;
+            logsDiv.appendChild(errorDiv);
+            return true;
+        };
+        
+        // Log successful load
+        window.addEventListener('load', function() {
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'info';
+            infoDiv.textContent = '✅ Page loaded successfully. Monitor console for errors.';
+            logsDiv.appendChild(infoDiv);
+        });
+        
+        // Check for common LCK references
+        const pageSource = document.documentElement.innerHTML;
+        if (pageSource.includes('LCK') || pageSource.includes('.lck') || pageSource.includes('luck')) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = '❌ GHOST LCK DETECTED: Found "LCK" or "luck" in page source!';
+            logsDiv.appendChild(errorDiv);
+        } else {
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'info';
+            infoDiv.textContent = '✅ No "LCK" or "luck" references found in page source.';
+            logsDiv.appendChild(infoDiv);
+        }
+        
+        // Test 2x4 grid detection
+        const statGrids = document.querySelectorAll('.stats-grid');
+        const infoDiv2 = document.createElement('div');
+        infoDiv2.className = 'info';
+        infoDiv2.textContent = `📊 Found ${statGrids.length} stats-grid element(s)`;
+        logsDiv.appendChild(infoDiv2);
+        
+        // Log initial message
+        const initDiv = document.createElement('div');
+        initDiv.className = 'info';
+        initDiv.textContent = '🚀 Runtime monitor active - watching for errors...';
+        logsDiv.insertBefore(initDiv, logsDiv.firstChild);
+    </script>
+</body>
+</html>

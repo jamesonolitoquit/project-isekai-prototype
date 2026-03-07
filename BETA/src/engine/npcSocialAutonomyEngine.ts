@@ -28,7 +28,7 @@ export interface NpcInteraction {
   initiatorId: string; // NPC who started the interaction
   targetId: string; // NPC who was targeted
   type: 'conversation' | 'social_intent' | 'trade' | 'conflict';
-  intentType: 'PERSUADE' | 'DECEIVE' | 'INTIMIDATE' | 'CHARM' | 'NEGOTIATE' | 'BLUFF' | 'INSPIRE' | 'SEDUCE' | 'MANIPULATE' | 'THREATEN';
+  intentType: 'PERSUADE' | 'DECEIVE' | 'INTIMIDATE' | 'CHARM' | 'NEGOTIATE' | 'BLUFF' | 'INSPIRE' | 'SEDUCE' | 'MANIPULATE' | 'THREATEN' | 'GOSSIP';
   
   context: {
     location: string; // Where did this happen?
@@ -236,10 +236,10 @@ class NpcSocialAutonomy {
    * Implements "Telephone Effect" - rumors mutate with each exchange
    */
   private distortRumor(rumor: any, npc: NPC, currentTick: number): any {
-    const personality = npc.personality || { ambition: 0.5, risk: 0.5, sociability: 0.5 };
+    const personality = npc.personality || { ambition: 0.5, boldness: 0.5, sociability: 0.5 };
     
-    // Distortion chance increases with ambition (NPCs exaggerate) and risk (NPCs lie)
-    const distortionChance = Math.min(0.8, personality.ambition * 0.4 + personality.risk * 0.4);
+    // Distortion chance increases with ambition (NPCs exaggerate) and boldness (NPCs lie)
+    const distortionChance = Math.min(0.8, (personality.ambition || 0) * 0.4 + (personality.boldness || 0) * 0.4);
     const shouldDistort = Math.random() < distortionChance;
 
     let distortedRumor = { ...rumor };
@@ -277,7 +277,7 @@ class NpcSocialAutonomy {
           .replace(/could/gi, 'certainly');
       }
 
-      if (personality.risk > 0.7) {
+      if ((personality.boldness || 0) > 0.7) {
         // Risky NPCs corrupt: add vague accusations or emotional language
         if (!distortedRumor.description.includes('?')) {
           distortedRumor.description += ' ...or so they claim.';
@@ -308,8 +308,8 @@ class NpcSocialAutonomy {
    */
   private exchangeGossipRumors(npcA: NPC, npcB: NPC, currentTick: number): void {
     // Each NPC has a 'rumors' array from belief system
-    const rumorsA = npcA.beliefs?.rumors || [];
-    const rumorsB = npcB.beliefs?.rumors || [];
+    const rumorsA = (npcA as any).beliefs?.rumors || [];
+    const rumorsB = (npcB as any).beliefs?.rumors || [];
 
     if (rumorsA.length === 0 && rumorsB.length === 0) {
       return; // No rumors to exchange
@@ -334,9 +334,9 @@ class NpcSocialAutonomy {
     );
 
     // Update target NPC rumors arrays (they now know these rumors)
-    if (npcB.beliefs && distortedFromA.length > 0) {
-      npcB.beliefs.rumors = [
-        ...(npcB.beliefs.rumors || []),
+    if ((npcB as any).beliefs && distortedFromA.length > 0) {
+      (npcB as any).beliefs.rumors = [
+        ...((npcB as any).beliefs.rumors || []),
         ...distortedFromA.map((r: any) => ({
           ...r,
           learnedFrom: npcA.id,
@@ -345,9 +345,9 @@ class NpcSocialAutonomy {
       ];
     }
 
-    if (npcA.beliefs && distortedFromB.length > 0) {
-      npcA.beliefs.rumors = [
-        ...(npcA.beliefs.rumors || []),
+    if ((npcA as any).beliefs && distortedFromB.length > 0) {
+      (npcA as any).beliefs.rumors = [
+        ...((npcA as any).beliefs.rumors || []),
         ...distortedFromB.map((r: any) => ({
           ...r,
           learnedFrom: npcB.id,
@@ -485,11 +485,15 @@ class NpcSocialAutonomy {
       belief.recordHardFact({
         id: interaction.id,
         description: interaction.beliefEffect.rumorCreated,
+        eventType: 'betrayal',
+        originLocationId: interaction.context.location,
+        originEpochTick: currentTick,
+        factionIds: [],
         severity: 30,
         truthRadius: 2,
-        decayRate: 0.1,
-        eventType: 'deception'
-      } as any);
+        truthDecayRate: 0.1,
+        timestamp: Date.now()
+      });
     }
 
     // Store interaction

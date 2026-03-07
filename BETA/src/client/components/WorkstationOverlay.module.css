@@ -1,0 +1,366 @@
+/**
+ * WorkstationOverlay.module.css - Phase 46: Diegetic Workstations
+ * 
+ * 3D perspective styling for crafting stations with codec-aware materiality.
+ * Matches the Phase 45 Remediation tabletop tilt (-15deg) for unified 3D aesthetic.
+ */
+
+.overlayContainer {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  width: 600px;
+  height: 420px;
+  margin-left: -300px;
+  background: rgba(20, 20, 20, 0.95);
+  border-radius: 12px 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  box-shadow: 
+    0 -20px 60px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transform-origin: bottom center;
+  transform-style: preserve-3d;
+  z-index: 500;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%) rotateX(45deg);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) rotateX(0deg);
+    opacity: 1;
+  }
+}
+
+/* --- Codec-Specific Station Styling --- */
+
+.medievalParchment {
+  background: 
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.1) 2px,
+      rgba(0, 0, 0, 0.1) 4px
+    ),
+    linear-gradient(135deg, #f5deb3, #ffe8d6);
+  border: 4px solid #5d4037;
+  color: #2b1d0e;
+  font-family: 'Crimson Text', Georgia, serif;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.medievalParchment .stationHeader {
+  border-bottom: 3px solid #8d6e63;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.cyberpunkTerminal {
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 240, 255, 0.03),
+      rgba(0, 240, 255, 0.03) 2px,
+      transparent 2px,
+      transparent 4px
+    ),
+    rgba(5, 10, 15, 0.98);
+  border: 2px solid #00f0ff;
+  color: #00f0ff;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  box-shadow: 
+    0 0 20px rgba(0, 240, 255, 0.3),
+    inset 0 0 20px rgba(0, 240, 255, 0.05);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.cyberpunkTerminal .stationHeader {
+  border-bottom: 2px solid #00f0ff;
+  font-weight: bold;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+.noirDetective {
+  background: 
+    repeating-linear-gradient(
+      45deg,
+      #2a2a2a,
+      #2a2a2a 2px,
+      #252525 2px,
+      #252525 4px
+    );
+  border: 3px solid #444;
+  color: #d3d3d3;
+  font-family: 'Courier New', Courier, monospace;
+  filter: grayscale(0.3);
+}
+
+.noirDetective .stationHeader {
+  border-bottom: 2px dashed #666;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.glitchStation {
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 0, 255, 0.05),
+      rgba(255, 0, 255, 0.05) 1px,
+      rgba(0, 255, 255, 0.05) 1px,
+      rgba(0, 255, 255, 0.05) 2px
+    ),
+    #0a0a20;
+  border: 2px solid #ff00ff;
+  color: #00ffff;
+  font-family: 'Pixel Font', monospace;
+  box-shadow: 0 0 15px rgba(255, 0, 255, 0.2);
+}
+
+.storybook {
+  background: 
+    url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23fff0e6" width="100" height="100"/><circle cx="10" cy="10" r="1" fill="%23e6d5c3" opacity="0.5"/><circle cx="85" cy="25" r="1" fill="%23e6d5c3" opacity="0.5"/></svg>'),
+    linear-gradient(135deg, #fff0e6, #ffe6cc);
+  border: 4px solid #8b6f47;
+  color: #4a3728;
+  font-family: 'Palatino Linotype', Georgia, serif;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Layout Components --- */
+
+.stationHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid currentColor;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  opacity: 0.9;
+}
+
+.stationHeader h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: bold;
+  flex: 1;
+}
+
+.stationIcon {
+  font-size: 2rem;
+  margin-right: 12px;
+  opacity: 0.8;
+}
+
+.closeBtn {
+  background: none;
+  border: 2px solid currentColor;
+  color: currentColor;
+  font-size: 1.5rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.7;
+}
+
+.closeBtn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+/* --- Fusing Table --- */
+
+.fusingTable {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  flex: 1;
+  gap: 16px;
+  perspective: 1000px;
+  margin-bottom: 16px;
+}
+
+.ingredientSlot {
+  width: 110px;
+  height: 110px;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  transform: translateZ(10px);
+  cursor: grabbing;
+  position: relative;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.ingredientSlot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.ingredientSlot:hover {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.08);
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.2) inset;
+}
+
+.ingredientSlot:hover::before {
+  left: 100%;
+}
+
+.slottedItem {
+  text-align: center;
+  font-size: 0.75rem;
+  padding: 8px;
+  animation: float 2.5s infinite ease-in-out;
+  background: rgba(168, 85, 247, 0.1);
+  border-radius: 4px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+}
+
+.slotPlaceholder {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+/* --- Fuse Button --- */
+
+.fuseButton {
+  align-self: center;
+  padding: 14px 48px;
+  font-weight: bold;
+  border: 2px solid #a855f7;
+  border-radius: 6px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #a855f7, #d946ef);
+  color: white;
+  margin-top: 12px;
+  transform: translateZ(20px);
+  box-shadow: 
+    0 8px 24px rgba(168, 85, 247, 0.3),
+    0 0 0 1px rgba(168, 85, 247, 0.5);
+  font-size: 1rem;
+  letter-spacing: 1px;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-transform: uppercase;
+}
+
+.fuseButton:hover:not(:disabled) {
+  transform: translateZ(20px) scale(1.05);
+  box-shadow: 
+    0 12px 32px rgba(168, 85, 247, 0.5),
+    0 0 20px rgba(168, 85, 247, 0.6);
+}
+
+.fuseButton:active:not(:disabled) {
+  transform: translateZ(20px) scale(0.98);
+}
+
+.fuseButton:disabled {
+  background: linear-gradient(135deg, #444, #555);
+  border-color: #666;
+  color: #888;
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+/* --- Particle Eruption --- */
+
+.particleEruption {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.particle {
+  position: absolute;
+  will-change: transform, opacity;
+}
+
+.particle.spark {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a855f7;
+  box-shadow: 0 0 8px #a855f7;
+  animation: sparkShower 1.2s ease-out forwards;
+}
+
+@keyframes sparkShower {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx), var(--ty)) scale(0);
+  }
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 768px) {
+  .overlayContainer {
+    width: 90vw;
+    height: 380px;
+    margin-left: -45vw;
+  }
+
+  .fusingTable {
+    gap: 8px;
+  }
+
+  .ingredientSlot {
+    width: 90px;
+    height: 90px;
+  }
+
+  .fuseButton {
+    padding: 12px 32px;
+    font-size: 0.9rem;
+  }
+}

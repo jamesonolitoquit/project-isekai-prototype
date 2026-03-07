@@ -23,6 +23,20 @@
  */
 
 import type { WorldState, PlayerState } from './worldEngine';
+import type {
+  PeerHandshake,
+  SignedMutation,
+  WitnessCertificate,
+  OracleElectionState,
+  TickSyncEvent,
+  ConflictResolution,
+  MultiplayerAuthority,
+  LatencyProfile,
+  PeerState,
+  SessionMetrics,
+  ReadyCheckPulse,
+  SignatureContext,
+} from '../types/multiplayer';
 
 /**
  * M37 Task 4: Trade state for peer-to-peer inventory exchange
@@ -1506,4 +1520,418 @@ export function getEpochConsensusHealth(registry: SessionRegistry): {
     consensusActive: registry.epochConsensusInProgress ?? false,
     votesRecorded: registry.epochConsensusVotes?.size ?? 0
   };
+}
+
+// ============================================
+// PHASE 9: MULTIPLAYER MANAGER & CONSENSUS ENGINE
+// ============================================
+
+/**
+ * SHA256-like hash simulation (replace with crypto.createHash in production)
+ * Purpose: Generate deterministic state hashes for consensus verification
+ */
+export function calculateStateHash(data: Record<string, any>): string {
+  const jsonStr = JSON.stringify(data);
+  let hash = 0;
+  
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  return Math.abs(hash).toString(16).padStart(16, '0');
+}
+
+/**
+ * MultiplayerManager: Orchestrator for distributed tabletop consensus
+ * 
+ * Responsibilities:
+ * - Oracle election and failover
+ * - Tick synchronization (Ready-Check Pulse)
+ * - Mutation signing and witness verification
+ * - Ledger commitment with majority voting
+ * - Information lag simulation per client
+ */
+export class MultiplayerManager {
+  private registry: SessionRegistry;
+  private oracleElection: OracleElectionState;
+  private peerStates: Map<string, any>; // clientId -> PeerState
+  private latencyProfiles: Map<string, any>; // clientId -> LatencyProfile
+  private mutationQueue: any[] = []; // Pending mutations awaiting consensus
+  private consensusProposals: Map<string, any> = new Map(); // proposalId -> ConsensusProposal
+  private sessionMetrics: any; // SessionMetrics
+  
+  constructor(registry: SessionRegistry) {
+    this.registry = registry;
+    this.peerStates = new Map();
+    this.latencyProfiles = new Map();
+    
+    // Initialize Oracle Election (deterministic)
+    this.oracleElection = this.initializeOracleElection();
+    this.sessionMetrics = this.createSessionMetrics();
+  }
+
+  /**
+   * Phase 9 Task: Initialize oracle election based on deterministic rules
+   * Rule: Oldest connection timestamp wins (ensures consistency)
+   */
+  private initializeOracleElection(): any {
+    const activePeers = getAllActivePeers(this.registry);
+    if (activePeers.length === 0) {
+      throw new Error('Cannot initialize oracle election: no active peers');
+    }
+
+    // Sort by presence creation time (oldest first)
+    const sortedPeers = activePeers.sort((a, b) => {
+      const aTime = a.lastActivityTick;
+      const bTime = b.lastActivityTick;
+      return aTime - bTime; // Oldest connection wins
+    });
+
+    const selectedOracle = sortedPeers[0];
+    const candidateClientIds = activePeers.map(p => p.clientId);
+
+    return {
+      currentOracleClientId: selectedOracle.clientId,
+      electionTick: this.registry.lastSyncTick,
+      electionMethod: 'oldest_connection',
+      candidateClientIds,
+      oracleHealthy: true,
+      lastOracleHeartbeat: Date.now(),
+      heartbeatInterval: 1500, // 1.5s tick
+      failoverThreshold: 3, // 3 missed heartbeats = failover
+      oracleSuccession: [
+        {
+          clientId: selectedOracle.clientId,
+          startTick: this.registry.lastSyncTick,
+          reason: 'elected'
+        }
+      ]
+    };
+  }
+
+  /**
+   * Phase 9 Task: Register a new peer joining the session
+   */
+  public registerPeer(clientId: string, latencyMs: number): void {
+    // Initialize peer state
+    this.peerStates.set(clientId, {
+      clientId,
+      currentTick: 0,
+      currentPhase: 'propose',
+      stateHash: '',
+      votesApproved: 0,
+      votesRejected: 0,
+      consensusScore: 1.0,
+      informationLagTicks: 0
+    });
+
+    // Initialize latency profile
+    this.latencyProfiles.set(clientId, {
+      clientId,
+      baseLatencyMs: latencyMs,
+      latencySamples: [latencyMs],
+      averageLatencyMs: latencyMs,
+      maxLatencyMs: latencyMs,
+      mutationsProcessedOnTime: 0,
+      mutationsLate: 0,
+      reliabilityScore: 1.0,
+      standardDeviation: 0,
+      isHighJitter: false
+    });
+
+    console.log(`[MultiplayerManager] Peer ${clientId} registered (latency: ${latencyMs}ms)`);
+  }
+
+  /**
+   * Phase 9 Task: Send ready-check pulse to all peers
+   * Ensures all clients finish tick phase before advancing
+   */
+  public broadcastReadyCheckPulse(tick: number, phase: string): any {
+    const readyPeers = Array.from(this.peerStates.entries())
+      .filter(([_, state]) => state.currentPhase === phase)
+      .map(([clientId, _]) => clientId);
+
+    const laggyPeers = Array.from(this.peerStates.entries())
+      .filter(([_, state]) => {
+        const latency = this.latencyProfiles.get(state.clientId)?.averageLatencyMs || 0;
+        return latency > 200; // Threshold: >200ms is laggy
+      })
+      .map(([clientId, _]) => clientId);
+
+    const percentageReady = this.registry.activePlayers.length > 0
+      ? (readyPeers.length / this.registry.activePlayers.length) * 100
+      : 0;
+
+    return {
+      pulseId: `pulse_${tick}_${Date.now()}`,
+      tick,
+      phase,
+      oracleClientId: this.oracleElection.currentOracleClientId,
+      timestamp: Date.now(),
+      expectedPeers: this.registry.activePlayers.length,
+      readyPeers: readyPeers.length,
+      laggyPeers,
+      percentageReady,
+      canAdvanceToNextPhase: percentageReady >= 80 // 80% threshold
+    };
+  }
+
+  /**
+   * Phase 9 Task: Calculate world state hash for consensus verification
+   * Used to detect client state divergence
+   */
+  public calculateWorldStateHash(worldState: any): string {
+    const hashData = {
+      vessels: worldState.vessels?.length || 0,
+      factions: worldState.factions?.length || 0,
+      territories: worldState.territories?.length || 0,
+      weather: worldState.weather || 'unknown',
+      tick: worldState.currentTick || 0
+    };
+
+    return calculateStateHash(hashData);
+  }
+
+  /**
+   * Phase 9 Task: Propose a mutation for consensus voting
+   * Called when Oracle initiates a state change
+   */
+  public proposeMutation(
+    oracleClientId: string,
+    mutationType: string,
+    affectedEntityIds: string[],
+    description: string,
+    data: Record<string, any>
+  ): string {
+    if (oracleClientId !== this.oracleElection.currentOracleClientId) {
+      console.warn(`[Consensus] Non-oracle ${oracleClientId} attempted to propose mutation`);
+      return '';
+    }
+
+    const mutationId = `mut_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const worldStateHash = this.calculateWorldStateHash(data);
+
+    const mutation: any = {
+      mutationId,
+      tick: this.registry.lastSyncTick,
+      oracleClientId,
+      type: mutationType,
+      affectedEntityIds,
+      description,
+      data,
+      witnesses: new Map(),
+      requiredWitnesses: Math.ceil(this.registry.activePlayers.length / 2) + 1, // Majority
+      timestamp: Date.now(),
+      stateHashBefore: worldStateHash,
+      stateHashAfter: worldStateHash,
+      oracleSignature: `sig_${Date.now()}`,
+      committedToLedger: false
+    };
+
+    this.mutationQueue.push(mutation);
+    console.log(`[Consensus] Mutation proposed: ${mutationId} (type: ${mutationType})`);
+
+    return mutationId;
+  }
+
+  /**
+   * Phase 9 Task: Record a witness vote on a mutation
+   */
+  public recordWitnessVote(
+    mutationId: string,
+    witnessClientId: string,
+    approved: boolean,
+    stateHashMatch: boolean
+  ): boolean {
+    const mutation = this.mutationQueue.find(m => m.mutationId === mutationId);
+    if (!mutation) {
+      console.warn(`[Consensus] Witness vote for unknown mutation ${mutationId}`);
+      return false;
+    }
+
+    const certificate: any = {
+      clientId: witnessClientId,
+      mutationId,
+      approved,
+      timestamp: Date.now(),
+      signature: `sig_${Date.now()}`,
+      stateHashMatch,
+      processingTimeMs: Math.random() * 100,
+      estimatedClockOffsetMs: Math.random() * 50
+    };
+
+    mutation.witnesses.set(witnessClientId, certificate);
+
+    // Update peer consensus score
+    const peerState = this.peerStates.get(witnessClientId);
+    if (peerState) {
+      if (approved) {
+        peerState.votesApproved++;
+      } else {
+        peerState.votesRejected++;
+      }
+    }
+
+    console.log(`[Consensus] Witness ${witnessClientId} voted on ${mutationId}: ${approved ? 'APPROVED' : 'REJECTED'}`);
+    return true;
+  }
+
+  /**
+   * Phase 9 Task: Check if a mutation has reached consensus
+   */
+  public hasMutationConsensus(mutationId: string): boolean {
+    const mutation = this.mutationQueue.find(m => m.mutationId === mutationId);
+    if (!mutation) return false;
+
+    const approvalCount = Array.from(mutation.witnesses.values()).filter(
+      (cert: any) => cert.approved
+    ).length;
+
+    return approvalCount >= mutation.requiredWitnesses;
+  }
+
+  /**
+   * Phase 9 Task: Commit a mutation to the immutable ledger
+   */
+  public commitMutationToLedger(mutationId: string): boolean {
+    if (!this.hasMutationConsensus(mutationId)) {
+      console.warn(`[Ledger] Cannot commit ${mutationId}: insufficient consensus`);
+      return false;
+    }
+
+    const mutation = this.mutationQueue.find(m => m.mutationId === mutationId);
+    if (!mutation) return false;
+
+    mutation.committedToLedger = true;
+    mutation.ledgerEntryId = `ledger_${Date.now()}`;
+
+    console.log(`[Ledger] Mutation ${mutationId} committed with ${mutation.witnesses.size} witness signatures`);
+    return true;
+  }
+
+  /**
+   * Phase 9 Task: Detect oracle failover and elect new authority
+   */
+  public checkOracleHealth(): boolean {
+    const timeSinceHeartbeat = Date.now() - this.oracleElection.lastOracleHeartbeat;
+    const missedHeartbeats = Math.floor(timeSinceHeartbeat / this.oracleElection.heartbeatInterval);
+
+    if (missedHeartbeats >= this.oracleElection.failoverThreshold) {
+      console.warn(`[Oracle] Current oracle ${this.oracleElection.currentOracleClientId} is unresponsive`);
+      this.oracleElection.oracleHealthy = false;
+      return false;
+    }
+
+    this.oracleElection.oracleHealthy = true;
+    return true;
+  }
+
+  /**
+   * Phase 9 Task: Trigger oracle failover and select new authority
+   */
+  public triggerOracleFailover(): string {
+    const oldOracle = this.oracleElection.currentOracleClientId;
+    
+    // Record failover in history
+    const lastEntry = this.oracleElection.oracleSuccession[this.oracleElection.oracleSuccession.length - 1];
+    if (lastEntry) {
+      lastEntry.endTick = this.registry.lastSyncTick;
+      lastEntry.reason = 'failed';
+    }
+
+    // Select new oracle (skip the failed one)
+    const candidates = this.oracleElection.candidateClientIds.filter(
+      id => id !== oldOracle
+    );
+    
+    if (candidates.length === 0) {
+      console.error('[Oracle] No candidates available for failover!');
+      return oldOracle; // Keep old oracle if no alternative
+    }
+
+    const newOracle = candidates[0]; // For now, pick first candidate
+    this.oracleElection.currentOracleClientId = newOracle;
+    this.oracleElection.electionTick = this.registry.lastSyncTick;
+    this.oracleElection.lastOracleHeartbeat = Date.now();
+
+    this.oracleElection.oracleSuccession.push({
+      clientId: newOracle,
+      startTick: this.registry.lastSyncTick,
+      reason: 'elected'
+    });
+
+    console.log(`[Oracle] Failover: ${oldOracle} → ${newOracle}`);
+    return newOracle;
+  }
+
+  /**
+   * Get current session metrics
+   */
+  public getSessionMetrics(): any {
+    return {
+      sessionId: this.registry.config.sessionId,
+      startTime: this.registry.config.createdAt,
+      currentTick: this.registry.lastSyncTick,
+      totalTicksElapsed: this.registry.lastSyncTick,
+      totalMutationsProposed: this.mutationQueue.length,
+      totalMutationsCommitted: this.mutationQueue.filter((m: any) => m.committedToLedger).length,
+      consensusSuccessRate: this.calculateConsensusSuccessRate(),
+      averageNetworkLatencyMs: this.calculateAverageLatency(),
+      peerCount: this.registry.activePlayers.length,
+      oracleClientId: this.oracleElection.currentOracleClientId
+    };
+  }
+
+  /**
+   * Helper: Calculate consensus success rate
+   */
+  private calculateConsensusSuccessRate(): number {
+    if (this.mutationQueue.length === 0) return 0;
+    const committed = this.mutationQueue.filter((m: any) => m.committedToLedger).length;
+    return (committed / this.mutationQueue.length) * 100;
+  }
+
+  /**
+   * Helper: Calculate average network latency
+   */
+  private calculateAverageLatency(): number {
+    if (this.latencyProfiles.size === 0) return 0;
+    const latencies = Array.from(this.latencyProfiles.values()).map(
+      (profile: any) => profile.averageLatencyMs
+    );
+    return latencies.reduce((a, b) => a + b, 0) / latencies.length;
+  }
+
+  /**
+   * Helper: Create initial session metrics
+   */
+  private createSessionMetrics(): any {
+    return {
+      sessionId: this.registry.config.sessionId,
+      startTime: Date.now(),
+      currentTick: 0,
+      totalTicksElapsed: 0,
+      totalMutationsProposed: 0,
+      totalMutationsCommitted: 0,
+      consensusSuccessRate: 0,
+      averageNetworkLatencyMs: 0,
+      peerMetrics: new Map()
+    };
+  }
+
+  /**
+   * Get Oracle election state
+   */
+  public getOracleState(): any {
+    return this.oracleElection;
+  }
+
+  /**
+   * Update oracle heartbeat (called by oracle periodically)
+   */
+  public recordOracleHeartbeat(): void {
+    this.oracleElection.lastOracleHeartbeat = Date.now();
+  }
 }

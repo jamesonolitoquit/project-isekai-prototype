@@ -54,12 +54,25 @@ export function calculateDrift(state: WorldState): number {
   const temporalDebt = (state.player as any).temporalDebt || 0;
   const soulStrain = (state.player as any).soulStrain || 0; // Phase 13: morphing strain
 
+  // Phase 14: Item Paradox Scale - Carrying volatile materials increases world drift
+  let itemParadoxTotal = 0;
+  if (state.player.inventory && state.itemTemplates) {
+    state.player.inventory.forEach(item => {
+      const template = state.itemTemplates?.find(t => t.id === item.itemId);
+      if (template?.stats?.paradoxScale) {
+        // Stackable items multiply by quantity (logarithmic to avoid infinite scaling)
+        const qtyFactor = item.kind === 'stackable' ? Math.log10(item.quantity) + 1 : 1;
+        itemParadoxTotal += template.stats.paradoxScale * qtyFactor;
+      }
+    });
+  }
+
   // Weighted combination:
   // - Detection of metagaming (suspicion) weighted most (0.6)
   // - Pattern of rewinding (temporal debt) secondary (0.4) 
   // - Form instability from morphing (soul strain) tertiary (0.3)
-  // A "Phased Vessel" with high strain is less "Canonical" to the world
-  const drift = (suspicionLevel * 0.6) + (temporalDebt * 0.4) + (soulStrain * 0.3);
+  // - Phase 14: Item volatile burden (0.2 per point of total scale)
+  const drift = (suspicionLevel * 0.6) + (temporalDebt * 0.4) + (soulStrain * 0.3) + (itemParadoxTotal * 10);
 
   return Math.min(100, Math.max(0, drift));
 }
@@ -123,7 +136,18 @@ export function detectMetagameAction(
   action: Action,
   state: WorldState
 ): { isSuspicious: boolean; reason?: string; confidence?: number } {
-  const knowledgeBase = state.player?.knowledgeBase;
+  let knowledgeBase = state.player?.knowledgeBase;
+  
+  // Ensure knowledgeBase is a Map
+  if (Array.isArray(knowledgeBase)) {
+    const map = new Map();
+    knowledgeBase.forEach(item => map.set(item, true));
+    knowledgeBase = map;
+    if (state.player) {
+      state.player.knowledgeBase = knowledgeBase;
+    }
+  }
+  
   const beliefLayer = state.player?.beliefLayer;
 
   switch (action.type) {

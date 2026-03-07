@@ -39,6 +39,9 @@ export interface DirectorState {
   inactionCounter: number;       // Ticks of continuous no-op activity
   interventionCooldown: number;  // Prevents directive spam (ticks remaining)
   lastAmbientWhisperTick: number; // M7 Phase 3: Throttles ambient whisper frequency (ticks)
+  // Phase 45: Action lock and tile depletion tracking
+  actionLockViolationCount?: number; // Tracks concurrent action overlap attempts for debugging
+  tileDeletionCount?: number; // Tracks total harvested tiles for respawn analytics
 }
 
 // Re-export commonly used types (source of truth in worldEngine)
@@ -100,6 +103,9 @@ export function initializeDirectorState(): DirectorState {
     inactionCounter: 0,
     interventionCooldown: 0,
     lastAmbientWhisperTick: 0, // M7 Phase 3: Initialize ambient whisper throttle
+    // Phase 45: Initialize action and tile tracking
+    actionLockViolationCount: 0,
+    tileDeletionCount: 0,
   };
 }
 
@@ -733,7 +739,7 @@ function checkPlaystyleAdaptation(
   }
   
   // Calculate playstyle vector
-  const preferences = calculatePlayerPreferences(playerAnalytics);
+  const preferences = calculatePlayerPreferences(playerAnalytics as any);
   const vector = preferences.playstyleVector;
   
   // Store playstyle vector in player state for later reference
@@ -1089,7 +1095,7 @@ function checkNarrativeResonance(
   }
 
   // Pattern 3: High Paradox + Artifact Corruption = Temporal Cascade
-  const artifactCorruption = (state.relics && Object.values(state.relics).some(r => ((r).corruption as number | undefined ?? 0) > 70));
+  const artifactCorruption = (state.relics && Object.values(state.relics).some(r => ((r as any).corruption as number | undefined ?? 0) > 70));
   
   if (temporalDebt >= 70 && artifactCorruption && rng.next() < 0.12) {
     return {
@@ -1398,6 +1404,9 @@ export interface DialogueContext {
   questState?: string; // Phase of any active quest with this NPC
   reputationDelta?: number; // Recent reputation changes
   previousMessages?: Array<{ role: 'npc' | 'player'; text: string }>; // Conversation history
+  // Phase 35: Narrative Resonance
+  activeCodec?: string; // NarrativeCodec: 'CODENAME_MEDIEVAL' | 'CODENAME_GLITCH' | etc.
+  playerOriginStory?: string; // Player's backstory for resonance callbacks
 }
 
 /**
@@ -1627,7 +1636,7 @@ async function callOpenAiApi(
   }
 
   const data = await response.json() as unknown;
-  return data?.choices?.[0]?.message?.content || mockLlmResponse(prompt);
+  return (data as any)?.choices?.[0]?.message?.content || mockLlmResponse(prompt);
 }
 
 /**
@@ -1670,7 +1679,7 @@ async function callClaudeApi(
   }
 
   const data = await response.json() as unknown;
-  return data?.content?.[0]?.text || mockLlmResponse(prompt);
+  return (data as any)?.content?.[0]?.text || mockLlmResponse(prompt);
 }
 
 /**
@@ -1734,7 +1743,7 @@ async function callGeminiApi(
   }
 
   const data = await response.json() as unknown;
-  const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const generatedText = (data as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
   
   if (!generatedText) {
     console.warn('[M55-A1] Gemini API returned empty response, returning mock');
@@ -1789,7 +1798,7 @@ async function callGroqApi(
   }
 
   const data = await response.json() as unknown;
-  const generatedText = data?.choices?.[0]?.message?.content;
+  const generatedText = (data as any)?.choices?.[0]?.message?.content;
   
   if (!generatedText) {
     console.warn('[M55-A1] Groq API returned empty response');
@@ -1834,7 +1843,7 @@ async function callOllamaApi(
     }
 
     const data = await response.json() as unknown;
-    const generatedText = data?.response?.trim();
+    const generatedText = (data as any)?.response?.trim();
     
     if (!generatedText) {
       console.warn('[M55-A1] Ollama API returned empty response');
@@ -1906,6 +1915,93 @@ ${personalityNote ? `- Personality: ${personalityNote}` : ''}
 - React authentically to the player's actions and words
 - Remember your relationship with the player (see Emotional State below)
 `.trim();
+}
+
+/**
+ * Phase 35: Generate linguistic constraints based on active narrative codec
+ * Ensures NPC dialogue matches the visual era/aesthetic (Noir, Storybook, Glitch, etc.)
+ */
+function generateLinguisticConstraints(codec?: string): string {
+  const linguisticPresets: Record<string, string> = {
+    'CODENAME_MEDIEVAL': `## Linguistic Codec: Medieval Fantasy
+Speak in archaic, nobility-influenced language. Use words like: 'thee', 'thy', 'hath', 'verily'.
+Incorporate knightly values: honor, duel-speak, chivalry references.
+Use metaphors tied to castles, smithing, and feudal hierarchies.
+Avoid modern slang and technological references absolutely.`,
+    'CODENAME_GLITCH': `## Linguistic Codec: Glitch Reality
+Speak with tech jargon, simulation metaphors, and verbal stutters.
+Use words like: 'corrupt', 'packet', 'kernel', 'buffer', 'loop'.
+Occasionally repeat words for 'glitchy' effect: 'y-y-you can't...'.
+Reference broken systems, digital decay, and code fragmentation.
+Speech should feel fragmented but comprehensible.`,
+    'CODENAME_NOIR': `## Linguistic Codec: Hardboiled Noir
+Speak like a 1940s detective or femme fatale. Use slang: 'doll', 'dame', 'flatfoot', 'gumshoe'.
+Endless metaphors about rain, shadows, corruption, and moral ambiguity.
+Short, hard sentences. 'The dame walked in. Trouble followed.'
+Cynical worldview: nothing is innocent, everyone has an angle.
+References to cigarettes, whiskey, and rain-soaked alleys.`,
+    'CODENAME_CYBERPUNK': `## Linguistic Codec: Neon Cyberpunk
+Speak with futuristic slang: 'jaq', 'chrome', 'deck', 'net-runner', 'corpo'.
+Frequent references to neon, holograms, synthesis, and neural interfaces.
+Mix corporate speak with street vernacular.
+Use words like: 'fragment', 'rig', 'splice', 'bootleg', 'black-market'.
+Embrace anti-establishment tone and street-tech sensibility.`,
+    'CODENAME_STORYBOOK': `## Linguistic Codec: Whimsical Storybook
+Speak in rhyming couplets whenever possible. Use words like: 'enchanted', 'whimsy', 'fate', 'destiny'.
+Embrace fairytale archetypes: noble knights, wicked witches, innocent maidens.
+Frequent poetic metaphors: starlight, crystal trees, silver moons.
+Tone is always hopeful, magical, and slightly archaic in a warm way.
+References to wishes, wishes-upon-stars, and happily-ever-afters.`,
+    'CODENAME_SOLARPUNK': `## Linguistic Codec: Eco-Solarpunk
+Speak with reverence for nature and sustainable living.
+Use words like: 'flourish', 'bloom', 'verdant', 'harmony', 'symbiosis'.
+Frequent references to: gardens, renewable energy, communal growth.
+Tone is optimistic, collaborative, and environmentally conscious.
+Avoid cynicism; embrace solutions and collective hope.`,
+    'CODENAME_VOIDSYNC': `## Linguistic Codec: Deep Space Void
+Speak with cosmic, detached precision. Use words like: 'nebula', 'void', 'quantum', 'topology'.
+Tone is clinical, almost inhuman, with occasional wonder.
+Frequent references to: isolation, vast emptiness, dimensional anomalies.
+Speech is formal and technical, rarely emotional.
+References to stars, silence, and the incomprehensible vastness.`,
+    'CODENAME_VINTAGE': `## Linguistic Codec: 1920s Pulp & Brass
+Speak like a 1920s aristocrat or pulp adventure protagonist.
+Use words like: 'capital', 'absolutely', 'what-ho', 'frightfully', 'quite'.
+Frequent references to: expeditions, brass instruments, leather-bound journals.
+Tone oscillates between refined nobility and roughneck adventure.
+Embraces both high society and wild frontier sensibilities.`,
+    'CODENAME_OVERLAND': `## Linguistic Codec: Tactical Survival
+Speak with military precision and survival pragmatism.
+Use words like: 'tactical', 'grid', 'recon', 'extraction', 'perimeter'.
+Frequent references to: maps, supplies, threats, camps.
+Tone is alert, cautious, focused on immediate danger and strategy.
+Speech is clipped, efficient, no wasted words.`,
+  };
+
+  return linguisticPresets[codec!] || '';
+}
+
+/**
+ * Phase 35: Extract backstory callbacks from player's origin story
+ * Used to create Director Whispers that resonate with player history
+ */
+function extractBackstoryKeywords(originStory?: string): string[] {
+  if (!originStory) return [];
+  
+  // Extract key nouns and concepts from origin story
+  // Simple heuristic: capitalize-starting words or quoted phrases
+  const keywords: string[] = [];
+  const words = originStory.split(/\s+/);
+  
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i].replace(/[^a-zA-Z0-9]/g, '');
+    // Extract capitalized words (proper nouns) and common story elements
+    if (word.length > 3 && word[0] === word[0].toUpperCase()) {
+      keywords.push(word);
+    }
+  }
+  
+  return keywords.slice(0, 3); // Return up to 3 keywords for callbacks
 }
 
 /**
@@ -2265,6 +2361,9 @@ export function generateNpcPrompt(
     generateWTOLFilters(npc, state, knowledgeScope),
     '',
     generateHistoricalContext(npc, knowledgeScope), // M54-B1: Add ancestral/scar context
+    '',
+    // Phase 35: Codec-aware linguistic constraints
+    generateLinguisticConstraints(context?.activeCodec),
   ];
 
   // Filter out empty strings from sections
@@ -2274,6 +2373,18 @@ export function generateNpcPrompt(
   if (playstyleProfile) {
     filteredSections.push('');
     filteredSections.push(generatePlaystyleContext(npc, playstyleProfile));
+  }
+
+  // Phase 35: Add backstory resonance callbacks
+  if (context?.playerOriginStory) {
+    const backstoryKeywords = extractBackstoryKeywords(context.playerOriginStory);
+    if (backstoryKeywords.length > 0) {
+      filteredSections.push('');
+      filteredSections.push('## Resonance Callbacks (Important!)');
+      filteredSections.push(`The player's origin is tied to: ${backstoryKeywords.join(', ')}`);
+      filteredSections.push('Consider weaving subtle references to these elements into your dialogue if thematically appropriate.');
+      filteredSections.push('This creates meaningful callbacks that deepen the narrative experience.');
+    }
   }
 
   if (context?.previousMessages) {
@@ -2315,7 +2426,7 @@ function deriveVoiceFromNpc(npc: NPC): CharacterVoice {
     tone,
     vocabulary,
     speechPattern,
-    personalityAdjective: derivePersonalityFromEmotions(npc)
+    personalityAdjective: derivePersonalityFromEmotions(npc as any)
   };
 }
 

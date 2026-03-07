@@ -4,18 +4,26 @@ import { rebuildState } from "./stateRebuilder";
 import { validateInvariants, isStatePlayable } from "./constraintValidator";
 import { SeededRng, setGlobalRng, getGlobalRng } from "./prng";
 import type { SocialScar } from "./npcMemoryEngine";
+import type { DialogueNode, DialogueOption, DialogueResolution, BranchingDialogueEngine } from "./branchingDialogueEngine";
 import { processAction, Action } from "./actionPipeline";
+import { NarrativeSeedProcessor } from "./narrativeSeedProcessor";
+
+// Re-export dialogue types for centralized consumption
+export type { DialogueNode, DialogueOption, DialogueResolution, BranchingDialogueEngine };
 import { authorizeAction, AuthorizationContext } from "./authorization/authorizeAction";
 import { createSave, loadSave, verifySaveIntegrity } from "./saveLoadEngine";
 import { resolveNpcLocation, updateNpcLocations, applyLocationUpdates } from "./scheduleEngine";
 import { resolveWeather, getWeatherVisuals } from "./weatherEngine";
+import { CausalWeatherEngine } from "./causalWeatherEngine";
 import { resolveNpcTurns } from './aiTacticEngine';
 import { applyStrategyModifierToNpc } from './factionCommandEngine';
-import { checkLocationHazards, applyHazardDamage, applyHazardStatus } from "./hazardEngine";
-import { resolveSeason } from './seasonEngine';
-import { Faction, FactionRelationship, FactionConflict, initializeFactions, initializeFactionRelationships, resolveFactionTurns } from './factionEngine';
+import { checkLocationHazards, applyHazardDamage, applyHazardStatus, checkPossessionHazards } from "./hazardEngine";
+import { resolveSeason, getSeasonalModifiers, getSeasonalLoot } from './seasonEngine';
+import { applySanctifiedZoneDampening } from './environmentalModifierEngine';
+import { Faction, FactionRelationship, initializeFactions, initializeFactionRelationships, resolveFactionTurns } from './factionEngine';
 import { processDailyInfluenceDiffusion } from './influenceDiffusionEngine';
 import { Relic, RunicSlot, shouldRelicRebel, applyRelicRebellion, generateRelicDialogue } from './artifactEngine';
+import { processArtifactSentience, updateArtifactMoodFromEvent } from './artifactSentienceLoop';
 import { initializeDirectorState, evaluateDirectorIntervention, type DirectorState } from './aiDmEngine';
 import { initializeAudioState, calculateRequiredAudio, applyAudioParameterMutation, type AudioState } from './audioEngine';
 import { Investigation, getInvestigationPipeline } from './investigationPipelineEngine';
@@ -24,43 +32,300 @@ import { getLegacyEngine, type SoulEcho } from './legacyEngine';
 import { type WorldScar } from './worldScarsEngine';
 import { resolveLocationSkirmishes } from './factionSkirmishEngine';
 import { processMacroEvents, applyMacroEventEffectsToNpc } from './macroEventsEngine';
-import templateJson from '../data/luxfier-world.json';
+import { processWorldNarrativeAttrition } from './narrativeAttritionEngine';
+import { updateMarketFlux, generateMarketAlert, getEpochCorruptedItem } from './merchantEngine';
+import { initializeTutorialState, detectMilestones, updateTutorialState, getNextTutorialOverlay } from './tutorialEngine';
+// import { multiverseAdapter } from './multiverseAdapter'; // Lazy loaded to avoid client-side bundling
+// import { getDatabaseAdapter } from './databaseAdapter'; // Lazy loaded to avoid client-side bundling
+
+// Phase 30: World Registry — centralized template management
+import { getWorldRegistry, type WorldTemplateMetadata } from './worldRegistry';
 import schemaJson from '../data/luxfier-world.schema.json';
 
-// Attempt to load a world template JSON. If unavailable, fall back to hardcoded default.
-let WORLD_TEMPLATE: any = null;
-try {
-  const maybe = templateJson;
-  // validate against schema if possible
-  let valid = true;
+// Lazy-load database adapter to avoid client-side bundling issues
+function getDatabaseAdapterSafe() {
   try {
-    const Ajv = require('ajv');
-    const ajv = new Ajv({ allErrors: true, strict: false });
-    const schema = schemaJson;
-    const validate = ajv.compile(schema);
-    valid = validate(maybe);
-    if (!valid) {
-      // eslint-disable-next-line no-console
-      console.error('[worldEngine] World template validation errors:', validate.errors);
+    // Only load on server side
+    if (typeof window === 'undefined') {
+      const { getDatabaseAdapter } = require('./databaseAdapter');
+      return getDatabaseAdapter();
     }
-  } catch (error_) {
-    // if ajv isn't available or validation fails to run, continue but log
-    // eslint-disable-next-line no-console
-    console.warn('[worldEngine] Template validation skipped (ajv not available or error)', error_);
+    return null;
+  } catch (e) {
+    return null;
   }
-  if (valid) {
-    WORLD_TEMPLATE = maybe;
+}
+
+// Lazy-load multiverse adapter to avoid client-side bundling issues
+function getMultiverseAdapterSafe() {
+  // Always return null on client side to prevent bundling
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+  try {
+    const { multiverseAdapter } = require('./multiverseAdapter');
+    return multiverseAdapter;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Phase 30: Initialize world registry and load default template
+let WORLD_TEMPLATE: any = null;
+let WORLD_REGISTRY_TEMPLATEID: string = 'demo-fantasy'; // Default to demo world
+
+try {
+  const registry = getWorldRegistry();
+  
+  // Resolve template ID from env var or default to demo-fantasy
+  WORLD_REGISTRY_TEMPLATEID = registry.resolveTemplateId();
+  
+  // Load the resolved template
+  WORLD_TEMPLATE = registry.getTemplate(WORLD_REGISTRY_TEMPLATEID);
+  
+  if (WORLD_TEMPLATE) {
     // eslint-disable-next-line no-console
-    console.log('[worldEngine] Loaded and validated world template from src/data/luxfier-world.json');
+    console.log(`[worldEngine] Loaded world template from registry: ${WORLD_REGISTRY_TEMPLATEID}`);
+    
+    // Validate template against schema if available
+    let valid = true;
+    try {
+      const Ajv = require('ajv');
+      const ajv = new Ajv({ allErrors: true, strict: false });
+      const schema = schemaJson;
+      const validate = ajv.compile(schema);
+      valid = validate(WORLD_TEMPLATE);
+      if (!valid) {
+        // eslint-disable-next-line no-console
+        console.warn('[worldEngine] Template validation warnings:', validate.errors);
+      }
+    } catch (error_) {
+      // if ajv isn't available, continue but log
+      // eslint-disable-next-line no-console
+      console.warn('[worldEngine] Template validation skipped (ajv not available)', error_);
+    }
+    
+    // Phase 22: Initialize RuleIngestionEngine with template
+    try {
+      const { getRuleIngestionEngine } = require('./ruleIngestionEngine');
+      const ruleEngine = getRuleIngestionEngine();
+      ruleEngine.initialize(WORLD_TEMPLATE);
+      // eslint-disable-next-line no-console
+      console.log('[worldEngine] RuleIngestionEngine initialized with registry template');
+    } catch (error_init) {
+      // eslint-disable-next-line no-console
+      console.warn('[worldEngine] Failed to initialize RuleIngestionEngine:', error_init);
+    }
   } else {
     // eslint-disable-next-line no-console
-    console.error('[worldEngine] Template invalid — falling back to built-in defaults');
+    console.error(`[worldEngine] Failed to load template "${WORLD_REGISTRY_TEMPLATEID}" from registry`);
     WORLD_TEMPLATE = null;
   }
 } catch (error_) {
   // eslint-disable-next-line no-console
-  console.warn('[worldEngine] No external world template found, using built-in defaults', error_);
+  console.warn('[worldEngine] World registry initialization failed, using minimal defaults', error_);
   WORLD_TEMPLATE = null;
+}
+
+/**
+ * Returns the currently loaded world template.
+ */
+export function getWorldTemplate(): any {
+  return WORLD_TEMPLATE;
+}
+
+/**
+ * Phase 30: Get the world registry for template selection
+ */
+export function getAvailableTemplates(): WorldTemplateMetadata[] {
+  const registry = getWorldRegistry();
+  return registry.listTemplates();
+}
+
+/**
+ * Phase 22: Hot-swap a new template at runtime, triggering rule re-initialization
+ * Simulates a Live Ops update without server restart
+ * 
+ * @param newTemplate The new world template to swap in
+ */
+export function hotSwapTemplate(newTemplate: any): void {
+  if (!newTemplate) {
+    console.warn('[worldEngine] Attempted hot-swap with null template');
+    return;
+  }
+
+  WORLD_TEMPLATE = newTemplate;
+  console.log('[worldEngine] Hot-swapped template at runtime');
+
+  // Phase 22: Re-initialize RuleIngestionEngine with new template
+  try {
+    const { getRuleIngestionEngine } = require('./ruleIngestionEngine');
+    const ruleEngine = getRuleIngestionEngine();
+    ruleEngine.initialize(newTemplate);
+    console.log('[worldEngine] RuleIngestionEngine re-initialized with new template');
+  } catch (e) {
+    console.warn('[worldEngine] Failed to reinitialize RuleIngestionEngine:', e);
+  }
+
+  // Update CausalWeatherEngine if needed
+  if (causalWeatherEngineInstance) {
+    causalWeatherEngineInstance = null;
+    getCausalWeatherEngine();  // Reinitialize
+    console.log('[worldEngine] CausalWeatherEngine re-initialized');
+  }
+}
+
+/**
+ * Phase 27: Deep merge a patch into the base world template
+ * Validates patch compatibility before applying
+ * 
+ * @param base The base world template
+ * @param patch The partial patch to merge
+ * @param options Configuration for patch application
+ * @returns The merged template if valid, null if validation fails
+ */
+export function mergePatch(
+  base: any,
+  patch: any,
+  options?: { validateHardFacts?: boolean; checkParadox?: boolean; dryRun?: boolean }
+): any | null {
+  if (!base || !patch) {
+    console.warn('[worldEngine] mergePatch: base or patch is null');
+    return null;
+  }
+
+  const opts = options || { validateHardFacts: true, checkParadox: true, dryRun: false };
+  
+  // Log patch application attempt
+  const patchLog = {
+    timestamp: Date.now(),
+    patchId: patch.id || `patch-${Date.now()}`,
+    baseVersion: base.version || 'unknown',
+    status: 'pending' as 'pending' | 'applied' | 'rejected'
+  };
+
+  try {
+    // Validation stage
+    if (opts.validateHardFacts && base.epicSoulEvents) {
+      for (const hardFact of base.epicSoulEvents) {
+        if (hardFact.isImmutable && patch.epicSoulEvents) {
+          const patchedFact = patch.epicSoulEvents.find((e: any) => e.id === hardFact.id);
+          if (patchedFact && JSON.stringify(patchedFact) !== JSON.stringify(hardFact)) {
+            console.warn(`[worldEngine] Patch attempted to modify immutable hard fact: ${hardFact.id}`);
+            patchLog.status = 'rejected';
+            return null;
+          }
+        }
+      }
+    }
+
+    // Check for paradox loops (patches that would contradict current state)
+    if (opts.checkParadox && patch.injectedRules?.combatFormulas) {
+      const baseCrit = base.injectedRules?.combatFormulas?.critMultiplier ?? 2.0;
+      const patchCrit = patch.injectedRules.combatFormulas.critMultiplier;
+      // Allow reasonable variance (up to 5x) but reject extreme swings (>10x)
+      if (patchCrit && Math.abs(patchCrit / baseCrit) > 10) {
+        console.warn(`[worldEngine] Patch creates paradox loop: crit multiplier variance too extreme (${baseCrit} -> ${patchCrit})`);
+        patchLog.status = 'rejected';
+        return null;
+      }
+    }
+
+    // Deep merge: create merged template
+    const merged = JSON.parse(JSON.stringify(base));
+    
+    // Recursively merge patch properties
+    const deepMerge = (target: any, source: any, depth: number = 0): void => {
+      if (depth > 20) {
+        console.warn('[worldEngine] mergePatch: maximum recursion depth exceeded');
+        return;
+      }
+
+      for (const key in source) {
+        if (source.hasOwnProperty(key)) {
+          if (source[key] === null || source[key] === undefined) {
+            // Null/undefined removes the key
+            delete target[key];
+          } else if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
+            // Recursively merge objects
+            if (!target[key] || typeof target[key] !== 'object') {
+              target[key] = {};
+            }
+            deepMerge(target[key], source[key], depth + 1);
+          } else if (Array.isArray(source[key])) {
+            // For arrays, replace entirely (not merge)
+            target[key] = JSON.parse(JSON.stringify(source[key]));
+          } else {
+            // For primitives, replace
+            target[key] = source[key];
+          }
+        }
+      }
+    };
+
+    deepMerge(merged, patch);
+
+    if (!opts.dryRun) {
+      patchLog.status = 'applied';
+      console.log(`[worldEngine] Patch applied successfully: ${patchLog.patchId}`);
+    } else {
+      patchLog.status = 'applied';
+      console.log(`[worldEngine] Patch validated (dry-run): ${patchLog.patchId}`);
+    }
+
+    // Track patch application
+    if (!merged._patchHistory) {
+      merged._patchHistory = [];
+    }
+    merged._patchHistory.push(patchLog);
+
+    return merged;
+  } catch (error: any) {
+    console.error('[worldEngine] mergePatch error:', error.message);
+    patchLog.status = 'rejected';
+    return null;
+  }
+}
+
+/**
+ * Apply a patch at runtime and hot-swap the template
+ * This is the Live Ops entry point for applying world patches without restart
+ * 
+ * @param patch The patch to apply (e.g., void-wastes.json)
+ */
+export function applyLiveOpsPatch(patch: any): boolean {
+  if (!WORLD_TEMPLATE) {
+    console.error('[worldEngine] Cannot apply patch: no world template loaded');
+    return false;
+  }
+
+  const merged = mergePatch(WORLD_TEMPLATE, patch, {
+    validateHardFacts: true,
+    checkParadox: true,
+    dryRun: false
+  });
+
+  if (!merged) {
+    console.error('[worldEngine] Patch validation failed');
+    return false;
+  }
+
+  // Hot-swap the merged template
+  hotSwapTemplate(merged);
+  console.log('[worldEngine] Live Ops patch applied and active');
+  return true;
+}
+let causalWeatherEngineInstance: CausalWeatherEngine | null = null;
+
+function getCausalWeatherEngine(): CausalWeatherEngine {
+  if (!causalWeatherEngineInstance) {
+    causalWeatherEngineInstance = new CausalWeatherEngine();
+    const rng = getGlobalRng();
+    if (rng) {
+      causalWeatherEngineInstance.setSeededRng(rng);
+    }
+  }
+  return causalWeatherEngineInstance;
 }
 
 // ALPHA_M9 Phase 3: SubArea for hidden depths and nested locations
@@ -90,6 +355,15 @@ export type Location = {
   spiritDensity?: number;  // Lore: magical saturation (0-1)
   subAreas?: SubArea[];  // ALPHA_M9 Phase 3: Hidden nested locations
   activeScars?: Array<{ description: string }>;  // M59-A1: World scars (narrative markers) visible at this location
+  // Phase 45 Remediation: Tile depletion tracking to prevent gathering exploits
+  tileHarvestHistory?: Array<{ tileX: number; tileY: number; lastHarvestTick: number; harvestCount: number }>;
+  // Beta Phase 9: Atmospheric Sinks for Paradox manifestations
+  atmosphericSinks?: Array<{
+    paradoxThreshold: number;
+    manifestation: string;
+    visualFilter: 'sepia' | 'bleached' | 'glitched' | 'static' | 'pulsing-red' | 'void-violet';
+    soundscapeOverride?: string;
+  }>;
 };
 
 // ALPHA_M9 Phase 3: Spatial Director System - Coordinate-based NPC orchestration zones
@@ -141,7 +415,10 @@ export interface FactionConflict {
   id: string;
   factionIds: string[];
   type: 'military' | 'economic' | 'religious' | 'infiltration' | 'diplomatic';
+  trigger: string; // Description of what caused conflict
   active: boolean;
+  startedAt: number; // tick
+  resolvedAt?: number;
   intensity?: number;
 }
 
@@ -159,6 +436,78 @@ export interface TemporalDebt {
     triggeredAtTick: number;
     resolvedAtTick?: number;
   }>;
+}
+
+/**
+ * Phase 10: Snapshot Storage Types
+ * 
+ * WorldSnapshot represents a serialized checkpoint of world state at a specific tick.
+ * Used for optimized hydration: load snapshot + replay delta events instead of full replay.
+ */
+export interface WorldSnapshot {
+  id: string;                          // Unique snapshot identifier
+  worldInstanceId: string;             // Which world this snapshot belongs to
+  tick: number;                        // World tick when snapshot was created
+  stateHash: string;                   // SHA-256 hash of serialized state (for integrity verification)
+  previousSnapshotHash?: string;       // Hash of previous snapshot (forms chain for tamper detection)
+  serializedState: string;             // JSON representation of WorldState (compressed in production)
+  createdAt: number;                   // Timestamp when snapshot was persisted
+  eventCountInWindow?: number;         // How many events occurred between this snapshot and previous
+}
+
+/**
+ * Abstract snapshot storage interface
+ * Implementations: Redis, PostgreSQL, IndexedDB, or in-memory for BETA
+ */
+export interface SnapshotStorageBackend {
+  save(snapshot: WorldSnapshot): Promise<void>;
+  load(snapshotId: string): Promise<WorldSnapshot | null>;
+  findMostRecent(worldInstanceId: string, beforeTick: number): Promise<WorldSnapshot | null>;
+  listAll(worldInstanceId: string): Promise<WorldSnapshot[]>;
+  delete(snapshotId: string): Promise<void>;
+  deleteOlderThan(worldInstanceId: string, tick: number): Promise<number>;
+}
+
+/**
+ * In-memory snapshot storage for BETA (development)
+ * Stores snapshots in a Map; simulates persistence without external dependencies
+ */
+export class InMemorySnapshotStorage implements SnapshotStorageBackend {
+  private snapshots: Map<string, WorldSnapshot> = new Map();
+  
+  async save(snapshot: WorldSnapshot): Promise<void> {
+    this.snapshots.set(snapshot.id, snapshot);
+  }
+  
+  async load(snapshotId: string): Promise<WorldSnapshot | null> {
+    return this.snapshots.get(snapshotId) || null;
+  }
+  
+  async findMostRecent(worldInstanceId: string, beforeTick: number): Promise<WorldSnapshot | null> {
+    const relevant = Array.from(this.snapshots.values())
+      .filter(s => s.worldInstanceId === worldInstanceId && s.tick < beforeTick)
+      .sort((a, b) => b.tick - a.tick);
+    return relevant.length > 0 ? relevant[0] : null;
+  }
+  
+  async listAll(worldInstanceId: string): Promise<WorldSnapshot[]> {
+    return Array.from(this.snapshots.values())
+      .filter(s => s.worldInstanceId === worldInstanceId)
+      .sort((a, b) => a.tick - b.tick);
+  }
+  
+  async delete(snapshotId: string): Promise<void> {
+    this.snapshots.delete(snapshotId);
+  }
+  
+  async deleteOlderThan(worldInstanceId: string, tick: number): Promise<number> {
+    const before = this.snapshots.size;
+    const toDelete = Array.from(this.snapshots.values())
+      .filter(s => s.worldInstanceId === worldInstanceId && s.tick < tick)
+      .map(s => s.id);
+    toDelete.forEach(id => this.snapshots.delete(id));
+    return toDelete.length;
+  }
 }
 
 export type PersonalityType = 'aggressive' | 'cautious' | 'tactical' | 'healer' | 'balanced';
@@ -186,7 +535,9 @@ export type NPC = {
   routine?: Record<string, string>; 
   stats?: any; 
   hp?: number; 
-  maxHp?: number; 
+  maxHp?: number;
+  level?: number; // NPC level for combat/power scaling
+  reputation?: number; // Individual NPC reputation (-100 to 100)
   reputationRequired?: Record<string, number>; 
   statusEffects?: string[]; 
   personality?: NpcPersonality;
@@ -228,6 +579,12 @@ export type NPC = {
   coLocationTicks?: Record<string, number>; // npcId -> ticks spent together
   // M55-C1: NPC inventory for trade & harvesting
   inventory?: InventoryItem[];
+  // M56: Biological Anchor & Generational Legacy
+  race?: 'Human' | 'Elf' | 'Beastkin' | 'Dwarf' | 'Automaton';
+  age?: number;
+  maxAge?: number;
+  lineageId?: string; // Tracks descendants across generations
+  descendantOf?: string; // npcId of parent for hereditary traits
   importance?: 'critical' | 'major' | 'minor'; // M19: Quest criticality for attrition
   isDisplaced?: boolean; // M19: Temporarily vanished during conflict
   defectedFactionId?: string; // M19: faction switched to during warfare
@@ -239,6 +596,19 @@ export type NPC = {
   // Phase 7: Per-NPC environmental corruption tracking (mirrors WorldState paradoxLevel/ageRotSeverity)
   paradoxLevel?: number;  // 0-100: Individual NPC paradox accumulation affecting their reality stability
   ageRotSeverity?: 'mild' | 'moderate' | 'severe';  // Environmental decay level affecting this NPC's perception
+  // Phase 20: Bloodline divergence traits
+  traits?: string[];  // Evolutionary traits gained through bloodline divergence
+  
+  // Phase 41: NPC Intent System
+  // Predictable next action that player can see before acting, enabling tactical card play
+  intent?: {
+    actionTypeId: string;  // e.g., 'attack', 'defend', 'heal', 'flee', 'cast-spell'
+    targetId?: string;     // e.g., state.player.id or another NPC id
+    intensity: number;     // 0-100: How committed to this action (affects priority)
+    predictedDamage?: number; // Estimated damage this action will deal
+    predictedCost?: number;  // AP cost to NPC
+    lastComputedTick?: number;  // When this intent was calculated
+  };
 };
 export type CombatState = {
   active: boolean;
@@ -249,34 +619,34 @@ export type CombatState = {
   initiator: string;
 };
 export type QuestObjective = { 
-  type: "visit" | "combat" | "exploration" | "challenge" | "gather" | "craft"; 
+  id?: string;
+  description?: string;
+  type?: "visit" | "combat" | "exploration" | "challenge" | "gather" | "craft" | "investigation" | "social"; 
   location?: string;
   target?: string;
   quantity?: number;
+  requiredClues?: string[]; // Phase 10/11: Required investigation clues (M49-A2)
+  status?: 'pending' | 'completed' | 'failed';
   timeConstraints?: { startHour?: number; endHour?: number };
 };
 export type Quest = { 
   id: string; 
-  title: string; 
+  name?: string; // Phase 11 compatibility
+  title?: string; 
   description?: string; 
   objectives?: QuestObjective[];
   objective?: QuestObjective;
+  preRequisites?: string[]; // Phase 11: Quest chain dependencies
   dependencies?: string[]; 
   rewards?: any; 
   expiresInHours?: number;
   currentObjectiveIndex?: number;
   gatedReward?: { location?: string; access?: boolean };
   // Phase 8: NPC giver and quest status tracking
+  giverId?: string; // Phase 11 compatibility
   giverNpcId?: string;  // NPC ID of quest giver
-  status?: 'active' | 'completed' | 'abandoned' | 'available';  // Quest status
-};
-
-export type ResourceNode = {
-  id: string;
-  lootTableId: string;
-  locationId: string;
-  depletedAt?: number; // Tick when depleted; null = available
-  regeneratesInHours: number;
+  status?: 'active' | 'completed' | 'abandoned' | 'available' | 'not-started';  // Quest status
+  type?: string;
 };
 
 export type WorldEvent = {
@@ -312,6 +682,35 @@ export type DialogueEntry = {
   options?: { id: string; text: string }[];
 };
 
+/**
+ * M47-E1: Parsed Dialogue Entry Interface
+ * Enhanced dialogue entry with sensory cues and NPC personality data
+ * Used by EnhancedDialogPanel for rich dialogue visualization
+ */
+export type ParsedDialogueEntry = {
+  npcId: string;
+  npcName: string;
+  text: string;
+  emotionalState?: {
+    trust?: number;
+    fear?: number;
+    gratitude?: number;
+    resentment?: number;
+  };
+  timestamp?: number;
+  isRumor?: boolean;
+  isFact?: boolean;
+  npcStressed?: boolean;
+  npcPersonality?: {
+    greediness: number;
+    piety: number;
+    ambition: number;
+    loyalty: number;
+    risk: number;
+    sociability: number;
+  };
+};
+
 // Phase 14.5: Discriminated union for inventory items
 export type StackableItem = {
   kind: 'stackable';
@@ -331,18 +730,41 @@ export type UniqueItem = {
     runes?: string[];          // Phase 15: IDs of installed runes
     corruption?: number;       // Phase 15: Paradox corruption (0-100)
     infusions?: Array<{ runeId: string; timestamp: number }>; // Phase 15: Fusion history
+    echoes?: Array<{           // Phase 44: Echo imprints from significant events
+      echoId: string;
+      name: string;
+      description: string;
+      eventTrigger: string;
+      statModifiers?: Record<string, number>;
+      abilityMods?: Array<{ abilityId: string; costModifier?: number; damageModifier?: number }>;
+      rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+      timestamp?: number;
+    }>;
   };
 };
 
 export type InventoryItem = StackableItem | UniqueItem;
 
 export type EquipmentSlots = {
+  // Aetheric & Resonance (Column 1)
   head?: string;
+  neck?: string;
+  ring1?: string;
+  ring2?: string;
+  
+  // Physical Core (Column 2)
   chest?: string;
+  waist?: string;
+  legs?: string;
+  feet?: string;
+  
+  // Martial & Resonance (Column 3)
+  back?: string;
+  hands?: string;
+  ring3?: string;
+  ring4?: string;
   mainHand?: string;
   offHand?: string;
-  feet?: string;
-  accessory?: string;
 };
 
 export type BeliefLayer = {
@@ -359,15 +781,22 @@ export type PlayerState = {
   dialogueHistory?: { npcId: string; text: string; timestamp: number; options?: { id: string; text: string }[] }[];
   npcDialogueIndex?: Record<string, number>;
   gold?: number;
+  credits?: number;              // Phase 46: Cyberpunk currency
+  scrip?: number;                // Phase 46: Alternative currency (labor scrip, tokens, etc.)
   experience?: number;
   xp?: number;
   level?: number;
   attributePoints?: number;
   reputation?: Record<string, number>;
+  // Phase 46: Workstation state
+  activeWorkstationId?: string;  // Currently open workstation
+  blindFusingItems?: InventoryItem[]; // Items queued for blind fusion attempts
   hp?: number;
   maxHp?: number;
   mp?: number;
   maxMp?: number;
+  grit?: number;                 // Grit: endurance/willpower resource (third resource alongside HP/MP)
+  maxGrit?: number;
   statusEffects?: string[];
   stats?: {
     str: number;
@@ -376,6 +805,7 @@ export type PlayerState = {
     cha: number;
     end: number;
     luk: number;
+    perception?: number; // M47: Player perception level for sensory filtering (0-100)
   };
   inventory?: InventoryItem[];
   equipment?: EquipmentSlots;
@@ -391,8 +821,12 @@ export type PlayerState = {
   lastSaveTick?: number; // Phase 12: Track tick at last save for rewind detection
   soulStrain?: number; // Phase 13: Accumulated from morphing transformations (0-100)
   currentRace?: string; // Phase 13: Player's current race (for morphing system)
+  race?: string; // Phase 13: Player's starting/base race
   lastMorphTick?: number; // Phase 13: Tick when last morph occurred
   recentMorphCount?: number; // Phase 13: Morphs in recent window (for cooldown multiplier)
+  // Phase 47: Ancestral Tapestry - World-aware passive trees
+  ancestryTree?: string; // ID of the active ancestry tree (tied to race and world template)
+  ancestryNodes?: string[]; // Array of unlocked ancestry node IDs
   discoveredSecrets?: Set<string>; // Phase 14: IDs of discovered hidden areas (e.g., "hermit-cave")
   explorationProgress?: Record<string, number>; // Phase 14: Track % explored per location
   equippedRelics?: string[]; // Phase 15: IDs of currently equipped relics
@@ -400,8 +834,10 @@ export type PlayerState = {
   boundRelicId?: string; // Phase 15: ID of the "Bound" relic (cannot drop)
   infusionHistory?: Array<{ relicId: string; runeId: string; timestamp: number }>; // Phase 15: Track infusions for corruption
   itemCorruption?: Record<string, number>; // Phase 15: Corruption level per item ID (0-100)
+  activeTargetId?: string | null; // Phase 7: Currently selected entity ID
   // ALPHA_M9: Skill system
   skillPoints?: number; // Available skill points to spend
+  unlockedSkills?: string[]; // IDs of unlocked skills from skill tree/constellation
   unlockedAbilities?: string[]; // IDs of unlocked abilities (from skillEngine)
   equippedAbilities?: string[]; // Currently active abilities (max 6)
   abilityCooldowns?: Record<string, number>; // Remaining ticks on ability cooldowns
@@ -425,7 +861,182 @@ export type PlayerState = {
   // M55-A: Player position for Director logic
   x?: number;
   y?: number;
-  name?: string;
+  name: string; // Player character name (required for SoulMirrorOverlay)
+  generation: number; // M47-A2: Player's generation in the ancestral line (1 = no ancestry, 2+ = inherited)
+  // Phase 19: Tutorial State
+  tutorialState: any; // Persistent tutorial milestone tracking (Type-checked in tutorialEngine.ts)
+  tutorialOverlay?: any; // Phase 19: Current active tutorial UI modal data
+  // Phase 10: UI Theme preference for Hero's Reliquary HUD
+  theme?: 'dark-arcane' | 'vale-twilight' | 'ethereal'; // Player's selected UI theme (defaults to 'dark-arcane')
+  // Phase 5: Heroic Awakening - Narrative character data
+  originStory?: string;                                  // Player's backstory/origin narrative
+  archetype?: string;                                    // Character archetype (e.g., 'exiled-noble', 'wandering-scholar')
+  talents?: string[];                                    // Array of innate talent IDs (limited to 3)
+  talentDetails?: Record<string, { name: string; description: string; effect: string }>; // Talent metadata for UI display
+  // Phase 7: Targeting System
+  targetingMode?: 'none' | 'hostile' | 'friendly'; // Current targeting mode
+  // Phase 8: Encounter Lifecycle
+  inCombat?: boolean; // Whether player is currently in an encounter
+  combatStartedAt?: number; // Tick when combat began
+  combatRound?: number; // Current round number (for turn tracking)
+  combatLog?: Array<{ tick: number; actor: string; action: string; target?: string; result: string }>; // Battle log
+  // Phase 39: Action Points (AP) system for turn-based card play
+  ap?: number; // Current action points available this turn
+  maxAp?: number; // Maximum AP per turn (typically 3)
+  lastApRecoveryTick?: number; // Tick when AP was last recovered
+  // Phase 39: Authoritative hand, deck, and discard tracking (stored in engine, not UI)
+  hand?: string[]; // Array of ability IDs currently in hand
+  deck?: string[]; // Array of ability IDs remaining in deck
+  discard?: string[]; // Array of ability IDs in discard pile
+  // Phase 40: Current narrative codec provides mechanical and visual modifiers
+  currentCodec?: string; // e.g., 'CODENAME_MEDIEVAL', 'CODENAME_CYBERPUNK', etc.
+  
+  // Phase 41: Combat stance affects damage/defense tradeoffs
+  combatStance?: 'aggressive' | 'defensive' | 'balanced'; // Strategic posture for combat
+
+  // Phase 42: Universal proficiency system (Learn by Doing)
+  proficiencies?: Record<string, {
+    xp: number;                    // Total XP in this proficiency (0+)
+    level: number;                 // Proficiency level (0-20, where 10 = journeyman, 20 = master)
+    passion?: 0 | 1 | 2;          // 0 = 35% XP, 1 = 100% XP (normal), 2 = 150% XP (passionate)
+    lastUsageTick?: number;        // Last tick this proficiency was used (for decay calculation)
+    dailyXpEarned?: number;        // XP earned today (resets daily, for soft-cap enforcement)
+    lastDailyReset?: number;       // Tick when daily XP counter was last reset
+    botchStreak?: number;          // Consecutive botches (reduces XP gain)
+  }>;
+  // Proficiency categories: Blades, Blunt, Marksman, Arcane, Stealth, Smithing, Alchemy, Weaving, Artifice, Survival, Performance
+  
+  // Session 4: Global daily XP cap tracking (8,000 XP/day across all proficiencies)
+  dailyXpEarnedGlobal?: number;    // Total XP earned today across all proficiencies (resets daily)
+  dailyXpResetTick?: number;       // Tick when daily XP was last reset (for daily boundary detection)
+};
+
+export type ResourceNode = {
+  id: string;
+  name: string;
+  locationId: string;
+  type: string;
+  remainingResources: number;
+  maxResources: number;
+  regenerationRate: number;
+  lootTableId?: string; // Phase 14: Associated loot table for drops
+  regeneratesInHours?: number; // Phase 14: Regeneration cooldown
+  depletedAt?: number; // Phase 14: Depletion timestamp (tick)
+};
+
+// Phase 14: Item, Loot and Crafting Registry
+export type ItemTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'stackable' | 'unique';
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+  baseValue: number;
+  stats?: {
+    damage?: number;
+    defense?: number;
+    power?: number;
+    paradoxScale?: number;
+  };
+  requirements?: {
+    str?: number;
+    agi?: number;
+    int?: number;
+    perception?: number;
+  };
+};
+
+export type LootTable = {
+  id: string;
+  locationId?: string;
+  biome?: string;
+  drops: Array<{
+    itemId: string;
+    chance: number; // 0-1
+    minQuantity: number;
+    maxQuantity: number;
+  }>;
+};
+
+export type CraftingRecipe = {
+  id: string;
+  resultItemId: string;
+  resultQuantity: number;
+  ingredients: Array<{
+    itemId: string;
+    quantity: number;
+  }>;
+  requiredFacility?: 'alchemy_bench' | 'forge' | 'none';
+  discoveryHardFactId?: string;
+};
+
+/**
+ * Phase 47: Ancestry Node and Tree types for world-aware passive skill progression.
+ * Imported by ancestryRegistry.ts
+ */
+export type AncestryModifier = {
+  statName: string;       // 'str', 'agi', 'int', 'perception', 'xpMultiplier', etc.
+  value: number;          // +/- delta to apply
+  duration?: 'permanent'; // Currently only permanent modifiers supported
+};
+
+export type AncestryNode = {
+  id: string;                        // Unique within tree (e.g., "elf_fantasy_mana_1")
+  name: string;                      // Display name (e.g., "Ley Attunement")
+  description: string;               // Flavor text explaining the node
+  cost: number;                      // XP cost to unlock this node
+  requirements: {
+    prerequisiteNodeIds?: string[];  // Must unlock these nodes first
+    minimumLevel?: number;           // Minimum player level required
+    minimumProficiency?: Array<{
+      proficiencyName: string;
+      level: number;
+    }>;                              // Minimum proficiency levels required
+  };
+  modifiers: AncestryModifier[];     // Stats gained from this node
+  unlocks?: string[];                // Node IDs that become available after this one
+  aesthetics?: {
+    icon?: string;                   // Icon name or emoji
+    color?: string;                  // Node color for UI (e.g., '#FFD700')
+    tier?: number;                   // Visual tier (0=root, 1=mid, 2=end)
+  };
+};
+
+export type AncestryTree = {
+  id: string;                        // Unique ID (e.g., "elf_fantasy_tapestry")
+  race: string;                      // Race this tree is for (e.g., "Elf")
+  codec: string;                     // World template/codec (e.g., "fantasy", "cyberpunk")
+  name: string;                      // Display name (e.g., "The Ley-Weavers")
+  rootNodeId: string;                // Entry node ID (must exist in nodes array)
+  nodes: AncestryNode[];             // All nodes in this tree
+  description?: string;              // Flavor description of the bloodline
+  baseStats?: Record<string, number>; // Starting stat allocation (8-base system, Phase 49)
+};
+
+/**
+ * Template structure for world definitions loaded from JSON files
+ * (demo-fantasy-world.json, luxfier-world.json, etc.)
+ */
+export type WorldTemplate = {
+  name: string;
+  description: string;
+  genre: string;
+  version: string;
+  season: string;
+  baseEpoch: string;
+  multiEpochEnabled: boolean;
+  timeSettings?: any;
+  chroniclerFacts?: any[];
+  NPCs?: any[];
+  locations?: any[];
+  quests?: any[];
+  factions?: any[];
+  events?: any[];
+  rules?: any[];
+  lore?: string;
+  startLocation?: string;
+  ancestryTrees?: AncestryTree[];  // Phase 47: Race-specific passive trees
+  [key: string]: any;  // Allow additional template-specific fields
 };
 
 export type WorldState = {
@@ -436,11 +1047,14 @@ export type WorldState = {
   day: number;
   dayPhase: "night" | "morning" | "afternoon" | "evening";
   season: "winter" | "spring" | "summer" | "autumn";
-  weather: "clear" | "snow" | "rain";
+  weather: "clear" | "snow" | "rain" | "ash_storm" | "cinder_fog" | "mana_static"; // Phase 17: Extended causal weather types
   time?: { tick: number; baseHour?: number; baseDay?: number; hour: number; minute?: number; day: number; season: WorldState['season'] };
   locations: Location[];
   npcs: NPC[];
   quests: Quest[];
+  itemTemplates?: ItemTemplate[]; // Phase 14: Global item definitions
+  lootTables?: LootTable[];       // Phase 14: Regional loot tables
+  craftingRecipes?: CraftingRecipe[]; // Phase 14: Alchemical recipes
   resourceNodes?: ResourceNode[];
   activeEvents?: WorldEvent[];
   combatState?: CombatState;
@@ -514,14 +1128,40 @@ export type WorldState = {
   npcDisplacements?: Record<string, { expectedReturnTick: number; originalLocation: string }>;
   // BETA Phase 1: Pressure Sink - Track accumulated paradox in world state
   paradoxLevel?: number;  // 0-100: World paradox accumulation affecting reality stability
+  paradox?: number;  // Additional paradox property for UI controls
   temporalParadoxes?: any[];  // Active paradox effects/anomalies
   ageRotSeverity?: 'mild' | 'moderate' | 'severe';  // World decay level for UI feedback
   narrativeInterventions?: any[];  // Director/Seer narrative intervention history
+  // BETA Phase 10: Web of Whispers (Information & Relationships)
+  rumors?: any[];  // Pre-seeded rumors from template
+  relationships?: any[];  // NPC-to-NPC relationships (trust, debt, status)
+  standardActionCosts?: Record<string, number>;  // Global tick costs for actions
+  travelMatrix?: Record<string, Record<string, number>>;  // Point-to-point travel costs
+  investigationClues?: Record<string, any[]>;  // Clue sources for investigation
+  soulEchoes?: any[];  // Ancestral perks and relics (M45-C1)
+  factionPricingRules?: Record<string, any>;  // Faction-specific pricing modifiers (M44-D2)
+  // Phase 16: Economic Pressure - Market flux and pricing dynamics
+  marketFluxByLocation?: Record<string, any>;  // locationId → MarketFlux (supply/demand shifts)
+  lastMarketUpdateTick?: number;  // Track when markets were last updated
   // BETA Phase 2: Social Memory - Track all active psychological scars across NPCs
   activeSocialScars?: SocialScar[];  // Betrayals, trauma from relationships
   // Phase 13: Multi-Generation Paradox Tracking
   generationalParadox?: number;  // Cumulative paradox across all epochs (never resets, persists across advanceToNextEpoch)
   epochGenerationIndex?: number; // Current generation number (1st ascension = 1, 2nd = 2, etc.)
+  // M47-E1: Dialogue History - Track all dialogue exchanges in world state
+  dialogueHistory?: ParsedDialogueEntry[];
+  // Phase 23: Seasonal modifiers cache - Updated every 1000 ticks or on season change
+  currentSeasonalModifiers?: Record<string, number>;  // e.g., { manaRegenMult: 1.3, staminaDecayMult: 1.2 }
+  lastSeasonalModifierUpdateTick?: number;  // Track when seasonal modifiers were last refreshed
+  // Phase 27: Paradox Bleed - Visual tint override from corrupted parallel worlds
+  paradoxBleedTint?: string;  // RGB or hex color from inverse palette (e.g., #1a0a2e when paradox bleeds from other worlds)
+  globalParadoxAverage?: number;  // Cached global paradox level from top 5 corrupted worlds
+  // Phase 29: Visual overrides for multiverse paradox effects
+  visualOverrides?: any;
+  // Phase 45-A1: Action Lock - Prevent concurrent overlapping actions per actor
+  actionLocks?: Record<string, number>;  // actorId → tickUntilClear: prevents action overlap during execution
+  // Phase 45-A3: Tile Depletion - Track harvested resource tiles for respawn management
+  depletedTiles?: Record<string, number>;  // tileId → depletionTime: timestamp when tile was depleted for respawn calculation
 };
 
 type Subscriber = (s: WorldState) => void;
@@ -599,6 +1239,38 @@ export function consolidateStackables(inventory: InventoryItem[]): InventoryItem
 }
 
 /**
+ * Phase 7: Apply stat scaling to NPCs based on location spiritDensity
+ * Creates a "Danger Level" that scales NPC stats to match location difficulty
+ * Higher spiritDensity = stronger NPCs in that location
+ * 
+ * @param npcs NPCs to scale
+ * @param locations Locations with spiritDensity values
+ * @returns NPCs with enhanced stats based on location danger
+ */
+export function applyNpcStatScaling(npcs: NPC[], locations: Location[]): NPC[] {
+  return npcs.map((npc) => {
+    const npcLocation = locations.find((l) => l.id === npc.locationId);
+    const spiritDensity = npcLocation?.spiritDensity ?? 0.5; // Default to medium difficulty
+    
+    // Danger level multiplier: 0.5 at spiritDensity 0, 1.5 at spiritDensity 1.0
+    const dangerMultiplier = 0.5 + (spiritDensity * 1.0);
+    
+    // Apply multiplier to HP
+    const baseMaxHp = npc.maxHp || 100;
+    const scaledMaxHp = Math.floor(baseMaxHp * dangerMultiplier);
+    
+    // Update NPC with scaled stats
+    return {
+      ...npc,
+      maxHp: scaledMaxHp,
+      hp: Math.min(npc.hp || baseMaxHp, scaledMaxHp), // Cap current HP at new max
+      // Also scale stat-based damage potential via AbilityResolver calculations
+      dangerLevel: spiritDensity // Store for ability damage scaling
+    };
+  });
+}
+
+/**
  * Beta Phase 5 Task 2: Initialize NPC inventories based on location biome
  * Ensures every NPC has a properly initialized inventory array with biome-appropriate starter items
  * 
@@ -660,6 +1332,8 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
   let npcs = tpl?.npcs ? structuredCloneSafe(tpl.npcs) : [];
   // Beta Phase 5 Task 2: Initialize NPC inventories
   npcs = initializeNpcInventories(npcs, locations);
+  // Phase 7: Apply stat scaling based on location spiritDensity
+  npcs = applyNpcStatScaling(npcs, locations);
   const quests = tpl?.quests ? structuredCloneSafe(tpl.quests) : [];
   const metadata = tpl?.metadata ? structuredCloneSafe(tpl.metadata) : { audioVolume: 0.8, particleDensity: 'medium' };
   // record template origin for event provenance
@@ -667,6 +1341,30 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     metadata.templateOrigin = tpl.id || tpl.name || tpl.metadata?.templateId;
   } else {
     metadata.templateOrigin = 'builtin';
+  }
+  
+  // Stage 8.99: Include character creation template data in metadata
+  // This ensures ancestryTrees, talentPool, and other character-related data flow to CharacterWizard
+  if (tpl?.ancestryTrees) {
+    metadata.ancestryTrees = structuredCloneSafe(tpl.ancestryTrees);
+  }
+  if (tpl?.talentPool) {
+    metadata.talentPool = structuredCloneSafe(tpl.talentPool);
+  }
+  if (tpl?.ancestryAvailability) {
+    metadata.ancestryAvailability = structuredCloneSafe(tpl.ancestryAvailability);
+  }
+  if (tpl?.divinePresence) {
+    metadata.divinePresence = structuredCloneSafe(tpl.divinePresence);
+  }
+  if (tpl?.startingGearChoices) {
+    metadata.startingGearChoices = structuredCloneSafe(tpl.startingGearChoices);
+  }
+  if (tpl?.curiosityPool) {
+    metadata.curiosityPool = structuredCloneSafe(tpl.curiosityPool);
+  }
+  if (tpl?.startingLocations) {
+    metadata.startingLocations = structuredCloneSafe(tpl.startingLocations);
   }
 
   // initial reputation may be supplied by template.metadata.initialReputation as { npcId: number }
@@ -688,6 +1386,34 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     initialFactionRep[f.id] = 0; // Neutral starting reputation
   });
 
+  // Initialize factions with controlledLocationIds
+  const factions = (() => {
+    const templateFactions = tpl?.factions ? structuredCloneSafe(tpl.factions) : null;
+    if (templateFactions) {
+      // Ensure template factions have controlledLocationIds initialized
+      templateFactions.forEach((faction: any) => {
+        if (!faction.controlledLocationIds) {
+          faction.controlledLocationIds = [];
+        }
+      });
+      return templateFactions;
+    } else {
+      return initializeFactions({ 
+        locations, 
+        npcs, 
+        quests,
+        combatState: {} as any,
+        player: {} as any,
+        id: '',
+        hour: 8,
+        day: 1,
+        dayPhase: 'morning',
+        season: 'winter',
+        weather: 'clear'
+      } as WorldState);
+    }
+  })();
+
   return {
     id,
     tick: 0,
@@ -702,6 +1428,7 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     quests,
     player: {
       id: "player1",
+      name: "Adventurer", // Default player name
       location: locations.length > 0 ? locations[0].id : "town",
       quests: {},
       dialogueHistory: [],
@@ -748,6 +1475,9 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
       // M51-A1: Merit & Faction Command System
       merit: 0, // Start with 0 merit
       factionCommands: {}, // No active faction commands initially
+      generation: 1, // M47-A2: Start as first generation (no ancestry)
+      // Phase 19: Tutorial State
+      tutorialState: initializeTutorialState(), // Initialize empty tutorial milestones
     },
     needsCharacterCreation: true,
     time: { tick: 0, baseHour: 8, baseDay: 1, hour: 8, day: 1, season: baseSeason as WorldState['season'] },
@@ -765,32 +1495,17 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
       log: [],
       initiator: ''
     },
-    // Phase 11: Initialize faction system
-    factions: tpl?.factions ? structuredCloneSafe(tpl.factions) : initializeFactions({ 
-      locations, 
-      npcs, 
-      quests,
-      combatState: {} as any,
-      player: {} as any,
-      id: '',
-      hour: 8,
-      day: 1,
-      dayPhase: 'morning',
-      season: 'winter',
-      weather: 'clear'
-    } as WorldState),
     factionRelationships: tpl?.factionRelationships ? structuredCloneSafe(tpl.factionRelationships) : initializeFactionRelationships(),
     factionConflicts: [],
+    // Phase 11: Initialize faction system
+    factions,
     // M15 Step 5: Initialize influence map (locationId → factionId → score)
     influenceMap: tpl?.influenceMap ? structuredCloneSafe(tpl.influenceMap) : (() => {
       const map: Record<string, Record<string, number>> = {};
       locations.forEach((loc: Location) => {
         map[loc.id] = {};
         // Factions start with influence at their primary location only
-        (tpl?.factions ? structuredCloneSafe(tpl.factions) : initializeFactions({
-          locations, npcs, quests, combatState: {} as any, player: {} as any,
-          id: '', hour: 8, day: 1, dayPhase: 'morning', season: 'winter', weather: 'clear'
-        } as WorldState)).forEach((faction: Faction) => {
+        factions.forEach((faction: Faction) => {
           map[loc.id][faction.id] = (faction.primaryLocationId === loc.id) ? 50 : 0; // HQ starts with 50 influence
         });
       });
@@ -806,27 +1521,268 @@ export function createInitialWorld(id = "world-1", template?: any): WorldState {
     worldScars: [],
     lastFactionTick: 0,
     metadata,
+    // BETA Phase 10: Web of Whispers
+    rumors: tpl?.rumors ? structuredCloneSafe(tpl.rumors) : [],
+    relationships: tpl?.relationships ? structuredCloneSafe(tpl.relationships) : [],
+    standardActionCosts: tpl?.standardActionCosts ? structuredCloneSafe(tpl.standardActionCosts) : {
+      search: 15,
+      rest_short: 60,
+      rest_long: 480,
+      dialogue_per_word: 0.1,
+      combat_round: 10
+    },
+    travelMatrix: tpl?.travelMatrix ? structuredCloneSafe(tpl.travelMatrix) : {},
+    investigationClues: tpl?.investigationClues ? structuredCloneSafe(tpl.investigationClues) : {},
+    soulEchoes: tpl?.soulEchoes ? structuredCloneSafe(tpl.soulEchoes) : [],
+    factionPricingRules: tpl?.factionPricingRules ? structuredCloneSafe(tpl.factionPricingRules) : {},
+    worldFragments: tpl?.worldFragments ? structuredCloneSafe(tpl.worldFragments) : [],
+    // Phase 45-A1: Initialize action locks (empty at start - populated during action execution)
+    actionLocks: {},
+    // Phase 45-A3: Initialize depleted tiles (empty at start - populated as tiles are harvested)
+    depletedTiles: {}
   };
 }
 
 /**
+ * Initialize a new world from a template
+ * Creates a fresh WorldState with no player data, populated from the provided template
+ *
+ * @param template World template containing locations, npcs, factions, etc.
+ * @returns New WorldState initialized from template
+ */
+export function initializeWorld(template: any): WorldState {
+  // Helper for deep clone with fallback
+  const structuredCloneSafe = (v: any) => {
+    try {
+      return structuredClone(v);
+    } catch (e) {
+      return JSON.parse(JSON.stringify(v));
+    }
+  };
+
+  // Extract template data
+  const locations = template.locations
+    ? structuredCloneSafe(template.locations)
+    : [
+        { id: 'town', name: 'Town Square' },
+        { id: 'forest', name: 'Forest' },
+        { id: 'hill', name: 'Green Hill' },
+        { id: 'lake', name: 'Silver Lake' }
+      ];
+
+  let npcs = template.npcs ? structuredCloneSafe(template.npcs) : [];
+  // Initialize NPC inventories using helper function
+  npcs = initializeNpcInventories(npcs, locations);
+
+  const quests = template.quests ? structuredCloneSafe(template.quests) : [];
+  const factions = template.factions
+    ? structuredCloneSafe(template.factions)
+    : [
+        { id: 'silver-flame' },
+        { id: 'ironsmith-guild' },
+        { id: 'luminara-mercantile' },
+        { id: 'shadow-conclave' },
+        { id: 'adventurers-league' }
+      ];
+
+  // Create default player state
+  const player: PlayerState = {
+    id: 'player',
+    name: 'Hero', // Default player name
+    generation: 1, // Starting generation
+    tutorialState: {}, // Empty tutorial state
+    location: template.startLocation || locations[0]?.id || 'town',
+    quests: {},
+    gold: 100,
+    experience: 0,
+    xp: 0,
+    level: 1,
+    attributePoints: 0,
+    reputation: {},
+    hp: 100,
+    maxHp: 100,
+    mp: 50,
+    maxMp: 50,
+    statusEffects: [],
+    stats: {
+      str: 10,
+      agi: 10,
+      int: 10,
+      cha: 10,
+      end: 10,
+      luk: 10,
+      perception: 50
+    },
+    inventory: [],
+    equipment: {},
+    knowledgeBase: [],
+    visitedLocations: [template.startLocation || locations[0]?.id || 'town'],
+    beliefLayer: { npcLocations: {}, npcStats: {}, facts: {}, suspicionLevel: 0 },
+    suspicionLevel: 0,
+    discoveryAttempts: [],
+    factionReputation: {},
+    temporalDebt: 0,
+    soulStrain: 0,
+    discoveredSecrets: new Set(),
+    explorationProgress: {},
+    equippedRelics: [],
+    runicInventory: [],
+    activeTargetId: null
+  };
+
+  // Initialize faction reputation for player
+  factions.forEach((f: any) => {
+    player.factionReputation![f.id] = 0;
+  });
+
+  // Create initial world state
+  const worldState: WorldState = {
+    id: '', // Will be set by caller
+    seed: Math.floor(Math.random() * 0x7fffffff),
+    hour: 8,
+    day: 1,
+    dayPhase: 'morning',
+    season: 'spring',
+    weather: 'clear',
+    locations,
+    npcs,
+    quests,
+    factions,
+    factionRelationships: [], // Will be initialized by faction engine
+    factionConflicts: [],
+    influenceMap: {},
+    relics: {},
+    relicEvents: [],
+    audio: initializeAudioState(),
+    player,
+    needsCharacterCreation: true,
+    rumors: template.rumors || [],
+    relationships: [],
+    activeSocialScars: [],
+    dialogueHistory: [],
+    currentSeasonalModifiers: {},
+    lastSeasonalModifierUpdateTick: 0
+  };
+
+  return worldState;
+}
+
+/**
+ * Hash state for integrity verification
+ * Used to detect silent corruption during normal operation
+ */
+function hashState(state: WorldState): string {
+  try {
+    const crypto = require('crypto');
+    const canonical = JSON.stringify({
+      tick: state.tick,
+      player: state.player ? { id: state.player.id, level: state.player.level, hp: state.player.hp } : null,
+      npcs: state.npcs ? state.npcs.length : 0,
+      factions: state.factions ? state.factions.length : 0,
+      paradoxLevel: state.paradoxLevel,
+      season: state.season,
+      weather: state.weather
+    });
+    return crypto.createHash('sha256').update(canonical).digest('hex');
+  } catch (e) {
+    console.warn('[worldEngine] hashState failed:', e);
+    return 'error';
+  }
+}
+
+/**
+ * Phase 36: Verify hash continuity every 500 ticks
+ * Detects silent corruption (unlogged mutations or replay inconsistencies)
+ */
+function verifyHashContinuity(worldState: WorldState): void {
+  // Only verify every 500 ticks to avoid performance impact
+  if ((worldState.tick ?? 0) % 500 !== 0) {
+    return;
+  }
+
+  try {
+    // Calculate current state hash
+    const liveHash = hashState(worldState);
+
+    // Rebuild state from ledger for last 500 ticks
+    const recentEvents: Event[] = getEventsForWorld(worldState.id || 'world-default');
+    const startTick = Math.max(0, (worldState.tick ?? 0) - 500);
+    const relevantEvents = recentEvents.filter(
+      e => (e as any).tick !== undefined && (e as any).tick >= startTick
+    );
+
+    // Simple rebuilt hash based on event count and type summary
+    let rebuildHash = '';
+    if (relevantEvents.length > 0) {
+      const eventSummary = {
+        eventCount: relevantEvents.length,
+        eventTypes: [...new Set(relevantEvents.map((e: any) => e.type))],
+        lastEventType: relevantEvents[relevantEvents.length - 1]?.type,
+        paradoxEvents: relevantEvents.filter((e: any) => e.type?.includes('PARADOX')).length
+      };
+      const crypto = require('crypto');
+      rebuildHash = crypto
+        .createHash('sha256')
+        .update(JSON.stringify(eventSummary))
+        .digest('hex');
+    }
+
+    // Log verification result (warning if hashes significantly differ)
+    if (rebuildHash && liveHash !== 'error' && !liveHash.startsWith(rebuildHash.substring(0, 8))) {
+      console.warn(
+        `[worldEngine] 🔮 Hash continuity check at Tick ${worldState.tick}:`,
+        `\n  Live hash: ${liveHash.substring(0, 16)}...`,
+        `\n  Rebuild estimate: ${rebuildHash.substring(0, 16)}...`,
+        `\n  Recent events: ${relevantEvents.length} mutations in last 500 ticks`,
+        '\n  ⚠️  Potential desync detected (Silent Corruption)'
+      );
+
+      // Trigger UI effect for player awareness
+      if ((worldState as any).paradoxRippleEffect) {
+        (worldState as any).paradoxRippleEffect = true;
+      }
+    } else {
+      // Normal verbose logging for hash continuity success
+      console.log(
+        `[worldEngine] ✓ Hash continuity OK at Tick ${worldState.tick} (${relevantEvents.length} recent events)`
+      );
+    }
+  } catch (error) {
+    console.error('[worldEngine] verifyHashContinuity failed:', error);
+  }
+}
+
+/**
+ * Standalone advanceTick function for deployment scripts
+ * Creates a world controller and advances the world state
+ * Phase 36: Includes hash verification every 500 ticks for paradox detection
+ */
+export async function advanceTick(worldState: WorldState, template?: any): Promise<void> {
+  // Increment tick
+  worldState.tick = (worldState.tick ?? 0) + 1;
+
+  // Phase 36: Verify hash continuity every 500 ticks for Silent Corruption detection
+  verifyHashContinuity(worldState);
+}
+
+/**
  * ALPHA_M22: Reinitialize world from a template while preserving player progression
- * 
+ *
  * Enables live blueprint hot-swapping: change world content without losing player data
- * 
+ *
  * What is preserved:
  * - player.id, level, xp, gold, inventory, equipment
  * - player.reputation (per-NPC), factionReputation
  * - player.quests, dialogueHistory
  * - player stats, health, attributes
- * 
+ *
  * What is reset:
  * - locations, npcs, factions (from new template)
  * - quests (from new template, but player.quests state preserved)
  * - world time (tick reset to 0, or optionally preserved)
  * - combatState (reset to inactive)
  * - activeEvents (cleared)
- * 
+ *
  * @param template New world template to apply
  * @param currentState Current WorldState to preserve player data from
  * @param preserveTime If true, keep current tick/hour/day/season; if false, reset to template defaults
@@ -971,14 +1927,141 @@ export function reinitializeWorldFromTemplate(
     // Preserve existing relic systems
     relics: currentState.relics || {},
     relicEvents: currentState.relicEvents || [],
-    lastFactionTick: currentState.lastFactionTick ?? 0
+    lastFactionTick: currentState.lastFactionTick ?? 0,
+    // BETA Phase 10: Web of Whispers
+    rumors: template.rumors ? structuredCloneSafe(template.rumors) : [],
+    relationships: template.relationships ? structuredCloneSafe(template.relationships) : [],
+    factionPricingRules: template.factionPricingRules ? structuredCloneSafe(template.factionPricingRules) : {},
+    standardActionCosts: template.standardActionCosts ? structuredCloneSafe(template.standardActionCosts) : {
+      search: 15,
+      rest_short: 60,
+      rest_long: 480,
+      dialogue_per_word: 0.1,
+      combat_round: 10
+    },
+    travelMatrix: template.travelMatrix ? structuredCloneSafe(template.travelMatrix) : {},
+    investigationClues: template.investigationClues ? structuredCloneSafe(template.investigationClues) : {},
+    soulEchoes: template.soulEchoes ? structuredCloneSafe(template.soulEchoes) : [],
+    worldFragments: template.worldFragments ? structuredCloneSafe(template.worldFragments) : []
   };
 }
 
-export function createWorldController(initial?: WorldState, dev = false) {
+/**
+ * [Phase 11] Calculates the final trade price for an item based on faction rules, 
+ * reputation, and world modifiers.
+ */
+export function calculateTradePrice(
+  state: WorldState, 
+  basePrice: number, 
+  factionId?: string, 
+  isBuying: boolean = true
+): number {
+  if (!factionId || !state.factionPricingRules || !state.factionPricingRules[factionId]) {
+    return basePrice;
+  }
+
+  const rule = state.factionPricingRules[factionId];
+  let multiplier = rule.baseMultiplier ?? 1.0;
+
+  // Apply reputation modifier
+  // Phase 11 uses factionReputation map in player data
+  const playerRep = state.player?.factionReputation?.[factionId] || 0;
+  
+  // Reputation is typically -100 to +100
+  // Positive reputation lowers prices when buying, negative increases
+  const repMod = (rule.reputationMod || 0) * (playerRep / 100);
+  
+  if (isBuying) {
+    multiplier -= repMod;
+  } else {
+    multiplier += repMod;
+  }
+
+  // Ensure multiplier doesn't go below a reasonable floor (e.g., 0.2) or above ceiling (e.g., 5.0)
+  multiplier = Math.max(0.2, Math.min(5.0, multiplier));
+
+  return Math.round(basePrice * multiplier);
+}
+
+/**
+ * [Phase 10] Calculates the tick cost for an action based on world rules and player stats.
+ */
+export function calculateActionTickCost(
+  state: WorldState,
+  actionType: string,
+  _context?: any
+): number {
+  const baseCosts = state.standardActionCosts || {
+    search: 15,
+    rest_short: 60,
+    rest_long: 480,
+    dialogue_per_word: 0.1,
+    combat_round: 10
+  };
+
+  let cost = (baseCosts as any)[actionType] || 0;
+
+  // Example modifier: Agility reduce search costs
+  if (actionType === 'search' && state.player?.stats?.agi) {
+    const agiBonus = Math.min(0.5, state.player.stats.agi / 100); 
+    cost *= (1 - agiBonus);
+  }
+
+  return Math.ceil(cost);
+}
+
+/**
+ * Phase 13: Biological Legacy & Generational Logic
+ * 
+ * Humans: 80-90 years
+ * Elves: 800-1000 years
+ * Beastkin: 120-150 years
+ * Dwarves: 300-400 years
+ * Automatons: Infinite (unless damaged)
+ */
+export function calculateNaturalLifespan(race?: NPC['race']): number {
+  const rng = getGlobalRng();
+  switch (race) {
+    case 'Elf': return 800 + Math.floor(rng.next() * 200);
+    case 'Beastkin': return 120 + Math.floor(rng.next() * 30);
+    case 'Dwarf': return 300 + Math.floor(rng.next() * 100);
+    case 'Automaton': return 1000000; // Functional immortality
+    case 'Human':
+    default: return 80 + Math.floor(rng.next() * 10);
+  }
+}
+
+/**
+ * Create a new world controller with optional template selection
+ * @param initial - Initial world state (if not provided, creates fresh from template)
+ * @param dev - Debug mode flag
+ * @param templateId - Optional template ID to use (defaults to registry default)
+ */
+export function createWorldController(initial?: WorldState, dev = false, templateId?: string) {
+  // Resolve template: explicit ID or registry default
+  let template: any = WORLD_TEMPLATE; // Start with globally loaded template
+  
+  if (templateId) {
+    const registry = getWorldRegistry();
+    const resolvedTemplate = registry.getTemplate(templateId);
+    if (resolvedTemplate) {
+      template = resolvedTemplate;
+      console.log(`[worldController] Using template: ${templateId}`);
+    } else {
+      console.warn(`[worldController] Template not found: ${templateId}, using default`);
+    }
+  }
+  
   // copy-on-write: instantiate a fresh world from template if initial is not provided
   let state: WorldState = initial ? (function(i){ try { // @ts-ignore
-    return structuredClone(i); } catch(e){ return JSON.parse(JSON.stringify(i)); } })(initial) : createInitialWorld();
+    return structuredClone(i); } catch(e){ return JSON.parse(JSON.stringify(i)); } })(initial) : createInitialWorld("world-1", template);
+  
+  // Ensure state has an id (defensive programming)
+  if (!state.id) {
+    state.id = 'world-default';
+    console.warn('[WorldController] State missing id, using default');
+  }
+  
   // Normalize time tick to match explicit tick when provided by callers
   try {
     if (state) {
@@ -996,8 +2079,8 @@ export function createWorldController(initial?: WorldState, dev = false) {
   
   // Initialize Legacy Engine from template if provided
   const legacyEngine = getLegacyEngine(state.seed);
-  if (state.metadata?.templateOrigin && templateJson) {
-     legacyEngine.initFromTemplate(templateJson as any);
+  if (state.metadata?.templateOrigin && template) {
+     legacyEngine.initFromTemplate(template as any);
   }
 
   // Initialize Audio Engine state
@@ -1006,9 +2089,18 @@ export function createWorldController(initial?: WorldState, dev = false) {
     state.audio = audioState;
   }
   
+  // Phase 10: Initialize snapshot storage (in-memory for BETA)
+  const snapshotStorage = new InMemorySnapshotStorage();
+  let lastSnapshotTick: number = 0;
+  
   let timer: any = null;
   const subs: Subscriber[] = [];
   let journal = new CJ(state.id);
+  
+  // Phase 37: Turn-Based Heartbeat State
+  let isInTurnResolution = false;
+  let currentTurnPhase: 'action' | 'resolution' | 'idle' = 'idle';
+  let lastActionTurnTick = 0;
   // validate initial state after journal created
   const initialValidation = validateInvariants(state);
   if (!isStatePlayable(state)) {
@@ -1019,9 +2111,17 @@ export function createWorldController(initial?: WorldState, dev = false) {
     subs.forEach(s => s(state));
   }
 
-  function advanceTick(amount = 1) {
+  async function advanceTick(amount = 1) {
     const prevTick = state.tick ?? 0;
     const nextTick = prevTick + Math.max(0, Math.floor(amount));
+
+    // Phase 29: Multiverse Paradox Sync
+    const mAdapter = getMultiverseAdapterSafe();
+    let multiverseVisuals = null;
+    if (mAdapter) {
+      await mAdapter.syncGlobalParadox(nextTick);
+      multiverseVisuals = mAdapter.getParadoxVisuals();
+    }
 
     // Increment seed for deterministic RNG progression
     const nextSeed = state.seed + 1;
@@ -1037,8 +2137,64 @@ export function createWorldController(initial?: WorldState, dev = false) {
     const nextHour = totalHours % 24;
     const nextDay = baseDay + Math.floor(totalHours / 24);
 
+    // Phase 29: Inject Multiverse visuals into state
+    if (multiverseVisuals) {
+      state.visualOverrides = {
+        ...(state.visualOverrides || {}),
+        multiverseBleed: multiverseVisuals
+      };
+    } else if (state.visualOverrides?.multiverseBleed) {
+      delete state.visualOverrides.multiverseBleed;
+    }
+
     // Use seasonEngine for deterministic seasonal progression
     const { current: nextSeason, dayOfSeason, hasChanged: seasonChanged, transitionEvent: seasonTransition } = resolveSeason(nextTick, state.season);
+
+    // Phase 23: Cache seasonal modifiers every 1000 ticks or on season change
+    let nextSeasonalModifiers = state.currentSeasonalModifiers || {};
+    const lastSeasonalModifierUpdateTick = state.lastSeasonalModifierUpdateTick ?? 0;
+    if (seasonChanged || nextTick - lastSeasonalModifierUpdateTick >= 1000) {
+      const tpl = WORLD_TEMPLATE || {};
+      const seasonalRules = tpl.seasonalRules;
+      const modifiers = getSeasonalModifiers(nextSeason as any, seasonalRules);
+      nextSeasonalModifiers = modifiers as any;
+    }
+
+    // Phase 27: Check global paradox bleed and apply visual tint overrides
+    // Query top 5 corrupted worlds every 150 ticks to trigger cross-world effects
+    let nextParadoxBleedTint = state.paradoxBleedTint;
+    let nextGlobalParadoxAverage = state.globalParadoxAverage || 0;
+    
+    if (nextTick % 150 === 0) {
+      try {
+        // TODO: Implement getGlobalParadoxAverage in DatabaseAdapter
+        // const db = getDatabaseAdapter();
+        // if (db) {
+        //   const { average, topWorlds } = await db.getGlobalParadoxAverage();
+        //   nextGlobalParadoxAverage = average;
+        // }
+        
+        // For now, use local paradox level as global average
+        nextGlobalParadoxAverage = state.paradoxLevel || 25;
+          
+          // Apply visual tint override based on global paradox level
+          // High paradox (>50) triggers inverse RGB palette colors
+          if (nextGlobalParadoxAverage > 50) {
+            // Inverse winter palette from void-wastes patch: #1a0a2e (deep purple inverse)
+            nextParadoxBleedTint = '#1a0a2e'; // Inverse of bright winter white
+          } else if (nextGlobalParadoxAverage > 30) {
+            // Moderate corruption: shift towards desaturated tones
+            nextParadoxBleedTint = '#4a3b5c'; // Mixed corruption
+          } else {
+            // Clear bleed effect
+            nextParadoxBleedTint = undefined;
+          }
+          
+          console.log(`[worldEngine] Paradox bleed check: global avg ${nextGlobalParadoxAverage.toFixed(2)}, tint ${nextParadoxBleedTint || 'none'}`);
+      } catch (err) {
+        console.warn('[worldEngine] Paradox bleed query error:', (err as any).message);
+      }
+    }
 
     // Determine day phase
     let nextDayPhase: WorldState['dayPhase'] = 'morning';
@@ -1047,8 +2203,46 @@ export function createWorldController(initial?: WorldState, dev = false) {
     else if (nextHour < 18) nextDayPhase = 'afternoon';
     else nextDayPhase = 'evening';
 
-    // Use weatherEngine for deterministic weather resolution
-    const { current: nextWeather, intensity: weatherIntensity, hasChanged: weatherChanged, transitionEvent: weatherTransition } = resolveWeather(nextSeason, nextHour, state.weather);
+    // Phase 17: Use Causal Weather Engine if rules are defined in template
+    let nextWeather: 'clear' | 'snow' | 'rain' | 'ash_storm' | 'cinder_fog' | 'mana_static' = 'clear';
+    let weatherIntensity: 'light' | 'moderate' | 'heavy' = 'light';
+    let weatherChanged = false;
+    let weatherTransition: string | undefined = undefined;
+
+    if (state && typeof state === 'object' && !Array.isArray(state)) {
+      // Try to resolve weather causal ly for the player's current location
+      const playerLocation = state.player?.location || (state.locations?.[0]?.id);
+      if (playerLocation) {
+        try {
+          const causalEngine = getCausalWeatherEngine();
+          const causalResult = causalEngine.resolveWeatherByCausalRules(
+            playerLocation,
+            state,
+            nextTick,
+            nextSeason as any
+          );
+          nextWeather = causalResult.current as any;
+          weatherIntensity = causalResult.intensity;
+          weatherChanged = causalResult.hasChanged;
+          weatherTransition = causalResult.transitionEvent;
+        } catch (e) {
+          // If causal engine fails, fall back to base weather
+          let baseWeatherfallback: 'clear' | 'snow' | 'rain' = 'clear';
+          const stateWeather = state.weather || 'clear';
+          if (stateWeather === 'snow') baseWeatherfallback = 'snow';
+          else if (stateWeather === 'rain') baseWeatherfallback = 'rain';
+          else if (stateWeather === 'ash_storm') baseWeatherfallback = 'rain';
+          else if (stateWeather === 'cinder_fog') baseWeatherfallback = 'rain';
+          else if (stateWeather === 'mana_static') baseWeatherfallback = 'clear';
+          
+          const fallback = resolveWeather(nextSeason, nextHour, baseWeatherfallback);
+          nextWeather = fallback.current as any;
+          weatherIntensity = fallback.intensity;
+          weatherChanged = fallback.hasChanged;
+          weatherTransition = fallback.transitionEvent;
+        }
+      }
+    }
 
     // ALPHA_M15 Step 2: Store old NPC locations before updating (for transit events)
     const npcLocationMapBefore = new Map(state.npcs.map(npc => [npc.id, npc.locationId]));
@@ -1088,11 +2282,50 @@ export function createWorldController(initial?: WorldState, dev = false) {
     const { npcSocialEngine } = require('./npcSocialAutonomyEngine');
     npcSocialEngine.updateRelationshipsTick(updatedNpcs, nextTick);
 
+    // Phase 15: Process artifact sentience (mood decay and state updates)
+    const sentientRelics = processArtifactSentience(state, amount);
+    if (sentientRelics.length > 0 && state.player?.inventory) {
+      // Sync updated relic moods back to player inventory
+      state = {
+        ...state,
+        player: {
+          ...state.player,
+          inventory: state.player.inventory.map(item => {
+            const updatedRelic = sentientRelics.find(r => r.id === (item as any).instanceId);
+            return updatedRelic ? ({ ...item, ...updatedRelic } as any) : item;
+          })
+        }
+      };
+    }
+
     // M55-C1: Process NPC social interactions (GOSSIP, persuasion, etc.)
     // This triggers social intents when conditions are met (e.g., coLocationTicks > 50 for GOSSIP)
     const socialTickResult = npcSocialEngine.processNpcSocialTick(updatedNpcs, state, nextTick, 0.08);
     if (socialTickResult.descriptions && socialTickResult.descriptions.length > 0) {
       console.log(`[NpcSocialTick] ${socialTickResult.interactionsOccurred} interactions: ${socialTickResult.descriptions.join('; ')}`);
+    }
+
+    // Phase 19: Tutorial Heartbeat
+    if (state.player?.tutorialState) {
+      const newMilestones = detectMilestones(state, state.player.tutorialState);
+      if (newMilestones.length > 0) {
+        state = {
+          ...state,
+          player: {
+            ...state.player,
+            tutorialState: updateTutorialState(state.player.tutorialState, newMilestones, state.tick),
+            tutorialOverlay: getNextTutorialOverlay(updateTutorialState(state.player.tutorialState, newMilestones, state.tick))
+          }
+        };
+      } else {
+        state = {
+          ...state,
+          player: {
+            ...state.player,
+            tutorialOverlay: getNextTutorialOverlay(state.player.tutorialState)
+          }
+        };
+      }
     }
 
     // M55-B1/C1: Process NPC autonomous actions (gossip, harvest, trade)
@@ -1123,10 +2356,54 @@ export function createWorldController(initial?: WorldState, dev = false) {
     );
 
     // Calculate required audio for current world state
+    // Phase 17: Map extended weather types to base weather for audio (ash_storm -> 'rain', mana_static -> 'clear', etc.)
+    let audioWeather: 'clear' | 'snow' | 'rain' = 'clear';
+    if (nextWeather === 'snow') audioWeather = 'snow';
+    else if (nextWeather === 'rain') audioWeather = 'rain';
+    else if (nextWeather === 'ash_storm') audioWeather = 'rain'; // Ash storm uses rain audio
+    else if (nextWeather === 'cinder_fog') audioWeather = 'rain'; // Cinder fog uses rain audio
+    else if (nextWeather === 'mana_static') audioWeather = 'clear'; // Mana static uses clear audio
+    
     const nextAudio = calculateRequiredAudio(
-      { ...state, hour: nextHour, dayPhase: nextDayPhase, season: nextSeason, weather: nextWeather, npcs: updatedNpcs },
+      { ...state, hour: nextHour, dayPhase: nextDayPhase, season: nextSeason, weather: audioWeather, npcs: updatedNpcs },
       state.audio
     );
+
+    // Decrement ability cooldowns each tick
+    const decrementedCooldowns = state.player?.abilityCooldowns 
+      ? Object.entries(state.player.abilityCooldowns).reduce((acc, [abilityId, remaining]) => {
+          acc[abilityId] = Math.max(0, remaining - 1);
+          return acc;
+        }, {} as Record<string, number>)
+      : undefined;
+
+    // Phase 39: Player Maintenance - Recover AP at end of tick
+    let nextPlayerState = state.player;
+    if (state.player && state.player.maxAp && state.player.maxAp > 0) {
+      // Check if AP needs recovery (at start of new turn or after action cost)
+      const lastRecoveryTick = state.player.lastApRecoveryTick ?? state.tick ?? 0;
+      const ticksSinceRecovery = (nextTick ?? 0) - lastRecoveryTick;
+      
+      // Recover AP to max at end of action turn (when triggerActionTurn() is called)
+      if (ticksSinceRecovery >= 1 && state.player.ap !== state.player.maxAp) {
+        nextPlayerState = {
+          ...state.player,
+          ap: state.player.maxAp,
+          lastApRecoveryTick: nextTick,
+          abilityCooldowns: decrementedCooldowns
+        };
+      } else {
+        nextPlayerState = {
+          ...state.player,
+          abilityCooldowns: decrementedCooldowns
+        };
+      }
+    } else {
+      nextPlayerState = {
+        ...state.player,
+        abilityCooldowns: decrementedCooldowns
+      };
+    }
 
     state = { 
       ...state, 
@@ -1140,8 +2417,68 @@ export function createWorldController(initial?: WorldState, dev = false) {
       npcs: updatedNpcs,
       locations: availableLocations,
       audio: nextAudio,
-      time: { ...(state.time || {}), tick: nextTick, hour: nextHour, day: nextDay, season: nextSeason } as any 
+      time: { ...(state.time || {}), tick: nextTick, hour: nextHour, day: nextDay, season: nextSeason } as any,
+      player: nextPlayerState,
+      currentSeasonalModifiers: nextSeasonalModifiers,
+      lastSeasonalModifierUpdateTick: lastSeasonalModifierUpdateTick === 0 || seasonChanged || nextTick - lastSeasonalModifierUpdateTick >= 1000 ? nextTick : lastSeasonalModifierUpdateTick,
+      paradoxBleedTint: nextParadoxBleedTint,
+      globalParadoxAverage: nextGlobalParadoxAverage
     };
+
+    // Phase 45-A1: Clean up expired action locks (remove any locks where tickUntilClear <= current tick)
+    if (state.actionLocks) {
+      const cleanedActionLocks: Record<string, number> = {};
+      for (const [actorId, tickUntilClear] of Object.entries(state.actionLocks)) {
+        if (tickUntilClear > nextTick) {
+          cleanedActionLocks[actorId] = tickUntilClear;
+        }
+      }
+      state.actionLocks = cleanedActionLocks;
+    }
+
+    // Phase 45-A3: Clean up expired tile depletions (remove any tiles that have respawned)
+    if (state.depletedTiles) {
+      const resourceRespawnMs = 180000; // 3 minutes (180 seconds in ms)
+      const cleanedDepletedTiles: Record<string, number> = {};
+      const currentTimeMs = Date.now();
+      for (const [tileId, depletionTime] of Object.entries(state.depletedTiles)) {
+        if (currentTimeMs - depletionTime < resourceRespawnMs) {
+          cleanedDepletedTiles[tileId] = depletionTime;
+        }
+      }
+      state.depletedTiles = cleanedDepletedTiles;
+    }
+
+    // Phase 39: Emit RESOURCES_RECOVERED event if AP was recovered
+    if (nextPlayerState.ap === nextPlayerState.maxAp && (state.player?.ap ?? 0) < nextPlayerState.maxAp) {
+      const recoveryEv: Event = {
+        id: `recovery-${Date.now()}`,
+        worldInstanceId: state.id,
+        actorId: "system",
+        type: "RESOURCES_RECOVERED",
+        payload: { 
+          ap: nextPlayerState.ap,
+          maxAp: nextPlayerState.maxAp,
+          reason: 'turn-end-recovery'
+        },
+        templateOrigin: state.metadata?.templateOrigin,
+        timestamp: Date.now(),
+      };
+      appendEvent(recoveryEv);
+    }
+
+    // Phase 41: Predict next NPC actions for tactical display
+    // This allows the UI to show what each NPC will do next turn
+    if (state.combatState?.active && state.npcs) {
+      try {
+        const { predictNextNpcAction } = require('./aiTacticEngine');
+        state.npcs.forEach((npc: any) => {
+          predictNextNpcAction(npc, state);
+        });
+      } catch (err) {
+        console.warn('[worldEngine] Failed to predict NPC intents:', err);
+      }
+    }
 
     // Emit base TICK event
     const ev: Event = {
@@ -1177,6 +2514,39 @@ export function createWorldController(initial?: WorldState, dev = false) {
         timestamp: Date.now(),
       };
       appendEvent(weatherEv);
+
+      // Phase 17: Emit WORLD_EVENT for causal weather (faction contention, magical surge, etc.)
+      // This allows the AI Weaver to reference environmental pressure in dialogue
+      const causeMap = {
+        contention: 'Faction conflicts intensify, stirring ash and discord',
+        magic: 'Reality crackles with unleashed magical surges',
+        macro_event: 'The world trembles as fate shifts',
+        magnus_fluctus: 'Reality itself bends to unknown forces',
+        base: 'The seasons turn, bringing new weather patterns'
+      };
+      
+      const cause = (weatherTransition?.includes('contention') || (weatherChanged && nextWeather === 'ash_storm')) 
+        ? 'contention' 
+        : (weatherChanged && nextWeather === 'mana_static') 
+        ? 'magic' 
+        : 'base';
+      
+      const worldEv: Event = {
+        id: `world-event-${Date.now()}`,
+        worldInstanceId: state.id,
+        actorId: "system",
+        type: "WORLD_EVENT",
+        payload: { 
+          eventType: 'CAUSAL_WEATHER_SHIFT',
+          weather: nextWeather,
+          cause,
+          narrative: causeMap[cause as keyof typeof causeMap] || 'Something shifts in the world',
+          locationId: state.player?.location
+        },
+        templateOrigin: state.metadata?.templateOrigin,
+        timestamp: Date.now(),
+      };
+      appendEvent(worldEv);
     }
 
     // Emit SEASON_CHANGED if season changed
@@ -1259,13 +2629,21 @@ export function createWorldController(initial?: WorldState, dev = false) {
       const hazards = state.metadata?.hazards || (WORLD_TEMPLATE?.hazards || []);
       const hazardResults = checkLocationHazards(state, hazards);
 
-      hazardResults.forEach(result => {
+      // Phase 17: Check for possession-triggered hazards (inventory paradox effects)
+      const possessionResults = checkPossessionHazards(state, state.player, 0.5);
+      const allHazardResults = [...hazardResults, ...possessionResults];
+
+      allHazardResults.forEach(result => {
         if (result.triggered) {
           // Apply damage if applicable
           if (result.damage > 0) {
+            // Phase 17: Check if location is sanctified and reduce damage by 50%
+            const playerLocation = state.locations?.find(loc => loc.id === state.player.location);
+            const dampenedDamage = applySanctifiedZoneDampening(result.damage, playerLocation?.biome, playerLocation?.name);
+            
             state = {
               ...state,
-              player: applyHazardDamage(state.player, result.damage)
+              player: applyHazardDamage(state.player, dampenedDamage)
             };
           }
 
@@ -1342,6 +2720,45 @@ export function createWorldController(initial?: WorldState, dev = false) {
       appendEvent(statusTickEv);
     } catch (err) {
       // non-fatal
+    }
+
+    // Phase 16: Update market flux for each location (every 24 ticks = hourly)
+    if ((nextTick % 24 === 0) && state.locations.length > 0) {
+      const marketFluxByLocation = state.marketFluxByLocation || {};
+      
+      for (const location of state.locations) {
+        const previousFlux = marketFluxByLocation[location.id];
+        const updatedFlux = updateMarketFlux(location.id, state, previousFlux);
+        marketFluxByLocation[location.id] = updatedFlux;
+        
+        // Emit market alert every 12 hours if there's significant movement
+        if ((nextTick % 288 === 0) && updatedFlux.volatility > 0.2) {
+          const alert = generateMarketAlert(updatedFlux, state);
+          const marketAlertEv: Event = {
+            id: `market-alert-${Date.now()}-${location.id}`,
+            worldInstanceId: state.id,
+            actorId: 'system',
+            type: 'MARKET_FLUX_ALERT',
+            payload: {
+              locationId: location.id,
+              locationName: location.name,
+              message: alert.message,
+              affectedItems: alert.affectedItems,
+              severity: alert.severity,
+              volatility: updatedFlux.volatility
+            },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(marketAlertEv);
+        }
+      }
+      
+      state = {
+        ...state,
+        marketFluxByLocation,
+        lastMarketUpdateTick: nextTick
+      };
     }
 
     // Process NPC autonomous actions during combat
@@ -1455,6 +2872,29 @@ export function createWorldController(initial?: WorldState, dev = false) {
           appendEvent(factionStruggleEv);
         }
 
+        // Phase 9: Process narrative attrition (NPC SocialScar accumulation)
+        // Attempt to generate new scars for NPCs based on their current state
+        const rng = getGlobalRng();
+        const { scarsGenerated, affectedNpcs } = processWorldNarrativeAttrition(state, rng);
+        
+        if (scarsGenerated > 0) {
+          const narrativeAttritionEv: Event = {
+            id: `narrative-attrition-${Date.now()}`,
+            worldInstanceId: state.id,
+            actorId: 'system',
+            type: 'NARRATIVE_ATTRITION',
+            payload: {
+              scarsGenerated,
+              affectedNpcs: Array.from(affectedNpcs),
+              tick: nextTick,
+              epoch: Math.floor(nextTick / 1440)
+            },
+            templateOrigin: state.metadata?.templateOrigin,
+            timestamp: Date.now(),
+          };
+          appendEvent(narrativeAttritionEv);
+        }
+
         // M15 Step 5: Process daily influence diffusion for geopolitical dynamics
         if (state.factions && state.locations) {
           try {
@@ -1501,6 +2941,43 @@ export function createWorldController(initial?: WorldState, dev = false) {
               };
             }
           }
+        }
+
+        // Phase 13: Biological Legacy (Daily Aging and Mortality)
+        if (state.npcs && state.npcs.length > 0) {
+          const biologicalUpdates = state.npcs.map((npc: NPC) => {
+            // Age increment: 1/365th of a year per day
+            const currentAge = npc.age || 20;
+            const nextAge = currentAge + (1/365);
+            
+            // Determine max age if not set (ensures persistent maxAge across ticks)
+            const maxAge = npc.maxAge || calculateNaturalLifespan(npc.race);
+            const isDying = nextAge >= maxAge;
+            
+            if (isDying && npc.importance !== 'critical' && !npc.isDisplaced) {
+              const deathEv: Event = {
+                id: `natural-death-${Date.now()}-${npc.id}`,
+                worldInstanceId: state.id,
+                actorId: 'system',
+                type: 'NPC_NATURAL_DEATH',
+                payload: { 
+                  npcId: npc.id, 
+                  npcName: npc.name, 
+                  race: npc.race, 
+                  finalAge: Math.floor(nextAge), 
+                  lineageId: npc.lineageId 
+                },
+                templateOrigin: state.metadata?.templateOrigin,
+                timestamp: Date.now(),
+              };
+              appendEvent(deathEv);
+              // Mark as displaced (vanished due to mortality) to prevent further simulation
+              return { ...npc, age: nextAge, maxAge, isDisplaced: true } as NPC;
+            }
+            
+            return { ...npc, age: nextAge, maxAge } as NPC;
+          });
+          state = { ...state, npcs: biologicalUpdates };
         }
         
         // Update last faction tick
@@ -1608,6 +3085,60 @@ export function createWorldController(initial?: WorldState, dev = false) {
     const tickValidation = validateInvariants(state);
     if (!tickValidation.valid && tickValidation.violations.some(v => v.severity === 'critical')) {
       console.error('Critical constraint violation after tick', tickValidation.violations);
+    }
+
+    // === Phase 10: Snapshot Persistence ===
+    // Emit snapshot every 100 ticks for optimized hydration
+    if (nextTick > 0 && nextTick % 100 === 0) {
+      try {
+        const { computeSnapshotHash } = require('./saveLoadEngine');
+        
+        // Compute hash of current state
+        const stateHash = computeSnapshotHash(state);
+        const previousSnapshotHash = lastSnapshotTick > 0 ? `snapshot_${lastSnapshotTick}` : undefined;
+        
+        // Create snapshot record
+        const snapshot: WorldSnapshot = {
+          id: `snapshot_${nextTick}`,
+          worldInstanceId: state.id,
+          tick: nextTick,
+          stateHash,
+          previousSnapshotHash,
+          serializedState: JSON.stringify(state),
+          createdAt: Date.now(),
+          eventCountInWindow: nextTick - lastSnapshotTick
+        };
+        
+        // Persist snapshot (async, non-blocking)
+        snapshotStorage.save(snapshot).catch(err => {
+          console.warn(`[Snapshot] Failed to persist snapshot at tick ${nextTick}:`, err);
+        });
+        
+        // Emit snapshot saved event for audit trail
+        const snapshotEv: Event = {
+          id: `snapshot-saved-${nextTick}`,
+          worldInstanceId: state.id,
+          actorId: 'system',
+          type: 'SNAPSHOT_SAVED',
+          payload: {
+            tick: nextTick,
+            snapshotId: snapshot.id,
+            eventCountInWindow: snapshot.eventCountInWindow,
+            stateHash: stateHash.substring(0, 16),
+            serializedSizeBytes: snapshot.serializedState.length
+          },
+          templateOrigin: state.metadata?.templateOrigin,
+          mutationClass: 'SNAPSHOT',
+          timestamp: Date.now(),
+        };
+        appendEvent(snapshotEv);
+        
+        // Update last snapshot tick
+        lastSnapshotTick = nextTick;
+      } catch (err) {
+        // Non-fatal: snapshot persistence is optimization
+        console.warn(`[Snapshot] Error creating snapshot at tick ${nextTick}:`, err);
+      }
     }
 
     // === ALPHA_M1: AI Director Evaluation ===
@@ -1805,21 +3336,134 @@ export function createWorldController(initial?: WorldState, dev = false) {
       }
     }
 
+    // Phase 27: Persist state to database periodically
+    // Save every 100 ticks using write-behind strategy (Redis cache → Postgres)
+    // Applies narrative pruning based on importance weights from template
+    if (nextTick % 100 === 0) {
+      try {
+        const db = getDatabaseAdapterSafe();
+        if (db && WORLD_TEMPLATE?.narrativePruningWeights) {
+          const worldEvents = getEventsForWorld(state.id) || [];
+          const recentEvents = worldEvents.filter((e: any) => e.tick >= nextTick - 100);
+
+          // Flush Redis cache to Postgres with narrative pruning applied
+          db.saveActiveStateToPostgres(
+            state.id,
+            state,
+            recentEvents,
+            WORLD_TEMPLATE.narrativePruningWeights
+          ).catch(err => {
+            console.warn('[worldEngine] Persistence flush error:', err.message);
+          });
+        }
+      } catch (err) {
+        console.warn('[worldEngine] Persistence error:', err);
+      }
+    }
+
     emit();
   }
 
+  /**
+   * Phase 37: Manual tick function (no longer auto-triggered)
+   * Kept for backwards compatibility with production systems
+   * Turn-based flow uses triggerActionTurn() instead
+   */
   function tick() {
     try { advanceTick(1); } catch (err) {}
   }
 
+  /**
+   * Phase 37: Turn-Based Heartbeat - Initialize turn-based mode
+   * Removes the auto-ticker and prepares for manual action triggers
+   * Backend systems can still use start() for backwards compatibility
+   */
   function start() {
     if (timer) return;
-    timer = setInterval(tick, TICK_MS);
+    // In turn-based mode, DON'T start the auto-ticker
+    // Leave timer = null for manual control via triggerActionTurn()
+    console.log('[worldEngine] Turn-based mode: awaiting triggerActionTurn() calls');
   }
 
   function stop() {
     if (timer) clearInterval(timer);
     timer = null;
+  }
+
+  /**
+   * Phase 37: Trigger a single action turn pulse
+   * Called by UI when player submits an action during board game mode
+   * Resolves NPC logic, world effects, and Director intervention atomically
+   * 
+   * @param actionCost Optional tick cost for this turn (default: 1)
+   * @returns TurnResolution with phase tracking and event summary
+   */
+  function triggerActionTurn(actionCost: number = 1): { phase: typeof currentTurnPhase; tickResolved: number; eventCount: number; completed: boolean } {
+    if (isInTurnResolution) {
+      console.warn('[worldEngine] Turn already in resolution, rejecting concurrent trigger');
+      return { phase: currentTurnPhase, tickResolved: state.tick ?? 0, eventCount: 0, completed: false };
+    }
+
+    try {
+      isInTurnResolution = true;
+      currentTurnPhase = 'action';
+      lastActionTurnTick = state.tick ?? 0;
+
+      // Resolve the turn pulse atomically
+      advanceTick(actionCost);
+      
+      currentTurnPhase = 'resolution';
+      
+      // Phase 37: Evaluate Director Intervention during resolution phase
+      // (Ensures narrative flavor text only appears after action settles)
+      try {
+        const interventionEvents = evaluateDirectorIntervention(state, directorState);
+        if (interventionEvents && interventionEvents.length > 0) {
+          interventionEvents.forEach(ev => {
+            appendEvent(ev);
+            if (ev.payload?.text) {
+              console.log(`[worldEngine] Director Whisper during turn resolution: "${ev.payload.text}"`);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[worldEngine] Director intervention error during turn:', err);
+      }
+
+      const tickResolved = state.tick ?? 0;
+      const recentEvents = getEventsForWorld(state.id).filter((e: any) => e.tick === tickResolved || (Date.now() - (e.timestamp ?? 0)) < 100);
+      
+      currentTurnPhase = 'idle';
+      isInTurnResolution = false;
+
+      console.log(`[worldEngine] Action turn resolved: Tick ${lastActionTurnTick} → ${tickResolved}, Events: ${recentEvents.length}`);
+
+      return {
+        phase: 'idle',
+        tickResolved,
+        eventCount: recentEvents.length,
+        completed: true
+      };
+    } catch (err) {
+      console.error('[worldEngine] Turn resolution failed:', err);
+      currentTurnPhase = 'idle';
+      isInTurnResolution = false;
+      return { phase: 'idle', tickResolved: state.tick ?? 0, eventCount: 0, completed: false };
+    }
+  }
+
+  /**
+   * Phase 37: Get current turn phase for UI synchronization
+   */
+  function getCurrentTurnPhase(): typeof currentTurnPhase {
+    return currentTurnPhase;
+  }
+
+  /**
+   * Phase 37: Check if turn resolution is in progress
+   */
+  function isTurnInProgress(): boolean {
+    return isInTurnResolution;
   }
 
   function performAction(action: Action) {
@@ -1873,7 +3517,52 @@ export function createWorldController(initial?: WorldState, dev = false) {
         case "CHARACTER_CREATED": {
           const character = e.payload?.character;
           if (character) {
-            state = { ...state, player: character, needsCharacterCreation: false };
+            // Phase 39: Initialize AP system and hand/deck/discard arrays
+            const starterAbilities = ['fireball', 'frost-nova', 'heal', 'shield-spell', 'teleport'];
+            const initialHand = starterAbilities.slice(0, 5);
+            const initialDeck = starterAbilities.slice(5).concat(['fireball', 'frost-nova']); // Add some duplicates for variety
+            
+            const characterWithPhase39 = {
+              ...character,
+              // Phase 39: Initialize AP to 3 (turn-based action points)
+              ap: 3,
+              maxAp: 3,
+              lastApRecoveryTick: state.tick ?? 0,
+              // Phase 39: Initialize authoritative hand/deck/discard state
+              hand: initialHand,
+              deck: initialDeck,
+              discard: [],
+              // Phase 40: Initialize current codec (Medieval as baseline)
+              currentCodec: 'CODENAME_MEDIEVAL'
+            };
+            
+            console.log('[worldEngine] CHARACTER_CREATED event processing:', {
+              characterName: characterWithPhase39.name,
+              ancestryTree: characterWithPhase39.ancestryTree
+            });
+            
+            state = { ...state, player: characterWithPhase39, needsCharacterCreation: false };
+            
+            console.log('[worldEngine] CHARACTER_CREATED - State updated:', {
+              needsCharacterCreation: state.needsCharacterCreation,
+              playerName: state.player?.name
+            });
+            
+            // Phase 6: Apply narrative seed from character creation choices
+            try {
+              const narrativeSeed = NarrativeSeedProcessor.procesPlayerCharacterSeed(characterWithPhase39);
+              NarrativeSeedProcessor.applySeedToWorldState(state, narrativeSeed);
+              NarrativeSeedProcessor.applyModifiersToPlayer(state.player, narrativeSeed.playerModifiers);
+              
+              console.log(`[NarrativeSeed] Applied seed for ${characterWithPhase39.name} (${characterWithPhase39.archetype}):`, {
+                prologue: narrativeSeed.prologueQuestId,
+                discoveredLocations: narrativeSeed.discoveredLocations,
+                initialReputation: narrativeSeed.initialReputation,
+                phase39: { ap: 3, hand: initialHand.length, deck: initialDeck.length }
+              });
+            } catch (err) {
+              console.error('[NarrativeSeed] Failed to apply narrative seed:', err);
+            }
           }
           break;
         }
@@ -1898,9 +3587,25 @@ export function createWorldController(initial?: WorldState, dev = false) {
           questsStarted.push(qid);
         }
           break;
-        case "QUEST_COMPLETED":
-          state = { ...state, player: { ...state.player, quests: { ...state.player.quests, [e.payload.questId]: { status: "completed" } } } };
+        case "QUEST_COMPLETED": {
+          const qid = e.payload.questId;
+          const updatedQuests = { ...state.player.quests, [qid]: { ...state.player.quests[qid], status: "completed" } };
+          
+          // PHASE 11: Check for next links in the quest chain
+          const worldQuests = state.quests || [];
+          const nextChainQuests = worldQuests.filter(q => q.preRequisites?.includes(qid));
+          
+          nextChainQuests.forEach(nq => {
+            // If all prerequisites are met, mark as active in player history
+            const allMet = nq.preRequisites?.every(pqid => updatedQuests[pqid]?.status === 'completed');
+            if (allMet && (!updatedQuests[nq.id] || updatedQuests[nq.id].status === 'not-started')) {
+               updatedQuests[nq.id] = { status: 'active', startedAt: state.tick };
+            }
+          });
+
+          state = { ...state, player: { ...state.player, quests: updatedQuests } };
           break;
+        }
         case "REWARD": {
           const reward = e.payload?.reward ?? null;
           if (reward && typeof reward.gold === 'number') {
@@ -1911,8 +3616,12 @@ export function createWorldController(initial?: WorldState, dev = false) {
         case "REPUTATION_CHANGED": {
           const delta = e.payload?.delta ?? {};
           const rep = { ...(state.player.reputation ?? {}) };
-          Object.keys(delta).forEach(k => { rep[k] = (rep[k] ?? 0) + Number(delta[k] ?? 0); });
-          state = { ...state, player: { ...state.player, reputation: rep } };
+          const factionRep = { ...(state.player.factionReputation ?? {}) };
+          Object.keys(delta).forEach(k => { 
+            rep[k] = (rep[k] ?? 0) + Number(delta[k] ?? 0); 
+            factionRep[k] = (factionRep[k] ?? 0) + Number(delta[k] ?? 0);
+          });
+          state = { ...state, player: { ...state.player, reputation: rep, factionReputation: factionRep } };
           break;
         }
         case "COMBAT_HIT":
@@ -1927,8 +3636,24 @@ export function createWorldController(initial?: WorldState, dev = false) {
     });
 
     // decide whether the action produced a meaningful state change; if so, advance tick by action cost
-    const ACTION_TICK_COST: Record<string, number> = { MOVE: 1, INTERACT_NPC: 1, DIALOG_CHOICE: 1, START_QUEST: 1, COMPLETE_QUEST: 1, WAIT: 1 };
-    const cost = ACTION_TICK_COST[action.type] ?? 1;
+    const actionMap: Record<string, string> = {
+      'MOVE': 'travel',
+      'SEARCH': 'search',
+      'REST': 'rest_short',
+      'WAIT': 'wait'
+    };
+    
+    // [Phase 11] Use dynamic tick cost calculation
+    let cost = 1;
+    if (action.type === 'MOVE') {
+      // Travel cost from matrix
+      const from = state.player.location;
+      const to = action.payload?.to;
+      cost = (state.travelMatrix?.[from]?.[to]) ?? 1;
+    } else {
+      cost = calculateActionTickCost(state, actionMap[action.type] || action.type.toLowerCase());
+    }
+
     const meaningful = events.some((e:any) => !['QUEST_LOCKED','NPC_UNAVAILABLE'].includes(e.type)) || action.type === 'WAIT';
 
     if (meaningful && cost > 0) {
@@ -1960,7 +3685,23 @@ export function createWorldController(initial?: WorldState, dev = false) {
       if (!isStatePlayable(state)) {
         console.error('State became unplayable after action:', actionValidation.violations);
       }
+      
+      // Debug: Log state before emit
+      if (action.type === 'SUBMIT_CHARACTER') {
+        console.log('[worldEngine] performAction BEFORE EMIT:', {
+          actionType: action.type,
+          needsCharacterCreation: state.needsCharacterCreation,
+          playerName: state.player?.name,
+          ancestryTree: state.player?.ancestryTree,
+          eventsCount: events.length
+        });
+      }
+      
       emit();
+      
+      if (action.type === 'SUBMIT_CHARACTER') {
+        console.log('[worldEngine] performAction AFTER EMIT - events returned:', events.length);
+      }
     return events;
   }
 
@@ -2194,9 +3935,146 @@ export function createWorldController(initial?: WorldState, dev = false) {
     return event;
   }
 
-  const devApi = Object.freeze({ start, stop, performAction, advanceTick, subscribe, save, load, getState: getStateClone, replayEvents, switchTemplate, getRecentMutations, triggerSoulEcho, triggerMacroEvent });
+  /**
+   * Phase 48-Chronos: Execute multiple ticks in "Quiet Mode"
+   * 
+   * Fast-forwards time while suppressing individual event emissions.
+   * Returns a summary event with aggregated world changes.
+   * 
+   * @param tickCount How many ticks to skip (1-1000)
+   * @param quietMode If true, suppress mid-skip emissions (default: true)
+   * @returns Summary with tick delta, resources recovered, faction changes, etc.
+   */
+  function executeBatchTicks(tickCount: number, quietMode: boolean = true): {
+    startTick: number;
+    endTick: number;
+    ticksProcessed: number;
+    eventLog: any[];
+    summary: {
+      hpRecovered: number;
+      mpRecovered: number;
+      xpGained: number;
+      factionChanges: Record<string, number>;
+      interruptedAt?: number;
+    };
+  } {
+    if (tickCount <= 0 || tickCount > 1000) {
+      console.warn(`[Chronos] Invalid tickCount: ${tickCount}, clamping to 1-1000`);
+      tickCount = Math.max(1, Math.min(1000, tickCount));
+    }
 
-  const kernelApi = Object.freeze({ getState: getStateClone, performAction, advanceTick, load, getRecentMutations });
+    const startTick = state.tick ?? 0;
+    const startHp = state.player?.hp ?? 0;
+    const startMp = state.player?.mp ?? 0;
+    const startXp = state.player?.xp ?? 0;
+    const startFactionRep: Record<string, number> = { ...state.player.factionReputation };
+
+    // Save original subscribers to restore later
+    const savedSubs = [...subs];
+    
+    if (quietMode) {
+      // Clear subscribers to suppress emissions during batch ticking
+      subs.length = 0;
+    }
+
+    const eventLog: any[] = [];
+    let interruptedAt: number | undefined;
+
+    try {
+      for (let i = 0; i < tickCount; i++) {
+        // Risk check every 10 ticks - abort if high-priority event occurs
+        if (i % 10 === 0 && i > 0) {
+          const recentEvents = getEventsForWorld(state.id).slice(-5);
+          const hasInterruptEvent = recentEvents.some(e =>
+            e.type === 'QUEST_EXPIRED' ||
+            e.type === 'AMBUSH_TRIGGERED' ||
+            e.type === 'NPC_ENTERED_LOCATION' ||
+            e.type === 'FACTION_CONFLICT_ESCALATED'
+          );
+
+          if (hasInterruptEvent) {
+            console.log(`[Chronos] Interruption detected at tick +${i}, aborting batch`);
+            interruptedAt = state.tick ?? 0;
+            break;
+          }
+        }
+
+        advanceTick(1);
+        
+        // Log major events from this tick
+        const tickEvents = getEventsForWorld(state.id).filter((e: any) => e.tick === (state.tick ?? 0));
+        if (tickEvents.length > 0) {
+          eventLog.push(...tickEvents);
+        }
+      }
+    } finally {
+      // Restore subscribers and emit final state
+      if (quietMode) {
+        subs.push(...savedSubs);
+      }
+      
+      // Emit final state
+      emit();
+    }
+
+    const endTick = state.tick ?? 0;
+    const endHp = state.player?.hp ?? 0;
+    const endMp = state.player?.mp ?? 0;
+    const endXp = state.player?.xp ?? 0;
+
+    // Calculate deltas
+    const summary = {
+      hpRecovered: Math.max(0, endHp - startHp),
+      mpRecovered: Math.max(0, endMp - startMp),
+      xpGained: Math.max(0, endXp - startXp),
+      factionChanges: {} as Record<string, number>,
+      interruptedAt
+    };
+
+    // Track faction rep changes
+    if (state.player.factionReputation) {
+      for (const [factionId, newRep] of Object.entries(state.player.factionReputation)) {
+        const oldRep = startFactionRep[factionId] ?? 0;
+        const delta = newRep - oldRep;
+        if (delta !== 0) {
+          summary.factionChanges[factionId] = delta;
+        }
+      }
+    }
+
+    console.log(`[Chronos] Batch completed: Tick ${startTick} → ${endTick} (+${endTick - startTick}), HP +${summary.hpRecovered}, MP +${summary.mpRecovered}, XP +${summary.xpGained}`);
+
+    // Log summary event
+    const summaryEvent: Event = {
+      id: `chronos-batch-${Date.now()}`,
+      worldInstanceId: state.id,
+      actorId: 'system',
+      type: 'CHRONOS_BATCH_COMPLETED',
+      payload: {
+        startTick,
+        endTick,
+        ticksProcessed: endTick - startTick,
+        summary,
+        eventLog
+      },
+      templateOrigin: state.metadata?.templateOrigin,
+      timestamp: Date.now()
+    };
+
+    appendEvent(summaryEvent);
+
+    return {
+      startTick,
+      endTick,
+      ticksProcessed: endTick - startTick,
+      eventLog,
+      summary
+    };
+  }
+
+  const kernelApi = Object.freeze({ getState: getStateClone, performAction, advanceTick, executeBatchTicks, triggerActionTurn, getCurrentTurnPhase, isTurnInProgress, load, getRecentMutations });
+  
+  const devApi = Object.freeze({ getState: getStateClone, performAction, advanceTick, executeBatchTicks, triggerActionTurn, getCurrentTurnPhase, isTurnInProgress, load, getRecentMutations, triggerSoulEcho, triggerMacroEvent, subscribe });
 
   return dev ? devApi as any : kernelApi as any;
 }

@@ -17,7 +17,7 @@ import { random } from './prng';
 export interface Encounter {
   id: string;
   name: string;
-  type: 'combat' | 'social' | 'item' | 'environmental' | 'mixed';
+  type: 'combat' | 'social' | 'item' | 'environmental' | 'mixed' | 'shadow';
   rarity: 'common' | 'rare' | 'epic';
   biome: string[];  // biomes where this can appear
   timeOfDay?: ('night' | 'morning' | 'afternoon' | 'evening')[];
@@ -249,6 +249,78 @@ export function generateEncounterCombatant(encounter: Encounter, state: WorldSta
     hp: baseHp,
     maxHp: baseHp,
     isHostile: true
+  };
+}
+
+/**
+ * Phase 18: Check if a Paradox Shadow should spawn
+ * Shadows emerge when player's item corruption is high enough
+ */
+export function shouldSpawnParadoxShadow(state: WorldState): boolean {
+  const itemCorruption = state.player.itemCorruption || {};
+  const totalCorruption = Object.values(itemCorruption).reduce((sum, val) => sum + val, 0);
+  
+  // Spawn shadow when accumulated corruption exceeds 70
+  return totalCorruption > 70;
+}
+
+/**
+ * Phase 18: Generate a Paradox Shadow combatant
+ * Shadow stats scale purely based on player's equipped item corruption
+ * Stronger with more paradox-corrupted gear
+ */
+export function generateParadoxShadow(state: WorldState) {
+  const playerLevel = state.player.level || 1;
+  const tick = state.tick || 0;
+  
+  // Calculate total item corruption from all items
+  const itemCorruption = state.player.itemCorruption || {};
+  const totalCorruption = Object.values(itemCorruption).reduce((sum, val) => sum + val, 0);
+
+  // Shadow power scales with corruption
+  // Base multiplier 0 (no power) to 2.0 (twice as strong as normal enemy)
+  const corruptionMultiplier = Math.min(2.0, (totalCorruption / 100) * 1.5);
+
+  // Shadow name reflects the nature of the paradox
+  const shadowNames = [
+    'Paradox Echo',
+    'Void Reflection',
+    'Temporal Echo',
+    'Fractured Self',
+    'Paradox Fragment',
+    'Shattered Potential',
+    'Contradiction Manifest'
+  ];
+
+  const shadowName = shadowNames[Math.floor(random() * shadowNames.length)];
+
+  // Base stats elevated by corruption multiplier
+  const baseShadowLevel = Math.max(playerLevel, Math.floor(playerLevel * (1 + corruptionMultiplier * 0.5)));
+  const baseHp = 25 + (baseShadowLevel * 6) + Math.floor(random() * 25);
+  const shadowHp = Math.floor(baseHp * (1 + corruptionMultiplier * 0.3));
+
+  return {
+    id: `paradox-shadow-${tick}`,
+    name: shadowName,
+    type: 'paradox-shadow',
+    location: state.player.location,
+    level: baseShadowLevel,
+    stats: {
+      str: Math.floor((10 + Math.floor(random() * 4)) * (1 + corruptionMultiplier * 0.2)),
+      agi: Math.floor((10 + Math.floor(random() * 4)) * (1 + corruptionMultiplier * 0.2)),
+      int: Math.floor((9 + Math.floor(random() * 3)) * (1 + corruptionMultiplier * 0.3)), // Int scales more with corruption
+      cha: Math.floor((5 + Math.floor(random() * 2)) * (1 + corruptionMultiplier * 0.1)),
+      end: Math.floor((10 + Math.floor(random() * 4)) * (1 + corruptionMultiplier * 0.2)),
+      luk: Math.floor((8 + Math.floor(random() * 3)) * (1 + corruptionMultiplier * 0.15))
+    },
+    hp: shadowHp,
+    maxHp: shadowHp,
+    isHostile: true,
+    corruptionPower: totalCorruption, // Track source corruption for loot/rewards
+    resistances: {
+      paradox_resistance: Math.min(0.9, corruptionMultiplier * 0.3), // Paradox shadows resist paradox damage
+      void_affinity: Math.min(0.8, corruptionMultiplier * 0.25)
+    }
   };
 }
 

@@ -30,6 +30,9 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import type { PlayerState, WorldState, NPC } from '../../engine/worldEngine';
+import { useDialogueResolver, getLockedOptionDisplay } from '../hooks/useDialogueResolver';
+import type { DialogueNode } from '../../engine/branchingDialogueEngine';
 
 /**
  * NPC Personality Vector (M46 GOAP system - 6 dimensions)
@@ -74,6 +77,11 @@ interface NpcInteractionData {
 interface NpcInteractionProps {
   npc: NpcInteractionData;
   isOpen?: boolean;
+  // Phase 9: Enhanced dialogue resolution with engine support
+  player?: PlayerState;
+  worldState?: WorldState;
+  engineNpc?: NPC;
+  currentDialogueNode?: DialogueNode;
 }
 
 /**
@@ -290,14 +298,32 @@ const DialogueOptionButton: React.FC<{
 
 /**
  * NpcInteraction Component - Show personality-driven NPC interaction UI with micro-expressions
+ * 
+ * Phase 9: Now supports dialogue engine resolution for type-safe, gate-aware dialogue
  */
 export const NpcInteraction: React.FC<NpcInteractionProps> = ({
   npc,
   isOpen = true,
+  player,
+  worldState,
+  engineNpc,
+  currentDialogueNode
 }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [interactionLog, setInteractionLog] = useState<string[]>([]);
   const [isStressed, setIsStressed] = useState(false);
+
+  // Phase 9: Resolve dialogue using engine if available
+  const dialogueResolution = useDialogueResolver(
+    currentDialogueNode || null,
+    player || null,
+    engineNpc || null,
+    worldState || null
+  );
+
+  // Use resolved options if available, otherwise fall back to raw options
+  const displayOptions = dialogueResolution?.accessibleOptions ?? npc.dialogueOptions;
+  const lockedOptions = dialogueResolution?.lockedOptions ?? [];
 
   const dominantTrait = useMemo(() => {
     return getDominantTrait(npc.personality);
@@ -499,10 +525,11 @@ export const NpcInteraction: React.FC<NpcInteractionProps> = ({
         {/* Dialogue Options */}
         <div>
           <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: 'rgba(255, 255, 255, 0.8)' }}>
-            💬 Dialogue Options
+            💬 Dialogue Options ({displayOptions.length}{lockedOptions.length > 0 ? `/${displayOptions.length + lockedOptions.length}` : ''})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '200px', overflowY: 'auto' }}>
-            {npc.dialogueOptions.map(option => (
+            {/* Accessible DialogueOptions */}
+            {displayOptions.map(option => (
               <DialogueOptionButton
                 key={option.id}
                 option={option}
@@ -510,6 +537,46 @@ export const NpcInteraction: React.FC<NpcInteractionProps> = ({
                 onSelect={handleDialogueSelect}
               />
             ))}
+            
+            {/* Locked Options (Phase 9) */}
+            {lockedOptions.length > 0 && displayOptions.length > 0 && (
+              <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', marginTop: '4px', paddingTop: '4px' }}>
+                <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.4)', marginBottom: '4px' }}>
+                  🔒 Locked Options
+                </div>
+                {lockedOptions.map(({ option, lockReason, lockMessage }) => {
+                  const display = getLockedOptionDisplay(lockReason, lockMessage);
+                  return (
+                    <div
+                      key={option.id}
+                      style={{
+                        padding: '8px',
+                        backgroundColor: 'rgba(50, 50, 50, 0.4)',
+                        border: '1px solid rgba(100, 100, 100, 0.3)',
+                        borderRadius: '3px',
+                        fontSize: '11px',
+                        color: display.color,
+                        marginBottom: '3px',
+                        cursor: 'not-allowed',
+                        opacity: 0.6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      title={display.text}
+                    >
+                      <span>{display.icon}</span>
+                      <span style={{ flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        {option.text}
+                      </span>
+                      <span style={{ fontSize: '9px', opacity: 0.7 }}>
+                        {display.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

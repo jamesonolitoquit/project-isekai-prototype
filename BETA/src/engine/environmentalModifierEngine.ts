@@ -340,3 +340,49 @@ export function isLocationSheltered(biome?: string): boolean {
   const shelteredBiomes = ['village', 'shrine', 'tavern', 'cave'];
   return biome ? shelteredBiomes.includes(biome.toLowerCase()) : false;
 }
+
+/**
+ * Phase 17: Apply Mana Burn status effect
+ * Periodic MP drain from paradox-saturated environment
+ * Returns MP drain per tick
+ */
+export function calculateManaBurnDrain(playerLevel: number = 1, intensity: 'minor' | 'moderate' | 'severe' = 'moderate'): number {
+  const baseMP = playerLevel * 10;
+  const intensityMap = { minor: 0.05, moderate: 0.15, severe: 0.3 };
+  return Math.ceil(baseMP * intensityMap[intensity]);
+}
+
+/**
+ * Phase 17: Apply Void Surge status effect
+ * Temporary stat degradation from possession hazard
+ * Returns stat degradation multiplier (0.7 = 30% penalty)
+ */
+export function calculateVoidSurgeDebuff(intensity: 'minor' | 'moderate' | 'severe' = 'moderate'): number {
+  const debuffMap = { minor: 0.85, moderate: 0.7, severe: 0.5 };
+  return debuffMap[intensity];
+}
+
+/**
+ * Phase 17: Check if location is sanctified (provides hazard dampening)
+ * Sanctified locations reduce all hazard intensity by 50%
+ */
+export function isSanctifiedLocation(biome?: string, locationName?: string): boolean {
+  const sanctifiedBiomes = ['shrine', 'altar', 'sacred-grove'];
+  const sanctifiedNames = ['moonwell-shrine', 'eldergrove-altar', 'blessed-sanctuary'];
+  
+  if (biome && sanctifiedBiomes.includes(biome.toLowerCase())) return true;
+  if (locationName && sanctifiedNames.includes(locationName.toLowerCase())) return true;
+  
+  return false;
+}
+
+/**
+ * Phase 17: Apply sanctified zone dampening to hazard damage
+ * Reduces all environmental hazard damage by 50% in sanctified locations
+ */
+export function applySanctifiedZoneDampening(damage: number, locationBiome?: string, locationName?: string): number {
+  if (isSanctifiedLocation(locationBiome, locationName)) {
+    return Math.floor(damage * 0.5);
+  }
+  return damage;
+}

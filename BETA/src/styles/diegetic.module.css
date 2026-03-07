@@ -1,0 +1,305 @@
+/**
+ * Diegetic UI Material Styles
+ * 
+ * Provides physical material textures for HUD components to appear
+ * as objects sitting on the Tabletop surface (wood, stone, parchment).
+ * Part of Phase 31 — Physical Components & Diegetic UI
+ */
+
+/* ============================================================================
+   MATERIAL: WOOD (for interactive panels like Inventory, Spellbook)
+   ============================================================================ */
+
+.panelWood {
+  /* Rich mahogany base - uses theme-driven wood color */
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--mat-wood-base, #3d2b1f) 90%, #fff) 0%,
+    var(--mat-wood-base, #3d2b1f) 25%,
+    color-mix(in srgb, var(--mat-wood-base, #3d2b1f) 80%, #000) 50%,
+    var(--mat-wood-base, #3d2b1f) 75%,
+    color-mix(in srgb, var(--mat-wood-base, #3d2b1f) 90%, #fff) 100%
+  );
+  
+  /* Wood grain texture via repeating patterns */
+  background-image: 
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 40px,
+      rgba(0, 0, 0, 0.1) 40px,
+      rgba(0, 0, 0, 0.1) 42px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 60px,
+      rgba(255, 255, 255, 0.03) 60px,
+      rgba(255, 255, 255, 0.03) 62px
+    );
+  
+  /* Border: dark wood frame */
+  border: 3px solid var(--mat-wood-base, #3d2b1f);
+  border-left-color: var(--mat-wood-border, #5c4033); /* Lighter side for depth */
+  border-top-color: color-mix(in srgb, var(--mat-wood-border, #5c4033) 70%, #fff);
+  
+  /* Shadow: sits on the wood table */
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 10px 25px rgba(0, 0, 0, 0.6),
+    0 0 15px color-mix(in srgb, var(--mat-wood-base, #3d2b1f) 50%, rgba(0, 0, 0, 0.3));
+  
+  border-radius: 4px;
+}
+
+.panelWoodHeader {
+  background: linear-gradient(180deg, var(--mat-wood-border, #5c4033) 0%, color-mix(in srgb, var(--mat-wood-base, #3d2b1f) 90%, #fff) 100%);
+  border-bottom: 1px solid var(--mat-wood-base, #3d2b1f);
+  padding: 8px 12px;
+  color: color-mix(in srgb, var(--mat-wood-border, #5c4033) 50%, #ffd9b3);
+  font-weight: bold;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* ============================================================================
+   MATERIAL: STONE (for status panels like Health/Resources)
+   ============================================================================ */
+
+.panelStone {
+  /* Granite-like stone texture - theme-driven */
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--mat-stone-base, #2a2a2e) 95%, #fff) 0%,
+    color-mix(in srgb, var(--mat-stone-base, #2a2a2e) 85%, #fff) 20%,
+    var(--mat-stone-base, #2a2a2e) 40%,
+    color-mix(in srgb, var(--mat-stone-base, #2a2a2e) 80%, #fff) 60%,
+    color-mix(in srgb, var(--mat-stone-base, #2a2a2e) 90%, #000) 80%,
+    var(--mat-stone-base, #2a2a2e) 100%
+  );
+  
+  /* Subtle speckle pattern for stone texture */
+  background-image: 
+    radial-gradient(
+      circle at 20px 30px,
+      rgba(255, 255, 255, 0.1) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 40px 60px,
+      rgba(0, 0, 0, 0.2) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 50px 20px,
+      rgba(255, 255, 255, 0.05) 2px,
+      transparent 2px
+    );
+  background-size: 100px 100px;
+  
+  /* Stone border */
+  border: 2px solid color-mix(in srgb, var(--mat-stone-border, #444) 100%, transparent);
+  border-left-color: color-mix(in srgb, var(--mat-stone-border, #555) 100%, transparent);
+  border-top-color: color-mix(in srgb, var(--mat-stone-border, #666) 100%, transparent);
+  
+  /* Shadow: raised stone block */
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.8),
+    3px 3px 8px rgba(0, 0, 0, 0.7),
+    0 -2px 0 color-mix(in srgb, var(--mat-stone-border, #555) 100%, transparent),
+    0 -4px 2px rgba(0, 0, 0, 0.4);
+  
+  border-radius: 2px;
+}
+
+.panelStoneHeader {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--mat-stone-border, #4a4a50) 100%, transparent) 0%, color-mix(in srgb, var(--mat-stone-base, #3a3a40) 100%, transparent) 100%);
+  border-bottom: 1px solid color-mix(in srgb, var(--mat-stone-border, #555) 100%, transparent);
+  padding: 6px 10px;
+  color: color-mix(in srgb, var(--mat-stone-border, #c0c0c8) 100%, transparent);
+  font-size: 11px;
+  letter-spacing: 1px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* ============================================================================
+   MATERIAL: PARCHMENT (for information panels like Chronicles, Journal)
+   ============================================================================ */
+
+.panelParchment {
+  /* Aged parchment background - theme-driven */
+  background: linear-gradient(135deg, color-mix(in srgb, var(--mat-paper-base, #f5e6d3) 100%, #fff) 0%, var(--mat-paper-base, #f5e6d3) 50%, color-mix(in srgb, var(--mat-paper-base, #f5e6d3) 95%, #fff) 100%);
+  
+  /* Subtle aging patterns */
+  background-image: 
+    radial-gradient(
+      ellipse at 10% 20%,
+      rgba(139, 69, 19, 0.1) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 90% 80%,
+      rgba(139, 69, 19, 0.08) 0%,
+      transparent 50%
+    );
+  
+  /* Paper edges effect */
+  border: 1px solid color-mix(in srgb, var(--mat-paper-base, #d4c5b0) 80%, #a0a0a0);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1),
+    5px 5px 15px rgba(0, 0, 0, 0.3);
+  
+  border-radius: 2px;
+}
+
+.panelParchmentContent {
+  color: var(--mat-paper-text, #3e2723);
+  font-family: 'Crimson Text', 'Georgia', serif;
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.panelParchmentHeader {
+  font-size: 16px;
+  font-weight: bold;
+  color: color-mix(in srgb, var(--mat-paper-text, #5d4037) 110%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--mat-paper-text, #8b4513) 100%, transparent);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================================
+   MATERIAL: LEATHER (for interactive panels like Spellbook, Abilities)
+   ============================================================================ */
+
+.panelLeather {
+  background: linear-gradient(135deg, #5a4a40 0%, #4a3a30 50%, #5a4a40 100%);
+  
+  /* Leather texture via repeated patterns */
+  background-image: 
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 20px,
+      rgba(0, 0, 0, 0.1) 20px,
+      rgba(0, 0, 0, 0.1) 21px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 30px,
+      rgba(255, 255, 255, 0.05) 30px,
+      rgba(255, 255, 255, 0.05) 31px
+    );
+  
+  border: 2px solid #3a2a20;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 8px 20px rgba(0, 0, 0, 0.5);
+  
+  border-radius: 3px;
+}
+
+/* ============================================================================
+   MATERIAL: METAL (for important stat displays, equipment slots)
+   ============================================================================ */
+
+.panelMetal {
+  background: linear-gradient(
+    135deg,
+    #555555 0%,
+    #666666 50%,
+    #555555 100%
+  );
+  
+  /* Brushed metal texture */
+  background-image: 
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.1) 2px,
+      rgba(255, 255, 255, 0.1) 4px
+    );
+  
+  border: 3px outset #999;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.6);
+  
+  border-radius: 1px;
+}
+
+/* ============================================================================
+   SHARED UTILITIES
+   ============================================================================ */
+
+.materialHeader {
+  padding: 8px 12px;
+  margin: -8px -12px 8px -12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+  font-weight: bold;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Elevation shadow for items "above" the table */
+.elevation1 {
+  transform: translateZ(10px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 8px rgba(0, 0, 0, 0.2);
+}
+
+.elevation2 {
+  transform: translateZ(20px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 0, 0, 0.3);
+}
+
+.elevation3 {
+  transform: translateZ(30px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Active/Interactive state */
+.materialActive {
+  border-color: #c084fc;
+  box-shadow: 0 0 15px rgba(192, 132, 252, 0.4);
+}
+
+/* Hover state for wood panels */
+.panelWood:hover {
+  background-color: rgba(92, 64, 51, 0.1);
+  transition: all 0.3s ease-out;
+}
+
+/* Hover state for stone panels */
+.panelStone:hover {
+  background-color: rgba(68, 68, 72, 0.05);
+  transition: all 0.3s ease-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .panelWood,
+  .panelStone,
+  .panelParchment,
+  .panelLeather,
+  .panelMetal {
+    border-width: 2px;
+  }
+  
+  .panelWoodHeader,
+  .panelStoneHeader,
+  .panelParchmentHeader {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+}

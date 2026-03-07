@@ -1,0 +1,307 @@
+/* ============================================
+   HERO CARD: Paper Doll Left Sidebar
+   ============================================ */
+
+.hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* Avatar Section */
+.hero-card-avatar-frame {
+  display: flex;
+  justify-content: center;
+}
+
+.hero-card-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid var(--wizard-accent, #74b9ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 30%, rgba(212, 175, 55, 0.2), rgba(139, 92, 246, 0.1));
+  font-size: 2.5rem;
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.3);
+}
+
+.hero-card-name-tag {
+  text-align: center;
+}
+
+.hero-card-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--wizard-accent, #74b9ff);
+}
+
+.hero-card-ancestry {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Vitality Bars */
+.hero-card-vitality {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.vitality-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+}
+
+.vitality-bar-icon {
+  font-size: 0.85rem;
+  width: 18px;
+}
+
+.vitality-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.vitality-bar-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+}
+
+.vitality-bar-fill.hp {
+  background: linear-gradient(90deg, #ff4444, #ff8844);
+  box-shadow: 0 0 8px rgba(255, 68, 68, 0.3);
+}
+
+.vitality-bar-fill.mp {
+  background: linear-gradient(90deg, #4488ff, #88aaff);
+  box-shadow: 0 0 8px rgba(68, 136, 255, 0.3);
+}
+
+.vitality-bar-value {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 45px;
+  text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Equipment Grid */
+.hero-card-equipment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.equipment-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--wizard-accent, #74b9ff);
+  opacity: 0.7;
+}
+
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.equipment-slot {
+  aspect-ratio: 1;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: var(--layout-transition, all 0.3s ease);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  font-size: 1.2rem;
+}
+
+.equipment-slot-ghost {
+  filter: grayscale(1) brightness(0.4) opacity(0.5);
+}
+
+.equipment-slot:hover {
+  border-color: var(--wizard-accent, #74b9ff);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(100, 200, 255, 0.2);
+}
+
+.equipment-slot:hover .equipment-slot-ghost {
+  filter: grayscale(0.5) brightness(0.7) opacity(0.7);
+}
+
+.equipment-slot.filled {
+  border-style: solid;
+  border-color: var(--wizard-accent, #74b9ff);
+  background: rgba(100, 200, 255, 0.1);
+}
+
+.equipment-slot.filled .equipment-slot-ghost {
+  filter: none;
+}
+
+/* Core Attributes Grid */
+.hero-card-attributes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.attributes-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--wizard-accent, #74b9ff);
+  opacity: 0.7;
+}
+
+.attributes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.3rem;
+}
+
+.attribute-box {
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 4px;
+  padding: 0.25rem;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--layout-transition, all 0.3s ease);
+  font-size: 0.65rem;
+}
+
+.attribute-box:hover {
+  border-color: var(--wizard-accent, #74b9ff);
+  background: rgba(100, 200, 255, 0.1);
+}
+
+.attribute-box.highlighted {
+  opacity: 1;
+  border-color: var(--wizard-accent, #74b9ff);
+}
+
+.attribute-icon {
+  font-size: 0.9rem;
+}
+
+.attribute-value {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Sidebar Section Labels */
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm, 0.5rem);
+  margin-top: 12px;
+}
+
+.sidebar-section:first-child {
+  margin-top: 0;
+}
+
+.sidebar-section-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-accent, #74b9ff);
+  opacity: 0.75;
+}
+
+/* Talents display in hero card sidebar */
+.hero-card-talents {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.talents-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-accent, #74b9ff);
+  opacity: 0.75;
+}
+
+.talents-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.talent-badge {
+  padding: 0.25rem 0.6rem;
+  background: rgba(100, 200, 255, 0.1);
+  border: 1px solid rgba(100, 200, 255, 0.25);
+  border-radius: 12px;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+}
+
+.attribute-value {
+  font-weight: 600;
+  color: var(--wizard-accent, #74b9ff);
+}
+
+/* Progress Section */
+.hero-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.progress-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--wizard-accent, #74b9ff);
+  opacity: 0.7;
+}
+
+.progress-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  transition: var(--layout-transition, all 0.3s ease);
+}
+
+.progress-item.completed {
+  color: rgba(29, 209, 161, 0.9);
+}
+
+.progress-item.pending {
+  color: rgba(116, 185, 255, 0.4);
+}

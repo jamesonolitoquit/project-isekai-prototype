@@ -51,6 +51,10 @@ function getWhisperSeerFilter(intensity: number): string {
  * Phase 3: Also supports getWhisperFilter for narrative intervention effects
  */
 export interface AtmosphericFiltersExtended extends AtmosphericFilters {
+  paradoxLevel: number;
+  ageRotSeverity: 'mild' | 'moderate' | 'severe' | undefined;
+  filterIntensity: number; // 0-1 normalized paradox level
+  manifestationText?: string; // Diegetic text manifestation for paradox effects
   getWhisperFilter: (intensity: number) => string;
 }
 
@@ -135,8 +139,23 @@ export function useAtmosphericFilter(
   return useMemo(() => {
     const paradoxLevel = state?.paradoxLevel ?? 0;
     const ageRotSeverity = state?.ageRotSeverity;
+    const filterIntensity = Math.min(1, paradoxLevel / 100);
+
+    // Generate manifestation text based on paradox level
+    let manifestationText: string | undefined;
+    if (paradoxLevel > 75) {
+      manifestationText = 'Reality fractures—the world remembers multiple timelines at once.';
+    } else if (paradoxLevel > 50) {
+      manifestationText = 'The fabric of existence thins—echoes of alternate realities bleed through.';
+    } else if (paradoxLevel > 25) {
+      manifestationText = 'Time stutters—moments repeat like a broken record.';
+    }
 
     return {
+      paradoxLevel,
+      ageRotSeverity,
+      filterIntensity,
+      manifestationText,
       paradoxFilter: getParadoxFilter(paradoxLevel),
       ageRotFilter: getAgeRotFilter(ageRotSeverity),
       combinedFilter: getCombinedFilter(paradoxLevel, ageRotSeverity),

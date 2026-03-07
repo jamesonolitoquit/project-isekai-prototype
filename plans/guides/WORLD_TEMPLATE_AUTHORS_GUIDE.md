@@ -312,26 +312,37 @@ For immediate narrative stakes, you can pre-seed rumors:
 
 ### A. Personality Weights
 
-Each NPC has 6 personality traits (0-1 scale) that influence which goals they prioritize:
+Each NPC has 6 personality traits (0-100 scale) that influence which goals they prioritize and how they react in combat.
+
+#### GOAP Traits (M46-C1)
+These 6 dimensions drive the autonomous planning engine:
 
 ```json
 {
   "personality": {
-    "greediness": 0.8,    // Values wealth > faith
-    "piety": 0.3,         // Low interest in faith goals
-    "ambition": 0.6,      // Moderate interest in power
-    "loyalty": 0.4,       // May abandon plans for new opportunities
-    "risk": 0.5,          // Moderate risk tolerance
-    "sociability": 0.7    // Prefers relationship-building
+    "boldness": 30,        // willingness to take risks
+    "caution": 70,         // tendency to avoid danger
+    "sociability": 20,     // preference for interaction
+    "ambition": 40,        // drive for power/status
+    "curiosity": 60,       // desire to explore/learn
+    "honesty": 90          // adherence to truth/ethics
   }
 }
 ```
 
+#### Combat Archetypes (`type`)
+In addition to GOAP traits, a `type` can be assigned to simplify combat-only logic:
+
+- **`aggressive`**: Continues attacking until 30% HP.
+- **`cautious`**: Retreats or starts defending at 60% HP.
+- **`tactical`**: Alternates between defense and offense based on opponent stats.
+- **`healer`**: Prioritizes supporting allies once their HP drops below 50%.
+- **`balanced`**: Standard behavior with moderate thresholds.
+
 **How it works:**
-- If `greediness > 0.3` → NPC gets a **Wealth Goal** (target: accumulate 1000 gold)
-- If `piety > 0.3` → NPC gets a **Faith Goal** (target: spread faction faith)
-- If `ambition > 0.3` → NPC gets a **Power Goal** (recruit allies, gain influence)
-- If `sociability > 0.3` → NPC gets a **Relationship Goal** (befriend other NPCs)
+- If `ambition > 40` → NPC gets a **Power Goal** (recruit allies, gain influence)
+- If `sociability > 50` → NPC gets a **Relationship Goal** (befriend other NPCs)
+- If `caution > 60` → NPC will likely choose `DEFEND` even with moderate HP in combat.
 
 ### B. Goal Priorities
 
@@ -432,6 +443,47 @@ When an NPC is **deceived** successfully, the Belief Engine creates a rumor:
 ```
 
 This rumor spreads and other NPCs hear about it, affecting their trust relationships dynamically.
+
+### B. Social Scars & Relationship Tiers (M44-T1)
+
+Relationships are more than simple numbers; they are built on a history of mutual interactions and psychological scars.
+
+#### Social Scars (`socialScars`)
+Scars are long-term psychological impacts from traumatic or significant events (betrayals, major losses). They affect an NPC's `apparitionChance` (likelihood of the memory surfacing in dialogue) and can gate specific actions.
+
+```json
+{
+  "socialScars": [
+    {
+      "id": "scar-stonepeak-loss",
+      "npcId": "captain-valerius",
+      "scarType": "trauma",
+      "description": "Lost his entire squad to a Void Cult ambush 10 years ago.",
+      "severity": 85,
+      "causedByNpcId": "void-acolyte-unknown",
+      "apparitionChance": 0.4,
+      "activeEffects": ["fear_of_darkness", "mistrust_of_strangers"],
+      "discoveryStatus": "active"
+    }
+  ]
+}
+```
+
+| Field | Description |
+| :--- | :--- |
+| `scarType` | `trauma`, `betrayal`, `shame`, `regret`, `guilt`. |
+| `severity` | 0-100. Higher severity makes the scar harder to heal and more likely to trigger negative status effects. |
+| `apparitionChance` | 0-1. Probability that this scar will be referenced in dynamic dialogue or influence a GOAP decision. |
+| `activeEffects` | Unique tags that the engine uses to modify NPC behavior (e.g., `mistrust_of_strangers` might increase the difficulty of `PERSUADE` actions). |
+
+#### Relationship Tiers
+The engine automatically categorizes relationships based on a combination of `trust`, `affinity`, and shared `mutualMemories`.
+
+- **Hostile**: (< -75) Active conflict, will attack or sabotage.
+- **Wary**: (-75 to -25) Suspects motives, limited interaction.
+- **Neutral**: (-25 to +25) Default starting state.
+- **Friendly**: (+25 to +75) Willing to share rumors and offer fair prices.
+- **Allied**: (> +75) Will participate in shared goals and offer significant discounts.
 
 ---
 

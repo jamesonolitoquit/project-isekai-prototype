@@ -27,6 +27,8 @@ import React, { useState, useEffect, useRef } from 'react';
 interface GlitchState {
   intensity: 'stable' | 'unstable' | 'critical' | 'revolt';
   chaosScore: number;
+  itemCorruption: number; // Phase 18: Corruption from equipped items
+  relicRebellion: number; // Phase 18: Max rebellion counter from equipped relics
   lastAnomalyType?: string;
 }
 
@@ -38,6 +40,8 @@ const PerceptionGlitchOverlay: React.FC<PerceptionGlitchOverlayProps> = ({ appSt
   const [glitch, setGlitch] = useState<GlitchState>({
     intensity: 'stable',
     chaosScore: 0,
+    itemCorruption: 0,
+    relicRebellion: 0,
   });
 
   const animationFrameRef = useRef<number | null>(null);
@@ -60,14 +64,36 @@ const PerceptionGlitchOverlay: React.FC<PerceptionGlitchOverlayProps> = ({ appSt
     if (!appState) return;
 
     const chaosScore = appState?.paradox?.chaosScore ?? 0;
-    const intensity = getGlitchIntensity(chaosScore);
+    
+    // Phase 18: Calculate item corruption from inventory
+    let totalItemCorruption = 0;
+    if (appState?.player?.itemCorruption) {
+      totalItemCorruption = (Object.values(appState.player.itemCorruption) as any[]).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
+    }
+
+    // Phase 18: Find maximum rebellion counter from equipped relics
+    let maxRelicRebellion = 0;
+    if (appState?.relics && appState?.player?.equippedRelics) {
+      for (const relicId of appState.player.equippedRelics) {
+        const relic = appState.relics[relicId];
+        if (relic && relic.rebellionCounter && relic.rebellionCounter > maxRelicRebellion) {
+          maxRelicRebellion = relic.rebellionCounter;
+        }
+      }
+    }
+
+    // Phase 18: Enhanced chaos calculation including item corruption and relic rebellion
+    const enhancedChaos = chaosScore + (totalItemCorruption * 0.15) + (maxRelicRebellion * 0.2);
+    const intensity = getGlitchIntensity(enhancedChaos);
 
     setGlitch({
       intensity,
-      chaosScore,
+      chaosScore: enhancedChaos,
+      itemCorruption: totalItemCorruption,
+      relicRebellion: maxRelicRebellion,
       lastAnomalyType: appState?.paradox?.lastAnomalyType,
     });
-  }, [appState?.paradox?.chaosScore, appState?.paradox?.lastAnomalyType]);
+  }, [appState?.paradox?.chaosScore, appState?.player?.itemCorruption, appState?.player?.equippedRelics, appState?.relics, appState?.paradox?.lastAnomalyType]);
 
   /**
    * Animate scanlines for critical/revolt states

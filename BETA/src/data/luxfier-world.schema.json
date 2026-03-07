@@ -4,14 +4,82 @@
   "description": "JSON Schema for validating Luxfier world templates with M44-M46 integration",
   "type": "object",
   "required": ["name", "description", "season", "locations", "npcs", "quests"],
+  "additionalProperties": true,
   "properties": {
     "name": {
       "type": "string",
       "description": "Unique name of the world template"
     },
+    "chroniclerFacts": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "chroniclerGuidancePrompts": {
+      "type": "object"
+    },
+    "causalWeatherRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "condition", "triggerThreshold", "weatherResult", "intensity", "duration", "priority"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "condition": { "type": "string", "enum": ["high_contention", "low_contention", "magical_surge", "faction_victory", "epoch_transition"] },
+          "triggerThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+          "weatherResult": { "type": "string" },
+          "intensity": { "type": "string", "enum": ["light", "moderate", "heavy"] },
+          "duration": { "type": "number", "minimum": 1 },
+          "priority": { "type": "number" },
+          "stabilityImpact": { "type": "number", "minimum": -1, "maximum": 1 },
+          "icon": { "type": "string" },
+          "narrative": { "type": "string" }
+        }
+      }
+    },
+    "bloodlineDivergence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["lineageId", "divergentPaths"],
+        "properties": {
+          "lineageId": { "type": "string" },
+          "divergentPaths": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["condition", "resultTrait"],
+              "properties": {
+                "condition": { "type": "string" },
+                "resultTrait": { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "evolutionPaths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "originalItemId", "resultItemId"],
+        "properties": {
+          "id": { "type": "string" },
+          "originalItemId": { "type": "string" },
+          "resultItemId": { "type": "string" },
+          "narrative": { "type": "string" }
+        }
+      }
+    },
     "description": {
       "type": "string",
       "description": "High-level narrative overview visible to players and chronicle"
+    },
+    "genre": {
+      "type": "string",
+      "enum": ["classic-fantasy", "dark-fantasy", "science-fiction", "horror"],
+      "description": "The primary genre metadata of the world, used for UI skinning and AI DM tone."
     },
     "version": {
       "type": "string",
@@ -109,11 +177,27 @@
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
+          "x": { "type": "number", "minimum": 0, "maximum": 1000 },
+          "y": { "type": "number", "minimum": 0, "maximum": 1000 },
           "spiritDensity": { "type": "number", "minimum": 0, "maximum": 1 },
           "biome": { "type": "string", "enum": ["forest", "cave", "village", "corrupted", "shrine", "maritime", "mountain", "plains", "dungeon"] },
           "description": { "type": "string" },
           "conditionalSeason": { "type": "string" },
           "environmentalEffects": { "type": "array", "items": { "type": "string" } },
+          "atmosphericSinks": {
+            "type": "array",
+            "description": "Phase 9: Diegetic manifestations of high paradox/age-rot",
+            "items": {
+              "type": "object",
+              "required": ["paradoxThreshold", "manifestation"],
+              "properties": {
+                "paradoxThreshold": { "type": "number", "minimum": 0, "maximum": 100 },
+                "manifestation": { "type": "string" },
+                "visualFilter": { "type": "string", "enum": ["sepia", "bleached", "glitched", "static", "pulsing-red", "void-violet"] },
+                "soundscapeOverride": { "type": "string" }
+              }
+            }
+          },
           "subAreas": {
             "type": "array",
             "items": {
@@ -159,6 +243,58 @@
             "type": "object",
             "description": "24-hour schedule",
             "additionalProperties": { "type": "string" }
+          },
+          "stats": {
+            "type": "object",
+            "required": ["str", "agi", "int", "cha", "end", "luk", "perception"],
+            "properties": {
+              "str": { "type": "number", "minimum": 1, "maximum": 20 },
+              "agi": { "type": "number", "minimum": 1, "maximum": 20 },
+              "int": { "type": "number", "minimum": 1, "maximum": 20 },
+              "cha": { "type": "number", "minimum": 1, "maximum": 20 },
+              "end": { "type": "number", "minimum": 1, "maximum": 20 },
+              "luk": { "type": "number", "minimum": 1, "maximum": 20 },
+              "perception": { "type": "number", "minimum": 1, "maximum": 20 }
+            }
+          },
+          "hp": { "type": "number" },
+          "maxHp": { "type": "number" },
+          "inventory": {
+            "type": "array",
+            "description": "Initial NPC inventory items",
+            "items": {
+              "type": "object",
+              "required": ["kind", "itemId"],
+              "oneOf": [
+                {
+                  "properties": {
+                    "kind": { "const": "stackable" },
+                    "itemId": { "type": "string" },
+                    "quantity": { "type": "integer", "minimum": 1 },
+                    "equipped": { "type": "boolean" }
+                  },
+                  "required": ["quantity"]
+                },
+                {
+                  "properties": {
+                    "kind": { "const": "unique" },
+                    "itemId": { "type": "string" },
+                    "instanceId": { "type": "string" },
+                    "equipped": { "type": "boolean" },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "experience": { "type": "number" },
+                        "sentience": { "type": "number" },
+                        "runes": { "type": "array", "items": { "type": "string" } },
+                        "corruption": { "type": "number" }
+                      }
+                    }
+                  },
+                  "required": ["instanceId"]
+                }
+              ]
+            }
           },
           "availability": {
             "type": "object",
@@ -234,6 +370,18 @@
           "severity": { "type": "number", "minimum": 0, "maximum": 100 },
           "truthRadius": { "type": "number", "description": "Distance where 100% accuracy spreads" },
           "truthDecayRate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Speed of confidence drop with distance" },
+          "diegeticEchoes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "visualEffect": { "type": "string", "enum": ["ghostly-figures", "blood-stains", "golden-particles", "mana-static", "void-cracks"] },
+                "spawnEntityId": { "type": "string" },
+                "paradoxRequired": { "type": "number", "minimum": 0, "maximum": 100 }
+              }
+            }
+          },
           "timestamp": { "type": "number" }
         }
       }
@@ -340,6 +488,92 @@
         }
       }
     },
+    "itemTemplates": {
+      "type": "array",
+      "description": "Base item definitions for the world economy (Phase 14)",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "kind", "rarity"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "kind": { "type": "string", "enum": ["stackable", "unique"] },
+          "rarity": { "type": "string", "enum": ["common", "uncommon", "rare", "epic", "legendary"] },
+          "baseValue": { "type": "number" },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "damage": { "type": "number" },
+              "defense": { "type": "number" },
+              "power": { "type": "number" },
+              "paradoxScale": { "type": "number" }
+            }
+          },
+          "requirements": {
+            "type": "object",
+            "properties": {
+              "str": { "type": "number" },
+              "agi": { "type": "number" },
+              "int": { "type": "number" },
+              "perception": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "lootTables": {
+      "type": "array",
+      "description": "Regional loot drops for search actions (Phase 14)",
+      "items": {
+        "type": "object",
+        "required": ["id", "drops"],
+        "properties": {
+          "id": { "type": "string" },
+          "locationId": { "type": "string" },
+          "biome": { "type": "string" },
+          "drops": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["itemId", "chance"],
+              "properties": {
+                "itemId": { "type": "string" },
+                "chance": { "type": "number", "minimum": 0, "maximum": 1 },
+                "minQuantity": { "type": "number" },
+                "maxQuantity": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "craftingRecipes": {
+      "type": "array",
+      "description": "Alchemical and material recipes (Phase 14)",
+      "items": {
+        "type": "object",
+        "required": ["id", "resultItemId", "ingredients"],
+        "properties": {
+          "id": { "type": "string" },
+          "resultItemId": { "type": "string" },
+          "resultQuantity": { "type": "number" },
+          "ingredients": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["itemId", "quantity"],
+              "properties": {
+                "itemId": { "type": "string" },
+                "quantity": { "type": "number" }
+              }
+            }
+          },
+          "requiredFacility": { "type": "string", "enum": ["alchemy_bench", "forge", "none"] },
+          "discoveryHardFactId": { "type": "string" }
+        }
+      }
+    },
     "investigationClues": {
       "type": "object",
       "description": "Clue sources for investigation (M46-A2)",
@@ -395,6 +629,61 @@
         }
       }
     },
+    "hazards": {
+      "type": "array",
+      "description": "Environmental hazards that can affect players and NPCs",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "affectedLocationId", "effect"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "affectedLocationId": { "type": "string" },
+          "condition": {
+            "type": "object",
+            "properties": {
+              "season": { "type": "string", "enum": ["winter", "spring", "summer", "autumn"] },
+              "weather": { "type": "string" },
+              "maxDayPhase": { "type": "string" }
+            }
+          },
+          "effect": {
+            "type": "object",
+            "required": ["type", "severity", "chance"],
+            "properties": {
+              "type": { "type": "string", "enum": ["health_drain", "status_apply"] },
+              "severity": { "type": "string", "enum": ["minor", "moderate", "severe"] },
+              "chance": { "type": "number", "minimum": 0, "maximum": 1 },
+              "damagePerTick": { "type": "number" },
+              "statusEffect": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "essenceAltars": {
+      "type": "array",
+      "description": "Essence altars for character morphing",
+      "items": {
+        "type": "object",
+        "required": ["id", "locationId", "name", "power", "ritualType"],
+        "properties": {
+          "id": { "type": "string" },
+          "locationId": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "power": { "type": "number", "minimum": 0, "maximum": 1 },
+          "ritualType": { "type": "string" },
+          "requirements": {
+            "type": "object",
+            "properties": {
+              "minIntelligence": { "type": "number" },
+              "minEndurance": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
     "epochs": {
       "type": "object",
       "description": "Epoch definitions for multi-generation play",
@@ -409,6 +698,19 @@
           "description": { "type": "string" },
           "nextEpochId": { "type": "string" },
           "previousEpochId": { "type": "string" },
+          "transitionRules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "targetEpochId": { "type": "string" },
+                "condition": { "type": "string", "enum": ["paradox_threshold", "faction_collapse", "player_choice", "time_elapsed", "hard_fact_triggered"] },
+                "threshold": { "type": "number" },
+                "requiredFactId": { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          },
           "factionStateOverride": {
             "type": "object",
             "additionalProperties": {

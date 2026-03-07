@@ -3,9 +3,6 @@ import React, { useRef, useEffect, useMemo } from 'react';
 interface NarrativeViewProps {
   worldState?: any; // WorldState
   narrativeLog?: Array<{ id: string; type: string; message: string; tick: number }>;
-  pendingAction?: { type: string; label: string; dc: number; npcId?: string } | null;
-  onRequestAction?: (action: { type: 'explore' | 'talk' | 'custom'; label: string; dc: number; npcId?: string }) => void;
-  onSwitchToTravel?: () => void;
 }
 
 type ChronicleKind = 'scene' | 'npc' | 'action_success' | 'action_fail' | 'ambush' | 'director' | 'system';
@@ -201,7 +198,7 @@ function NarrativeCard({ entry }: { entry: ChronicleEntry }) {
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
-export function NarrativeView({ worldState, narrativeLog = [], pendingAction, onRequestAction, onSwitchToTravel }: NarrativeViewProps) {
+export function NarrativeView({ worldState, narrativeLog = [] }: NarrativeViewProps) {
   const player = worldState?.player;
   const location = worldState?.locations?.find((l: any) => l.id === player?.location);
   const locationName = location?.name || 'The Wilderness';
@@ -210,7 +207,12 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
   const dayPhase = worldState?.dayPhase || 'morning';
   const season = worldState?.season || 'spring';
   const hour = worldState?.hour ?? 0;
-  const npcsHere = (worldState?.npcs || []).filter((n: any) => n.locationId === player?.location || n.location === player?.location);
+  const npcsHere = (worldState?.npcs || []).filter((n: any) =>
+    (n.locationId === player?.location || n.location === player?.location)
+    && !n.isDead
+    && !n.isHidden
+    && !['SOUL_ECHO', 'SHADOW', 'ANOMALY', 'PHANTOM'].includes(n.type)
+  );
   const isInCombat = !!worldState?.combatState;
 
   const weatherEmoji: Record<string, string> = {
@@ -269,45 +271,6 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chronicle.length]);
 
-  // ─── Compact action button ────────────────────────────────────────────────────
-  function ActionButton({ icon, label, sub, color, textColor, onClick }: {
-    icon: string; label: string; sub: string; color: string; textColor: string; onClick: () => void;
-  }) {
-    return (
-      <button
-        onClick={onClick}
-        style={{
-          flex: '1 1 auto',
-          minWidth: '100px',
-          padding: '0.55rem 0.75rem',
-          background: `rgba(${color},0.13)`,
-          border: `1px solid rgba(${color},0.4)`,
-          color: textColor,
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontSize: '0.78rem',
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.35rem',
-          transition: 'all 0.15s',
-        }}
-        onMouseEnter={e => {
-          (e.currentTarget as HTMLElement).style.background = `rgba(${color},0.25)`;
-          (e.currentTarget as HTMLElement).style.boxShadow = `0 0 10px rgba(${color},0.3)`;
-        }}
-        onMouseLeave={e => {
-          (e.currentTarget as HTMLElement).style.background = `rgba(${color},0.13)`;
-          (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-        }}
-      >
-        <span>{icon}</span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-        <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.5, flexShrink: 0 }}>{sub}</span>
-      </button>
-    );
-  }
-
   return (
     <div style={{
       height: '100%',
@@ -328,7 +291,7 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
         scrollbarColor: 'rgba(139,92,246,0.3) transparent',
       }}>
 
-        {/* Combat banner inline in chronicle */}
+        {/* Combat active banner */}
         {isInCombat && (
           <div style={{
             padding: '0.75rem 1.1rem',
@@ -339,7 +302,7 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
             textAlign: 'center',
           }}>
             <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fca5a5' }}>
-              ⚔️ Combat is active — see Combat tab
+              ⚔️ Combat is active — roll for your fate!
             </span>
           </div>
         )}
@@ -350,78 +313,6 @@ export function NarrativeView({ worldState, narrativeLog = [], pendingAction, on
         ))}
 
         <div ref={feedEndRef} />
-      </div>
-
-      {/* ── "WHAT DO YOU DO?" ACTION ANCHOR (bottom 30%) ── */}
-      <div style={{
-        flexShrink: 0,
-        borderTop: '1px solid rgba(139,92,246,0.15)',
-        background: 'linear-gradient(0deg, rgba(10,5,20,0.7) 0%, rgba(10,5,20,0) 100%)',
-        padding: '0.75rem 1rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.45rem',
-      }}>
-        {/* Pending roll indicator */}
-        {pendingAction ? (
-          <div style={{
-            padding: '0.65rem 1rem',
-            background: 'rgba(251,191,36,0.1)',
-            border: '1px solid rgba(251,191,36,0.35)',
-            borderRadius: '6px',
-            color: '#fde68a',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            textAlign: 'center',
-            fontStyle: 'italic',
-          }}>
-            🎲 Rolling for {pendingAction.label}…
-          </div>
-        ) : (
-          <>
-            {/* Section label */}
-            <div style={{
-              fontSize: '0.6rem', color: 'rgba(167,139,250,0.4)', textTransform: 'uppercase',
-              letterSpacing: '0.15em', fontWeight: 700, textAlign: 'center',
-            }}>
-              What do you do?
-            </div>
-
-            {/* Action buttons row */}
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              {/* Explore Area */}
-              <ActionButton
-                icon="🔍"
-                label="Explore"
-                sub="DC 12"
-                color="132,204,22"
-                textColor="#86efac"
-                onClick={() => onRequestAction?.({ type: 'explore', label: 'Explore Area', dc: 12 })}
-              />
-              {/* Travel */}
-              <ActionButton
-                icon="🗺️"
-                label="Travel"
-                sub="map"
-                color="96,165,250"
-                textColor="#93c5fd"
-                onClick={() => onSwitchToTravel?.()}
-              />
-              {/* Talk to NPCs */}
-              {npcsHere.map((npc: any) => (
-                <ActionButton
-                  key={npc.id}
-                  icon="🗣️"
-                  label={`Talk: ${npc.name}`}
-                  sub="DC 10"
-                  color="168,85,247"
-                  textColor="#d8b4fe"
-                  onClick={() => onRequestAction?.({ type: 'talk', label: `Talk to ${npc.name}`, dc: 10, npcId: npc.id })}
-                />
-              ))}
-            </div>
-          </>
-        )}
       </div>
 
       {/* Keyframes */}

@@ -16,90 +16,91 @@
       "canDelegateTo": ["coder", "debugger", "planner", "reviewer", "monetizer", "security", "system-thinker"]
     },
     "coder": {
-      "file": "roles/coder.md",
-      "purpose": "Implement features, write TypeScript/React code, build engine components",
+      "file": "roles/engineer.md",
+      "purpose": "Engineer: Implement features, write code, AND fix bugs/errors",
       "priority": 1,
-      "keywords": ["implement", "write code", "build", "create", "add feature", "component", "function", "API", "endpoint"],
+      "keywords": ["implement", "write code", "build", "create", "add feature", "component", "function", "API", "endpoint", "bug", "fix", "error", "debug"],
       "contextFiles": [
         "plans/00_MASTER_REFERENCE.md",
-        "plans/28_ROADMAP.md"
-      ],
-      "contextNotes": "Load the specific layer file for the task. Never load all plan files at once.",
-      "fallback": "system-thinker"
-    },
-    "debugger": {
-      "file": "roles/debugger.md",
-      "purpose": "Fix bugs, trace errors, diagnose test failures, resolve runtime issues",
-      "priority": 1,
-      "keywords": ["bug", "error", "fix", "broken", "failing", "crash", "undefined", "null", "stack trace", "test failure"],
-      "contextFiles": [
-        "plans/00_MASTER_REFERENCE.md",
+        "plans/28_ROADMAP.md",
         "plans/20_ALPHA_DATA_SCHEMA.md",
         "plans/17_SESSION_CONTINUITY.md"
       ],
+      "contextNotes": "Supports both /mode:build and /mode:debug. Load specific layer files as needed.",
+      "fallback": "system-thinker"
+    },
+    "debugger": {
+      "file": "roles/engineer.md",
+      "purpose": "Engineer: Fix bugs, trace errors, AND implement solutions",
+      "priority": 1,
+      "keywords": ["bug", "error", "fix", "broken", "failing", "crash", "undefined", "null", "stack trace", "test failure", "implement", "code"],
+      "contextFiles": [
+        "plans/00_MASTER_REFERENCE.md",
+        "plans/20_ALPHA_DATA_SCHEMA.md",
+        "plans/17_SESSION_CONTINUITY.md",
+        "plans/28_ROADMAP.md"
+      ],
       "fallback": "coder"
     },
-    "planner": {
-      "file": "roles/planner.md",
-      "purpose": "Architecture decisions, roadmap management, system design, task breakdown",
+    "engineer": {
+      "file": "roles/engineer.md",
+      "purpose": "Full Stack Engineer: Unified role for implementation and debugging",
       "priority": 1,
-      "keywords": ["plan", "architecture", "design", "roadmap", "breakdown", "milestone", "phase", "scope", "specification"],
+      "keywords": ["engineer", "full stack", "dev", "program", "debug", "test"],
       "contextFiles": [
         "plans/00_MASTER_REFERENCE.md",
         "plans/28_ROADMAP.md"
       ],
-      "contextNotes": "Entry point role. Loads master reference first, drills into layers as needed.",
       "fallback": "system-thinker"
     },
-    "reviewer": {
-      "file": "roles/reviewer.md",
-      "purpose": "Code review, PR validation, consistency checks, cross-reference audits",
+    "architect": {
+      "file": "roles/architect.md",
+      "purpose": "Architect: Design systems, manage roadmap, and ensure scalability (includes System Thinker & Monetization)",
       "priority": 1,
-      "keywords": ["review", "PR", "pull request", "check", "audit", "consistency", "validate", "quality"],
+      "keywords": ["plan", "architecture", "design", "roadmap", "breakdown", "milestone", "phase", "scope", "specification", "system think", "integration", "scalability", "monetize", "business"],
       "contextFiles": [
         "plans/00_MASTER_REFERENCE.md",
-        "plans/28_ROADMAP.md",
-        "plans/20_ALPHA_DATA_SCHEMA.md"
+        "plans/28_ROADMAP.md"
       ],
-      "fallback": "debugger"
+      "contextNotes": "Entry point role. Defines WHAT to build.",
+      "fallback": "engineer"
     },
-    "monetizer": {
-      "file": "roles/monetizer.md",
-      "purpose": "Business model, pricing strategy, revenue streams, growth mechanics",
-      "priority": 2,
-      "keywords": ["monetize", "pricing", "revenue", "business model", "subscription", "freemium", "growth", "market"],
+    "qa-specialist": {
+      "file": "roles/qa-specialist.md",
+      "purpose": "QA Specialist: Code review, security audit, and consistency check (includes Reviewer & Security)",
+      "priority": 1,
+      "keywords": ["review", "PR", "pull request", "check", "audit", "consistency", "validate", "quality", "security", "auth", "vulnerability", "threat", "compliance"],
       "contextFiles": [
         "plans/00_MASTER_REFERENCE.md",
         "plans/28_ROADMAP.md",
-        "plans/19_ENDGAME_REPLAYABILITY.md"
+        "plans/20_ALPHA_DATA_SCHEMA.md",
+        "plans/18_ANTI_METAGAMING.md"
+      ],
+      "fallback": "engineer"
+    },
+    "world-author": {
+      "file": "roles/world-author.md",
+      "purpose": "Craft world templates, design factions, locations, NPCs, and initial quest lines for simulation",
+      "priority": 1,
+      "keywords": [
+        "world template",
+        "json world",
+        "faction",
+        "location",
+        "npc",
+        "initial quest",
+        "narrative seed",
+        "world building"
+      ],
+      "contextFiles": [
+        "plans/PROJECT_OVERVIEW.md",
+        "plans/WORLD_TEMPLATE_INSTANCE_MODEL.md",
+        "plans/DATA_MODEL.md",
+        "BETA/src/engine/worldEngine.ts"
       ],
       "fallback": "planner"
     },
-    "security": {
-      "file": "roles/security.md",
-      "purpose": "Authentication, authorization, vulnerability assessment, compliance, threat modeling",
-      "priority": 2,
-      "keywords": ["security", "auth", "vulnerability", "threat", "compliance", "encryption", "permissions", "OWASP"],
-      "contextFiles": [
-        "plans/00_MASTER_REFERENCE.md",
-        "plans/18_ANTI_METAGAMING.md",
-        "plans/17_SESSION_CONTINUITY.md",
-        "plans/20_ALPHA_DATA_SCHEMA.md"
-      ],
-      "fallback": "reviewer"
-    },
-    "system-thinker": {
-      "file": "roles/system-thinker.md",
-      "purpose": "Cross-cutting concerns, system integration, scalability, dependency analysis",
-      "priority": 2,
-      "keywords": ["integration", "scalability", "trade-off", "dependency", "cross-cutting", "performance", "infrastructure"],
-      "contextFiles": [
-        "plans/00_MASTER_REFERENCE.md",
-        "plans/28_ROADMAP.md",
-        "plans/20_ALPHA_DATA_SCHEMA.md"
-      ],
-      "fallback": "planner"
-    }
+
   },
   "classificationRules": {
     "method": "keyword_match_with_intent",

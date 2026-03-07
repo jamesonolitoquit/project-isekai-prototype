@@ -103,7 +103,7 @@ export class DirectorCommandEngine {
     
     // System Commands
     this.register('help', this.handleHelp.bind(this));
-    // this.register('history', this.handleHistory.bind(this)); // TODO: Fix method ordering
+    this.register('history', this.handleHistory.bind(this)); // Phase 35: Director memory hardening
   }
 
   /**
@@ -140,7 +140,7 @@ export class DirectorCommandEngine {
       if (!this.handlers.has(cmd.command)) {
         cmd.status = 'error';
         cmd.error = `Unknown command: ${cmd.command}. Type /help for available commands.`;
-        // this.recordCommand(cmd); // TODO: Fix method ordering
+        this.recordCommand(cmd); // Phase 35: Record failed commands
         return cmd;
       }
 
@@ -157,15 +157,15 @@ export class DirectorCommandEngine {
 
       // Record as mutation if successful
       if (result.success) {
-        // this.recordMutation(cmd, context); // TODO: Fix method ordering
+        this.recordMutation(cmd, context); // Phase 35: Enable mutation tracking
       }
 
-      // this.recordCommand(cmd); // TODO: Fix method ordering
+      this.recordCommand(cmd); // Phase 35: Enable command history
       return cmd;
     } catch (error) {
       cmd.status = 'error';
       cmd.error = error instanceof Error ? error.message : 'Unknown error';
-      // this.recordCommand(cmd); // TODO: Fix method ordering
+      this.recordCommand(cmd); // Phase 35: Record errors in history
       return cmd;
     }
   }

@@ -28,6 +28,7 @@ export interface CausalWeatherRule {
   intensity: 'light' | 'moderate' | 'heavy';
   duration: number; // ticks the weather persists
   priority: number; // Higher priority overrides lower
+  stabilityImpact?: number; // Phase 21: Impacts reality stability per tick/event
   icon?: string;
   narrative?: string; // Flavor text when triggered
 }
@@ -55,6 +56,21 @@ export class CausalWeatherEngine {
 
   constructor() {
     this.initializeDefaultRules();
+    this.refreshRulesFromTemplate();
+  }
+
+  /**
+   * Refresh rules from the currently loaded world template
+   */
+  public refreshRulesFromTemplate(): void {
+    const { getWorldTemplate } = require('./worldEngine');
+    const template = getWorldTemplate();
+    if (template && template.causalWeatherRules) {
+      console.log(`[CausalWeatherEngine] Loading ${template.causalWeatherRules.length} rules from template`);
+      template.causalWeatherRules.forEach((rule: CausalWeatherRule) => {
+        this.registerRule(rule);
+      });
+    }
   }
 
   /**
@@ -143,7 +159,35 @@ export class CausalWeatherEngine {
   ): EnhancedWeatherResult {
     const factionEngine = getFactionWarfareEngine();
     // const warZone = factionEngine.getWarZoneStatus(locationId); // [M48-A4: getWarZoneStatus not available]
-    const contentionLevel = 0.3; // Default to 0.3
+    
+    // Phase 17: Calculate contention level from faction influence
+    let contentionLevel = 0.3; // Default to 0.3
+    try {
+      const influenceMap = (worldState as any).influenceMap || {};
+      const locationInfluences = influenceMap[locationId] || {};
+      
+      if (Object.keys(locationInfluences).length > 0) {
+        // Get influence values sorted in descending order
+        const influences = Object.values(locationInfluences).sort((a: any, b: any) => (b as number) - (a as number));
+        
+        if (influences.length >= 2) {
+          // High contention when top 2 factions are close in influence
+          const topInfluence = influences[0] as number;
+          const secondInfluence = influences[1] as number;
+          const difference = topInfluence - secondInfluence;
+          
+          // If difference is small (< 30), contention is high (0.7+)
+          // If difference is large (> 60), contention is low (0.2)
+          contentionLevel = Math.max(0.2, Math.min(0.8, 1.0 - (difference / 100)));
+        } else if (influences.length === 1) {
+          // Single faction domination = low contention
+          contentionLevel = 0.2;
+        }
+      }
+    } catch (e) {
+      // If influence calculation fails, use default
+      contentionLevel = 0.3;
+    }
 
     // Check for Magnus Fluctus (priority 100+ override)
     const macroEvents = worldState.macroEvents || [];
@@ -190,6 +234,19 @@ export class CausalWeatherEngine {
       causedBy: this.getCauseFromCondition(selectedRule.condition),
       remainingDuration: selectedRule.duration,
     };
+
+    // Phase 21: Apply stability impact to world metadata if possible
+    if (selectedRule.stabilityImpact && (worldState as any).metadata) {
+      const metadata = (worldState as any).metadata;
+      const currentStability = metadata.paradoxLevel || 0;
+      // Note: Inverting impact since paradoxLevel is decay (higher = worse)
+      // stabilityImpact > 0 (healing) reduces paradox, < 0 (chaos) increases it
+      metadata.paradoxLevel = Math.max(0, Math.min(100, currentStability - (selectedRule.stabilityImpact * 0.1)));
+      
+      if (selectedRule.stabilityImpact !== 0) {
+        console.log(`[CausalWeatherEngine] ${selectedRule.name} stability impact: ${selectedRule.stabilityImpact} (Paradox: ${currentStability.toFixed(2)} -> ${metadata.paradoxLevel.toFixed(2)})`);
+      }
+    }
 
     // Cache the weather
     this.activeWeather.set(locationId, {

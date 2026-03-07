@@ -1,5 +1,6 @@
 /**
  * M42 Phase 4 Task 4.3: Narrative Intervention Overlay
+ * Phase 35 Extension: Paradox Ripple synchronization with Director Whispers
  *
  * Purpose: Display "Director Whispers" as diegetic visions to targeted players
  * Triggered by: `/announce <message>` command from DirectorConsole
@@ -13,6 +14,7 @@
  * - Voice synthesis (optional, requires audio engine)
  * - Timestamp and read status tracking
  * - Style adapts to epoch (theme colors)
+ * - Phase 35: Paradox Ripple glitch effects on whisper text
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -53,6 +55,16 @@ export interface NarrativeInterventionOverlayProps {
    * Whether to play audio cue
    */
   enableAudio?: boolean;
+
+  /**
+   * Phase 35: Current paradox level (0-100) for ripple effects
+   */
+  paradoxLevel?: number;
+
+  /**
+   * Phase 35: Intervention severity level for screen shake intensity
+   */
+  interventionLevel?: 'minor' | 'major' | 'catastrophic';
 }
 
 /**
@@ -143,8 +155,14 @@ const WhisperMessage: React.FC<{
   epoch: number;
   totalDuration: number;
   onComplete: () => void;
-}> = ({ whisper, epoch, totalDuration, onComplete }) => {
+  paradoxLevel?: number;
+  interventionLevel?: 'minor' | 'major' | 'catastrophic';
+}> = ({ whisper, epoch, totalDuration, onComplete, paradoxLevel = 0, interventionLevel = 'minor' }) => {
   const { keyframes, css } = createWhisperStyles(totalDuration, epoch || 2);
+
+  // Phase 35: Determine if paradox ripple should apply
+  const applyParadoxRipple = (paradoxLevel ?? 0) > 75;
+  const applyScreenShake = interventionLevel === 'major' || interventionLevel === 'catastrophic';
 
   useEffect(() => {
     // Inject dynamic styles once
@@ -177,7 +195,7 @@ const WhisperMessage: React.FC<{
 
   return (
     <div
-      className="narrative-whisper-overlay"
+      className={`narrative-whisper-overlay ${applyParadoxRipple ? 'fxParadoxRipple' : ''} ${applyScreenShake ? 'fxScreenShake' : ''}`}
       style={{
         position: 'fixed',
         top: '50%',
@@ -291,7 +309,9 @@ export const NarrativeInterventionOverlay: React.FC<NarrativeInterventionOverlay
   onWhisperComplete,
   currentEpoch = 2,
   playerName = 'Wanderer',
-  enableAudio = true
+  enableAudio = true,
+  paradoxLevel = 0,
+  interventionLevel = 'minor'
 }) => {
   const [displayedWhisper, setDisplayedWhisper] = useState<DirectorWhisper | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -367,6 +387,8 @@ export const NarrativeInterventionOverlay: React.FC<NarrativeInterventionOverlay
       epoch={currentEpoch}
       totalDuration={displayedWhisper.duration || 5000}
       onComplete={handleWhisperComplete}
+      paradoxLevel={paradoxLevel}
+      interventionLevel={interventionLevel}
     />
   );
 };

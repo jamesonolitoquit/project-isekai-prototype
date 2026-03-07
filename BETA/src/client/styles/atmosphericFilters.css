@@ -212,3 +212,199 @@
 .reality-pulse {
   animation: reality-pulse 0.8s infinite;
 }
+/**
+ * Beta Phase 5: Enhanced Diegetic Effects
+ * Additional animations for pressure indicators and manifestation overlays
+ */
+
+/* Static/Information flicker for severe paradox */
+@keyframes static-flicker {
+  0%, 100% {
+    opacity: 1;
+    text-shadow: 0 0 10px rgba(192, 132, 252, 0.8);
+  }
+  20% {
+    opacity: 0.8;
+    text-shadow: -2px 0 8px rgba(192, 132, 252, 0.6), 2px 0 8px rgba(192, 132, 252, 0.6);
+  }
+  40% {
+    opacity: 0.9;
+    text-shadow: 0 0 15px rgba(192, 132, 252, 1);
+  }
+  60% {
+    opacity: 0.7;
+    text-shadow: -3px 0 6px rgba(192, 132, 252, 0.5), 3px 0 6px rgba(192, 132, 252, 0.5);
+  }
+  80% {
+    opacity: 0.95;
+    text-shadow: 0 0 12px rgba(192, 132, 252, 0.9);
+  }
+}
+
+.static-flicker {
+  animation: static-flicker 0.5s infinite;
+}
+
+/* Void pulse - expands and contracts reality */
+@keyframes void-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(26, 10, 46, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 30px 10px rgba(26, 10, 46, 0);
+  }
+}
+
+.void-pulse {
+  animation: void-pulse 2s ease-in-out infinite;
+}
+
+/* Pressure build-up: Tightening effect */
+@keyframes pressure-tighten {
+  0%, 100% {
+    transform: scale(1) scaleY(1);
+    clip-path: inset(0);
+  }
+  50% {
+    transform: scale(0.98) scaleY(0.95);
+    clip-path: inset(5% 0 5% 0);
+  }
+}
+
+.pressure-tighten {
+  animation: pressure-tighten 1.5s ease-in-out infinite;
+}
+
+/* Reality fracture shimmer */
+@keyframes fracture-shimmer {
+  0%, 100% {
+    background-position: 0 0;
+  }
+  50% {
+    background-position: 100px 0;
+  }
+}
+
+.fracture-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(192, 132, 252, 0.3) 50%,
+    transparent 100%
+  );
+  background-size: 200px 100%;
+  animation: fracture-shimmer 1s ease-in-out infinite;
+}
+
+/* Containment field (high-intensity paradox boundary) */
+@keyframes containment-field {
+  0%, 100% {
+    border-color: rgba(192, 132, 252, 0.5);
+    box-shadow: inset 0 0 10px rgba(192, 132, 252, 0.2);
+  }
+  50% {
+    border-color: rgba(192, 132, 252, 1);
+    box-shadow: inset 0 0 20px rgba(192, 132, 252, 0.5), 0 0 20px rgba(192, 132, 252, 0.3);
+  }
+}
+
+.containment-field {
+  animation: containment-field 0.8s ease-in-out infinite;
+}
+
+/* Scar manifestation - text appears and distorts */
+@keyframes scar-manifest {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotateZ(-5deg);
+    filter: blur(10px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1) rotateZ(0deg);
+  }
+  100% {
+    opacity: 0.8;
+    transform: scale(1.05) rotateZ(2deg);
+    filter: blur(0);
+  }
+}
+
+.scar-manifest {
+  animation: scar-manifest 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Paradox tint overlay - color-shift indicating corruption */
+@keyframes paradox-tint-shift {
+  0%, 100% {
+    background-color: rgba(26, 10, 46, 0.2);
+  }
+  50% {
+    background-color: rgba(45, 27, 78, 0.3);
+  }
+}
+
+.paradox-tint-shift {
+  animation: paradox-tint-shift 2s ease-in-out infinite;
+}
+
+/* Gauge fill animation */
+@keyframes gauge-fill {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: var(--fill-percent, 50%);
+  }
+}
+
+.gauge-fill-animated {
+  animation: gauge-fill 0.5s ease-out forwards;
+}
+
+/* Screen tear effect (like old CRT malfunction) */
+@keyframes screen-tear {
+  0%, 100% {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  }
+  25% {
+    clip-path: polygon(0 0, 100% 0, 100% 98%, 0 100%);
+  }
+  50% {
+    clip-path: polygon(0 2%, 100% 0, 100% 100%, 0 98%);
+  }
+  75% {
+    clip-path: polygon(0 0, 100% 1%, 100% 99%, 0 100%);
+  }
+}
+
+.screen-tear {
+  animation: screen-tear 0.3s ease-in-out infinite;
+}
+
+/* Accessibility: Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .glitch-mild,
+  .glitch-moderate,
+  .glitch-severe,
+  .chromatic-aberration,
+  .reality-pulse,
+  .static-flicker,
+  .void-pulse,
+  .pressure-tighten,
+  .fracture-shimmer,
+  .containment-field,
+  .scar-manifest,
+  .paradox-tint-shift,
+  .gauge-fill-animated,
+  .screen-tear {
+    animation: none;
+  }
+  
+  .glitch-mild,
+  .glitch-moderate,
+  .glitch-severe {
+    /* Fallback: static position shift */
+    transform: translate(0, 0);
+  }
+}

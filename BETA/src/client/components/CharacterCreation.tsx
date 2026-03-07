@@ -7,7 +7,7 @@ interface CharacterCreationProps {
 }
 
 export default function CharacterCreation({ onCharacterCreated, startingLocation = 'Eldergrove Village' }: CharacterCreationProps) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState('Adventurer');
   const [selectedRace, setSelectedRace] = useState('human');
   const [stats, setStats] = useState(generateDefaultStats());
   const [pointsRemaining, setPointsRemaining] = useState(STAT_POINTS_AVAILABLE);
@@ -24,7 +24,8 @@ export default function CharacterCreation({ onCharacterCreated, startingLocation
   const handleStatChange = (stat: keyof typeof stats, delta: number) => {
     if (delta > 0 && pointsRemaining <= 0) return;
     const newStats = { ...stats, [stat]: Math.max(1, stats[stat] + delta) };
-    const newPointsUsed = (newStats.str - 10) + (newStats.agi - 10) + (newStats.int - 10) + (newStats.cha - 10) + (newStats.end - 10) + (newStats.luk - 10);
+    // Calculate points used for the 8 core stats (excluding LCK which is auto-generated)
+    const newPointsUsed = (newStats.STR - 10) + (newStats.DEX - 10) + (newStats.AGI - 10) + (newStats.CON - 10) + (newStats.INT - 10) + (newStats.WIS - 10) + (newStats.CHA - 10) + (newStats.PER - 10);
     if (newPointsUsed <= STAT_POINTS_AVAILABLE) {
       setStats(newStats);
       setPointsRemaining(STAT_POINTS_AVAILABLE - newPointsUsed);
@@ -44,7 +45,7 @@ export default function CharacterCreation({ onCharacterCreated, startingLocation
     }
   };
 
-  const statTotal = stats.str + stats.agi + stats.int + stats.cha + stats.end + stats.luk;
+  const statTotal = stats.STR + stats.DEX + stats.AGI + stats.CON + stats.INT + stats.WIS + stats.CHA + stats.PER;
 
   return (
     <div className="character-creation">
@@ -77,9 +78,9 @@ export default function CharacterCreation({ onCharacterCreated, startingLocation
         <label>Attributes</label>
         <p>Points Remaining: <strong>{pointsRemaining}</strong> / {STAT_POINTS_AVAILABLE}</p>
         <div className="stat-allocator">
-          {(['str', 'agi', 'int', 'cha', 'end', 'luk'] as const).map(statName => (
+          {(['STR', 'DEX', 'AGI', 'CON', 'INT', 'WIS', 'CHA', 'PER'] as const).map(statName => (
             <div key={statName} className="stat-row">
-              <span className="stat-label">{statName.toUpperCase()}</span>
+              <span className="stat-label">{statName}</span>
               <button onClick={() => handleStatChange(statName, -1)} disabled={stats[statName] <= 1}>
                 −
               </button>

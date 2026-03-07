@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import styles from '../../styles/diegetic.module.css';
 
 interface InventoryPanelProps {
   state?: any;
@@ -69,29 +70,39 @@ export default function InventoryPanel({ state, onPickupItem, onDropItem, onEqui
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '6px 8px',
-          backgroundColor: isEquipped ? '#e8f5e9' : '#f5f5f5',
+          padding: '8px 10px',
+          backgroundColor: isEquipped ? '#3d2b1f' : '#2a1f3d',
           borderLeft: `3px solid ${rarityColor[template.rarity] || '#888'}`,
           borderRadius: 2,
           marginBottom: 4,
           fontSize: 12,
+          color: '#d4af37',
         }}
       >
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 'bold' }}>{template.name}</div>
-          <div style={{ fontSize: 11, opacity: 0.7 }}>
+          <div style={{ fontWeight: 'bold', color: '#f5deb3' }}>{template.name}</div>
+          <div style={{ fontSize: 11, opacity: 0.6, color: '#999' }}>
             {template.type} {template.rarity && `(${template.rarity})`}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ minWidth: 30, textAlign: 'center', fontWeight: 'bold' }}>
+          <div style={{ minWidth: 30, textAlign: 'center', fontWeight: 'bold', color: '#d4af37' }}>
             {item.quantity}x
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             {template.type === 'consumable' && (
               <button
                 onClick={() => onUseItem?.(item.itemId)}
-                style={{ fontSize: 11, padding: 4, backgroundColor: '#ffeb3b' }}
+                style={{ 
+                  fontSize: 11, 
+                  padding: 4, 
+                  backgroundColor: '#8b7355',
+                  color: '#f5deb3',
+                  border: 'none',
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
               >
                 Use
               </button>
@@ -102,7 +113,12 @@ export default function InventoryPanel({ state, onPickupItem, onDropItem, onEqui
                 style={{
                   fontSize: 11,
                   padding: 4,
-                  backgroundColor: isEquipped ? '#4caf50' : '#2196f3'
+                  backgroundColor: isEquipped ? '#6b5d3f' : '#8b7355',
+                  color: isEquipped ? '#ffff99' : '#f5deb3',
+                  border: isEquipped ? '1px solid #ffff99' : 'none',
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
                 }}
               >
                 {isEquipped ? 'Unequip' : 'Equip'}
@@ -110,7 +126,16 @@ export default function InventoryPanel({ state, onPickupItem, onDropItem, onEqui
             )}
             <button
               onClick={() => onDropItem?.(item.itemId, 1)}
-              style={{ fontSize: 11, padding: 4, backgroundColor: '#f44336' }}
+              style={{ 
+                fontSize: 11, 
+                padding: 4, 
+                backgroundColor: '#5a3a3a',
+                color: '#ff9999',
+                border: 'none',
+                borderRadius: 2,
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
             >
               Drop
             </button>
@@ -121,19 +146,27 @@ export default function InventoryPanel({ state, onPickupItem, onDropItem, onEqui
   };
 
   return (
-    <div style={{ padding: 12, fontSize: 13 }}>
-      <h3 style={{ marginTop: 0 }}>Inventory</h3>
+    <div 
+      className={`${styles.panelWood} ${styles.elevation2}`}
+      style={{ 
+        padding: '12px',
+        fontSize: '13px',
+        transform: 'translateZ(20px)',
+        transformStyle: 'preserve-3d',
+      }}
+    >
+      <h3 className={styles.panelWoodHeader} style={{ marginTop: 0 }}>🎒 Inventory</h3>
 
-      <div style={{ marginBottom: 12, padding: 8, backgroundColor: '#f9f9f9', borderRadius: 4 }}>
-        <div><strong>Gold:</strong> {gold}</div>
-        <div style={{ fontSize: 11, opacity: 0.8 }}>
+      <div style={{ marginBottom: 12, padding: 8, borderRadius: 4 }}>
+        <div style={{ color: '#8b7355', fontWeight: 'bold' }}><strong>💰 Gold:</strong> {gold}</div>
+        <div style={{ fontSize: 11, opacity: 0.8, color: '#c9a961' }}>
           Total Items: {inventory.reduce((sum: number, item: any) => sum + item.quantity, 0)}
         </div>
       </div>
 
       {/* Equipment Slots */}
-      <div style={{ marginBottom: 12, padding: 8, backgroundColor: '#f0f0f0', borderRadius: 4 }}>
-        <h4 style={{ marginTop: 0, marginBottom: 8 }}>Equipped</h4>
+      <div style={{ marginBottom: 12, paddingTop: 8 }}>
+        <h4 style={{ margin: '0 0 8px 0', color: '#d4af37', fontSize: '14px', fontWeight: 'bold' }}>⚔️ Equipped</h4>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {['mainHand', 'offHand', 'chest', 'head', 'feet', 'accessory'].map((slot) => {
             const itemId = (equipment as any)[slot];
@@ -143,22 +176,23 @@ export default function InventoryPanel({ state, onPickupItem, onDropItem, onEqui
                 key={slot}
                 style={{
                   padding: 8,
-                  backgroundColor: itemId ? '#e3f2fd' : '#eeeeee',
+                  backgroundColor: itemId ? '#2a1f3d' : '#3a2f1a',
                   borderRadius: 4,
-                  border: '1px solid #ccc',
+                  border: itemId ? '1px solid #d4af37' : '1px solid #8b7355',
                   minHeight: 48,
                   display: 'flex',
                   flexDirection: 'column',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  color: '#d4af37'
                 }}
               >
-                <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 4 }}>
+                <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 4, color: '#999' }}>
                   {slot}
                 </div>
                 {template ? (
-                  <div style={{ fontWeight: 'bold', fontSize: 11 }}>{template.name}</div>
+                  <div style={{ fontWeight: 'bold', fontSize: 11, color: '#d4af37' }}>{template.name}</div>
                 ) : (
-                  <div style={{ opacity: 0.5, fontSize: 11 }}>Empty</div>
+                  <div style={{ opacity: 0.5, fontSize: 11, color: '#666' }}>Empty</div>
                 )}
               </div>
             );
@@ -180,8 +214,8 @@ export default function InventoryPanel({ state, onPickupItem, onDropItem, onEqui
 
         return (
           <div key={category} style={{ marginBottom: 12 }}>
-            <h4 style={{ margin: '8px 0 4px 0' }}>{categoryLabels[category] || category}</h4>
-            <div style={{ borderLeft: '2px solid #bbb', paddingLeft: 8 }}>
+            <h4 style={{ margin: '8px 0 4px 0', color: '#d4af37', fontSize: '13px' }}>{categoryLabels[category] || category}</h4>
+            <div style={{ borderLeft: '3px solid #8b7355', paddingLeft: 8 }}>
               {items.map((item: any, idx: number) => renderItem(item, idx))}
             </div>
           </div>

@@ -1,0 +1,27 @@
+{
+  "themeName": "Grimdark Eon",
+  "themeType": "Global Override",
+  "author": "GitHub Copilot",
+  "appliedRules": {
+    "itemRebellionRate": 2.0,
+    "critMultiplier": 1.25,
+    "fatigueRate": 1.8,
+    "baseLUCK": -15
+  },
+  "aestheticShift": {
+    "primaryPalette": {
+      "lightMode": "#1a1a1a",
+      "darkMode": "#050505"
+    },
+    "accentColor": "#ff0000",
+    "secondaryColor": "#2d0000",
+    "contrastLevel": "Ultra-High"
+  },
+  "visualPalette": {
+    "Spring": { "primary": "#1a1a1a", "accent": "#4d0000", "foliage": "#0a2a0a" },
+    "Summer": { "primary": "#121212", "accent": "#7e0000", "foliage": "#0d1a0d" },
+    "Autumn": { "primary": "#151515", "accent": "#8b0000", "foliage": "#1a1300" },
+    "Winter": { "primary": "#0a0a0a", "accent": "#3a0000", "foliage": "#050505" }
+  },
+  "narrativeMood": "The gods have turned their eyes away, and the logic of the world is fraying. Steel yearns for flesh, and the shadows have teeth."
+}

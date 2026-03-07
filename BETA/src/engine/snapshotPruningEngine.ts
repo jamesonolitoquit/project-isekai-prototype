@@ -1,13 +1,29 @@
 /**
- * Phase 3 Task 7: Snapshot Pruning Logic
+ * Phase 10.4: Ledger Pruning Engine
  * 
- * Maintains efficient snapshot storage by pruning old snapshots:
- * - Keep last 5 snapshots
- * - Then keep 1 snapshot per 1000 ticks for deeper history
- * - Remove snapshots older than 5000 ticks when limit exceeded
+ * Manages cleanup of old events and snapshots to bound storage while maintaining
+ * a rewind buffer for development and debugging.
+ * 
+ * Strategy:
+ * - Keep all snapshots from current epoch (for fast replay)
+ * - Keep last N epochs of snapshots (default 5 = ~7.2 MB)
+ * - Delete old events (newer snapshots replace them as backup)
+ * - Maintain circular buffer to prevent unbounded growth
  */
 
 import type { Event } from '../events/mutationLog';
+import type { SnapshotStorageBackend } from './worldEngine';
+
+export interface PruningReport {
+  eventsDeleted: number;
+  eventsBytesFreed: number;
+  snapshotsDeleted: number;
+  snapshotBytesFreed: number;
+  eventsRetained: number;
+  snapshotsRetained: number;
+  prunedAt: number;
+  executionTimeMs: number;
+}
 
 export interface SnapshotPruneStats {
   totalBeforePrune: number;
@@ -19,133 +35,214 @@ export interface SnapshotPruneStats {
 }
 
 /**
- * Pruning strategy:
- * 1. Always keep most recent 5 snapshots (recency buffer)
- * 2. From remaining, keep 1 per 1000-tick window (history layer)
- * 3. If over 50 snapshots total, remove snapshots older than 5000 ticks
+ * Phase 10.4: Calculate retention window based on current tick and epoch size
+ * Default: keep last 5 epochs of snapshots (per PROTOTYPE_IMPLEMENTATION_PLAN.md)
+ * 
+ * Tick breakdown:
+ * - 1 epoch = 1440 ticks (day/night cycle)
+ * - Snapshots = every 100 ticks = 14-15 snapshots per epoch
+ * - 5 epochs = 7200 ticks = ~72 snapshots total
+ * - Storage footprint = ~100KB per snapshot = ~7.2 MB for 5 epochs
  */
-export function pruneSnapshotEvents(
-  allEvents: Event[],
+export function calculateRetentionEpochs(
   currentTick: number,
-  maxSnapshots: number = 50
-): { prunedEvents: Event[]; stats: SnapshotPruneStats } {
-  // Extract snapshot events, sorted by event index
-  const snapshots = allEvents
-    .filter(e => e.mutationClass === 'SNAPSHOT' || e.type === 'SNAPSHOT')
-    .sort((a, b) => (a.eventIndex || 0) - (b.eventIndex || 0));
-
-  if (snapshots.length <= maxSnapshots) {
-    // No pruning needed
-    return {
-      prunedEvents: allEvents,
-      stats: {
-        totalBeforePrune: allEvents.length,
-        totalAfterPrune: allEvents.length,
-        removed: 0,
-        preservedRecencyBuffer: 0,
-        preservedHistorySnapshots: snapshots.length,
-        oldestRetainedTick: snapshots[0]?.payload?.currentTick || currentTick
-      }
-    };
-  }
-
-  // Track which snapshots to keep
-  const keepSnapshotIndices = new Set<number>();
-
-  // Strategy 1: Keep most recent 5 snapshots (recency buffer)
-  const recencyStart = Math.max(0, snapshots.length - 5);
-  let recencyBuffer = 0;
-  for (let i = recencyStart; i < snapshots.length; i++) {
-    keepSnapshotIndices.add(i);
-    recencyBuffer++;
-  }
-
-  // Strategy 2: Keep 1 snapshot per 1000-tick window from older history
-  const historySnapshots: number[] = [];
-  let lastKeptTick = currentTick;
-  for (let i = snapshots.length - 6; i >= 0; i--) {
-    const snapshot = snapshots[i];
-    const snapshotTick = snapshot.payload?.currentTick || 0;
-    
-    // Keep this snapshot if it's at least 1000 ticks earlier than last kept
-    if (lastKeptTick - snapshotTick >= 1000) {
-      keepSnapshotIndices.add(i);
-      historySnapshots.push(i);
-      lastKeptTick = snapshotTick;
-    }
-  }
-
-  // Build pruned event list
-  const snapshotIndicesSet = new Set<number>();
-  snapshots.forEach((snap, idx) => {
-    snapshotIndicesSet.add(snap.eventIndex || idx);
-  });
-
-  const prunedEvents = allEvents.filter(event => {
-    // Keep all non-snapshot events
-    if (event.mutationClass !== 'SNAPSHOT' && event.type !== 'SNAPSHOT') {
-      return true;
-    }
-
-    // For snapshots, keep only those in our keep set
-    const snapshotIdx = snapshots.findIndex(s => s.id === event.id);
-    return keepSnapshotIndices.has(snapshotIdx);
-  });
-
-  const oldestRetainedTick = snapshots
-    .filter((_, idx) => keepSnapshotIndices.has(idx))
-    .map(s => s.payload?.currentTick || 0)
-    .reduce((min, tick) => Math.min(min, tick), currentTick);
+  epochSizeTicks: number = 1440,
+  retentionEpochs: number = 5,
+  snapshotIntervalTicks: number = 100
+): {
+  oldestRetainedTick: number;
+  oldestRetainedEpoch: number;
+  retainedSnapshotCount: number;
+  estimatedStorageKB: number;
+} {
+  const currentEpoch = Math.floor(currentTick / epochSizeTicks);
+  const oldestRetainedEpoch = Math.max(0, currentEpoch - retentionEpochs + 1);
+  const oldestRetainedTick = oldestRetainedEpoch * epochSizeTicks;
+  
+  // Estimate snapshots in retention window
+  const ticksInWindow = currentTick - oldestRetainedTick;
+  const retainedSnapshotCount = Math.ceil(ticksInWindow / snapshotIntervalTicks);
+  
+  // Estimate storage: ~100KB per snapshot
+  const estimatedStorageKB = retainedSnapshotCount * 100;
 
   return {
-    prunedEvents,
-    stats: {
-      totalBeforePrune: allEvents.length,
-      totalAfterPrune: prunedEvents.length,
-      removed: allEvents.length - prunedEvents.length,
-      preservedRecencyBuffer: recencyBuffer,
-      preservedHistorySnapshots: historySnapshots.length,
-      oldestRetainedTick
-    }
+    oldestRetainedTick,
+    oldestRetainedEpoch,
+    retainedSnapshotCount,
+    estimatedStorageKB
   };
 }
 
 /**
- * Estimate memory usage of event log
+ * Prune old snapshots from snapshot storage backend
+ * Keeps last N epochs, deletes everything older
  */
-export function estimateEventLogSize(events: Event[]): number {
-  // Rough estimate: ~500 bytes per event average
-  return events.length * 500;
+export async function pruneSnapshots(
+  snapshotStorage: SnapshotStorageBackend,
+  currentTick: number,
+  worldInstanceId: string,
+  epochSizeTicks: number = 1440,
+  retentionEpochs: number = 5
+): Promise<PruningReport> {
+  const startMs = performance.now();
+  
+  const retention = calculateRetentionEpochs(
+    currentTick,
+    epochSizeTicks,
+    retentionEpochs
+  );
+
+  console.log(`[Phase 10.4] Pruning snapshots for world ${worldInstanceId}:`, {
+    currentTick,
+    currentEpoch: Math.floor(currentTick / epochSizeTicks),
+    oldestRetainedTick: retention.oldestRetainedTick,
+    oldestRetainedEpoch: retention.oldestRetainedEpoch,
+    retainedSnapshotCount: retention.retainedSnapshotCount
+  });
+
+  // Delete snapshots older than retention window
+  let snapshotsDeleted = 0;
+  let snapshotBytesFreed = 0;
+
+  try {
+    await snapshotStorage.deleteOlderThan(worldInstanceId, retention.oldestRetainedTick);
+    // Estimate bytes freed: assume average 100KB per snapshot, estimate full epoch of deleted snapshots
+    const deletedSnapshotCount = Math.floor(retention.oldestRetainedTick / 100);
+    snapshotsDeleted = Math.max(0, deletedSnapshotCount - retention.retainedSnapshotCount);
+    snapshotBytesFreed = snapshotsDeleted * 102400; // 100KB average
+  } catch (error) {
+    console.error('[Phase 10.4] Error during snapshot pruning:', error);
+  }
+
+  const executionTimeMs = Math.round(performance.now() - startMs);
+
+  const report: PruningReport = {
+    eventsDeleted: 0, // Events are pruned separately
+    eventsBytesFreed: 0,
+    snapshotsDeleted,
+    snapshotBytesFreed,
+    eventsRetained: 0, // Will be updated by event pruning
+    snapshotsRetained: retention.retainedSnapshotCount,
+    prunedAt: Date.now(),
+    executionTimeMs
+  };
+
+  return report;
 }
 
 /**
- * Get pruning recommendation
+ * Main pruning entry point: coordinate event and snapshot pruning
+ * 
+ * Strategy:
+ * 1. Delete snapshots older than retention window (Phase 10.4a)
+ * 2. Keep all events (they're cheap to store once snapshots exist)
+ * 3. Keep at least 1 event per snapshot for linking (Phase 10.4b)
+ * 4. Log pruning report for monitoring (Phase 10.4c)
  */
-export function getPruningRecommendation(
+export async function pruneEventLog(
   events: Event[],
-  currentTick: number
-): {
-  shouldPrune: boolean;
-  reason?: string;
-  estimatedSavings?: number;
-} {
-  const snapshots = events.filter(e => e.mutationClass === 'SNAPSHOT' || e.type === 'SNAPSHOT');
-  
-  if (snapshots.length < 50) {
-    return {
-      shouldPrune: false,
-      reason: 'Snapshot count below threshold'
-    };
-  }
+  snapshotStorage: SnapshotStorageBackend,
+  currentTick: number,
+  worldInstanceId: string,
+  options: {
+    epochSizeTicks?: number;
+    retentionEpochs?: number;
+    snapshotIntervalTicks?: number;
+    maxEventsPerSnapshot?: number;
+  } = {}
+): Promise<PruningReport> {
+  const startMs = performance.now();
+  const {
+    epochSizeTicks = 1440,
+    retentionEpochs = 5,
+    snapshotIntervalTicks = 100,
+    maxEventsPerSnapshot = 10
+  } = options;
 
-  const currentSize = estimateEventLogSize(events);
-  const { prunedEvents } = pruneSnapshotEvents(events, currentTick);
-  const prunedSize = estimateEventLogSize(prunedEvents);
-  const savings = currentSize - prunedSize;
+  // Phase 10.4a: Prune old snapshots
+  const snapshotReport = await pruneSnapshots(
+    snapshotStorage,
+    currentTick,
+    worldInstanceId,
+    epochSizeTicks,
+    retentionEpochs
+  );
+
+  // Phase 10.4b: Extract snapshot events and identify linked events
+  const snapshotEvents = events.filter(
+    e => e.type === 'SNAPSHOT_SAVED' || e.mutationClass === 'SNAPSHOT'
+  );
+
+  // Calculate retention threshold
+  const retention = calculateRetentionEpochs(
+    currentTick,
+    epochSizeTicks,
+    retentionEpochs,
+    snapshotIntervalTicks
+  );
+
+  // Identify events to keep:
+  // - All events after oldestRetainedTick (within snapshot retention window)
+  // - Up to maxEventsPerSnapshot before oldest retained snapshot (history context)
+  const eventsCutoffTick = Math.max(
+    0,
+    retention.oldestRetainedTick - (maxEventsPerSnapshot * snapshotIntervalTicks)
+  );
+
+  const prunedEvents = events.filter(event => {
+    // Always keep snapshot events in retention window
+    if (event.type === 'SNAPSHOT_SAVED' || event.mutationClass === 'SNAPSHOT') {
+      const eventTick = event.payload?.tick || 0;
+      return eventTick >= retention.oldestRetainedTick;
+    }
+    // Keep regular events in extended window (retention + context)
+    const eventTick = event.payload?.tick || 0;
+    return eventTick >= eventsCutoffTick;
+  });
+
+  const eventsDeleted = events.length - prunedEvents.length;
+
+  // Phase 10.4c: Compile comprehensive pruning report
+  const executionTimeMs = Math.round(performance.now() - startMs);
+  const report: PruningReport = {
+    eventsDeleted,
+    eventsBytesFreed: eventsDeleted * 500, // ~500 bytes average per event
+    snapshotsDeleted: snapshotReport.snapshotsDeleted,
+    snapshotBytesFreed: snapshotReport.snapshotBytesFreed,
+    eventsRetained: prunedEvents.length,
+    snapshotsRetained: retention.retainedSnapshotCount,
+    prunedAt: Date.now(),
+    executionTimeMs
+  };
+
+  // Log comprehensive pruning statistics
+  console.log('[Phase 10.4] Pruning complete:', formatPruningReport(report));
+
+  return report;
+}
+
+/**
+ * Format pruning report for logging and monitoring
+ */
+export function formatPruningReport(report: PruningReport): {
+  summary: string;
+  details: Record<string, unknown>;
+} {
+  const totalBytesFreed = report.eventsBytesFreed + report.snapshotBytesFreed;
+  const totalDeleted = report.eventsDeleted + report.snapshotsDeleted;
 
   return {
-    shouldPrune: savings > 50000, // Prune if > 50 KB savings
-    reason: `${snapshots.length} snapshots, ${(currentSize / 1024).toFixed(1)} KB total`,
-    estimatedSavings: savings
+    summary: `Pruned ${totalDeleted} items, freed ${(totalBytesFreed / 1024 / 1024).toFixed(2)} MB in ${report.executionTimeMs}ms`,
+    details: {
+      eventsDeleted: report.eventsDeleted,
+      eventsBytesFreed: `${(report.eventsBytesFreed / 1024).toFixed(2)} KB`,
+      snapshotsDeleted: report.snapshotsDeleted,
+      snapshotBytesFreed: `${(report.snapshotBytesFreed / 1024).toFixed(2)} KB`,
+      eventsRetained: report.eventsRetained,
+      snapshotsRetained: report.snapshotsRetained,
+      executionTimeMs: report.executionTimeMs,
+      totalBytesFreed: `${(totalBytesFreed / 1024 / 1024).toFixed(2)} MB`
+    }
   };
 }

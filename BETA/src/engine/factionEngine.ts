@@ -8,7 +8,7 @@
  */
 
 import { WorldState } from './worldEngine';
-import { random } from './prng';
+import { getGlobalRng, random } from './prng';
 
 export type FactionCategory = 
   | 'political' 
@@ -45,6 +45,12 @@ export interface Faction {
   };
   // M51-A1: Faction Strategic Command
   playerStrategy?: 'CONQUEST' | 'ESPIONAGE' | 'ISOLATIONISM'; // Player-commanded strategy
+  // Phase 16: Forbidden Items - Items this faction prohibits or confiscates at premium tax
+  forbiddenItems?: Array<{
+    itemId: string;
+    priceMultiplier?: number; // Default 3.0 for confiscation premium (300%)
+    disposition?: string; // e.g., 'confiscate', 'seize', 'embargo'
+  }>;
 }
 
 export interface FactionRelationship {
@@ -476,13 +482,19 @@ export function resolveFactionTurns(
       );
 
       events.push({
+        id: `faction-power-shift-${faction.id}-${Date.now()}`,
+        worldInstanceId: state.id || 'world-default',
+        actorId: 'system',
         type: 'FACTION_POWER_SHIFT',
-        factionId: faction.id,
-        factionName: faction.name,
-        reason: `territorial-control (${territoryCount} locations)`,
-        powerBefore: oldPower,
-        powerAfter: newPower,
-        delta: newPower - oldPower
+        payload: {
+          factionId: faction.id,
+          factionName: faction.name,
+          reason: `territorial-control (${territoryCount} locations)`,
+          powerBefore: oldPower,
+          powerAfter: newPower,
+          delta: newPower - oldPower
+        },
+        timestamp: Date.now()
       });
     }
 
@@ -497,13 +509,19 @@ export function resolveFactionTurns(
 
       if (newPower < oldPower) {
         events.push({
+          id: `faction-power-shift-attrition-${faction.id}-${Date.now()}`,
+          worldInstanceId: state.id || 'world-default',
+          actorId: 'system',
           type: 'FACTION_POWER_SHIFT',
-          factionId: faction.id,
-          factionName: faction.name,
-          reason: 'no-territory-attrition',
-          powerBefore: oldPower,
-          powerAfter: newPower,
-          delta: newPower - oldPower
+          payload: {
+            factionId: faction.id,
+            factionName: faction.name,
+            reason: 'no-territory-attrition',
+            powerBefore: oldPower,
+            powerAfter: newPower,
+            delta: newPower - oldPower
+          },
+          timestamp: Date.now()
         });
       }
     }
@@ -538,13 +556,19 @@ export function resolveFactionTurns(
 
     if (newWeight !== rel.weight) {
       events.push({
+        id: `faction-relationship-${rel.factionAId}-${rel.factionBId}-${Date.now()}`,
+        worldInstanceId: state.id || 'world-default',
+        actorId: 'system',
         type: 'FACTION_RELATIONSHIP_CHANGED',
-        factionA: rel.factionAId,
-        factionB: rel.factionBId,
-        relationshipType: rel.type,
-        weightBefore: rel.weight,
-        weightAfter: newWeight,
-        reason: 'time-decay'
+        payload: {
+          factionA: rel.factionAId,
+          factionB: rel.factionBId,
+          relationshipType: rel.type,
+          weightBefore: rel.weight,
+          weightAfter: newWeight,
+          reason: 'time-decay'
+        },
+        timestamp: Date.now()
       });
     }
 
@@ -577,12 +601,18 @@ export function resolveFactionTurns(
       updatedConflicts.push(newConflict);
 
       events.push({
+        id: `faction-conflict-${newConflict.id}-${Date.now()}`,
+        worldInstanceId: state.id || 'world-default',
+        actorId: 'system',
         type: 'FACTION_CONFLICT_STARTED',
-        conflictId: newConflict.id,
-        factionA: factionA.name,
-        factionB: factionB.name,
-        conflictType: newConflict.type,
-        message: `${factionA.name} and ${factionB.name} are now in ${newConflict.type} conflict!`
+        payload: {
+          conflictId: newConflict.id,
+          factionA: factionA.name,
+          factionB: factionB.name,
+          conflictType: newConflict.type,
+          message: `${factionA.name} and ${factionB.name} are now in ${newConflict.type} conflict!`
+        },
+        timestamp: Date.now()
       });
     }
   }
@@ -612,11 +642,17 @@ export function resolveFactionTurns(
         updatedFactions = resolveFactionConflict(updatedFactions, conflict, winnerId, loserId);
 
         events.push({
+          id: `faction-conflict-resolved-${conflict.id}-${Date.now()}`,
+          worldInstanceId: state.id || 'world-default',
+          actorId: 'system',
           type: 'FACTION_CONFLICT_RESOLVED',
-          conflictId: conflict.id,
-          winner: updatedFactions.find(f => f.id === winnerId)?.name,
-          loser: updatedFactions.find(f => f.id === loserId)?.name,
-          conflictType: conflict.type
+          payload: {
+            conflictId: conflict.id,
+            winner: updatedFactions.find(f => f.id === winnerId)?.name,
+            loser: updatedFactions.find(f => f.id === loserId)?.name,
+            conflictType: conflict.type
+          },
+          timestamp: Date.now()
         });
       }
 
@@ -785,7 +821,7 @@ export function expireLocationScars(state: WorldState): void {
  * Returns updated faction list with historical lineage preserved
  */
 export function evolveFactionGeneology(factions: Faction[], ancestralLines: Map<string, string[]>): Faction[] {
-  const rng = random();
+  const rng = getGlobalRng();
   const evolved: Faction[] = [];
   
   for (const faction of factions) {
@@ -793,7 +829,7 @@ export function evolveFactionGeneology(factions: Faction[], ancestralLines: Map<
     const baseStability = faction.powerScore / 100;
     
     // Small chance of split (2-5% per 2000 years)
-    if (rng() < 0.03 && baseStability > 0.5) {
+    if (rng.next() < 0.03 && baseStability > 0.5) {
       const splitFaction: Faction = {
         ...faction,
         id: `${faction.id}_split_${Date.now()}`,
@@ -831,7 +867,7 @@ export function evolveFactionGeneology(factions: Faction[], ancestralLines: Map<
 export function redistributeExtinctTerritories(state: WorldState): void {
   if (!state.factions) return;
   
-  const rng = random();
+  const rng = getGlobalRng();
   const extinctFactions = state.factions.filter(f => f.powerScore <= 5);
   const aliveFactions = state.factions.filter(f => f.powerScore > 5);
   
@@ -839,7 +875,7 @@ export function redistributeExtinctTerritories(state: WorldState): void {
     for (const locationId of extinct.controlledLocationIds) {
       // Find nearest faction to inherit territory
       if (aliveFactions.length > 0) {
-        const inheritor = aliveFactions[Math.floor(rng() * aliveFactions.length)];
+        const inheritor = aliveFactions[Math.floor(rng.next() * aliveFactions.length)];
         if (!inheritor.controlledLocationIds.includes(locationId)) {
           inheritor.controlledLocationIds.push(locationId);
           inheritor.powerScore = Math.min(95, inheritor.powerScore + 2);

@@ -67,56 +67,54 @@
 
 ---
 
-## 3. Comprehensive File Index
+## 3. Comprehensive File Index (AI-Optimized)
 
-### 3.1 Core Design Specifications (`plans/design/`)
+### 3.1 Core Design Specifications (`plans/01_CORE_DESIGN/`)
+> **AI Usage:** Load these to understand world rules, mechanics, and lore.
 | # | File | Internal Layer | One-Line Summary |
 |---|---|---|---|
-| 01 | [`01_META_AUTHORITY.md`](design/01_META_AUTHORITY.md) | I.1 | Reality layers, authority hierarchy, canon types |
-| 02 | [`02_COSMOLOGY_METAPHYSICS.md`](design/02_COSMOLOGY_METAPHYSICS.md) | I.2–3 | Chaos Realm, Lux-Ar, time, souls, death |
-| 03 | [`03_RACES_SPECIES_BIOLOGY.md`](design/03_RACES_SPECIES_BIOLOGY.md) | IV | Elfin, Beastkin, morphing, biology |
-| 04 | [`04_MAGIC_SYSTEMS.md`](design/04_MAGIC_SYSTEMS.md) | VII.22 | 5 disciplines, costs, spell learning |
-| 05 | [`05_COMBAT_SYSTEMS.md`](design/05_COMBAT_SYSTEMS.md) | VII.20–21 | Weapons, styles, resolution flow, health |
-| 06 | [`06_BELIEF_LAYER_WTOL.md`](design/06_BELIEF_LAYER_WTOL.md) | VI | Belief attributes, obfuscation (WTOL) |
-| 07 | [`07_FACTIONS_POLITICS.md`](design/07_FACTIONS_POLITICS.md) | II.6 | Faction taxonomy, attributes, power graphs |
-| 08 | [`08_RELICS_ARTIFACTS.md`](design/08_RELICS_ARTIFACTS.md) | VIII | Relics of Virtue, Weapons of Sin, crafting |
-| 09 | [`09_HISTORICAL_TIMELINE.md`](design/09_HISTORICAL_TIMELINE.md) | III | Major eras, canonical events, timeline DB |
-| 10 | [`10_PLAYABLE_CHARACTERS_MORPHING.md`](design/10_PLAYABLE_CHARACTERS_MORPHING.md) | V.14, IV.11 | Attributes, morphing, character creation |
-| 11 | [`11_PLAYER_PROGRESSION_LEVELING.md`](design/11_PLAYER_PROGRESSION_LEVELING.md) | X.29 | XP table, skill trees, level-up flow |
-| 12 | [`12_QUEST_SYSTEM.md`](design/12_QUEST_SYSTEM.md) | X.28 | Quest types, Tracking, generation |
-| 13 | [`13_INVENTORY_CRAFTING.md`](design/13_INVENTORY_CRAFTING.md) | VIII.24 | Inventory UI, items, crafting, resources |
-| 14 | [`14_NPC_SYSTEM.md`](design/14_NPC_SYSTEM.md) | V.15–16 | NPC types, DM Synthesis, patrol |
-| 15 | [`15_RANDOM_ENCOUNTERS_EXPLORATION.md`](design/15_RANDOM_ENCOUNTERS_EXPLORATION.md) | IX | Encounter weighting, rare entities |
-| 16 | [`16_FACTION_POWER_DYNAMICS.md`](design/16_FACTION_POWER_DYNAMICS.md) | IX.26–27 | Influence metrics, emergent politics |
-| 17 | [`17_SESSION_CONTINUITY.md`](design/17_SESSION_CONTINUITY.md) | XII.35 | Persistence, tracked components, rollback |
-| 18 | [`18_ANTI_METAGAMING.md`](design/18_ANTI_METAGAMING.md) | XI.33 | Knowledge rules, DM enforcement |
-| 19 | [`19_ENDGAME_REPLAYABILITY.md`](design/19_ENDGAME_REPLAYABILITY.md) | X.30 | Triggers, conclusions, legacy, seeds |
-| 20 | [`20_ALPHA_DATA_SCHEMA.md`](design/20_ALPHA_DATA_SCHEMA.md) | XII.34 | DB schema, operational flow, AI DM rules |
-| 21 | [`21_SEED_WORLD_COSMOLOGY.md`](design/21_SEED_WORLD_COSMOLOGY.md) | SQL Seed | World core, cosmic realms, entities |
-| 22 | [`22_SEED_GEOGRAPHY_BIOMES.md`](design/22_SEED_GEOGRAPHY_BIOMES.md) | SQL Seed | Continents, city sub-areas, biomes |
-| 23 | [`23_SEED_RACES_MAGIC_COMBAT.md`](design/23_SEED_RACES_MAGIC_COMBAT.md) | SQL Seed | Race stats, morphing, spells, weapons |
-| 24 | [`24_SEED_NPC_PANTHEON.md`](design/24_SEED_NPC_PANTHEON.md) | SQL Seed | 24 Celestin deities, canon heroes |
-| 25 | [`25_SEED_NPC_CLERGY_LEADERS.md`](design/25_SEED_NPC_CLERGY_LEADERS.md) | SQL Seed | Clergy, heretical leaders, monarchs |
-| 26 | [`26_SEED_LOCATIONS_SUBAREAS.md`](design/26_SEED_LOCATIONS_SUBAREAS.md) | SQL Seed | 34 locations, parent references |
-| 27 | [`27_SEED_GAMEPLAY_SYSTEMS.md`](design/27_SEED_GAMEPLAY_SYSTEMS.md) | SQL Seed | Belief, Quest, Encounter, Inventory seeds |
-| 28 | [`28_CHRONO_ACTION_PIPELINE.md`](design/28_CHRONO_ACTION_PIPELINE.md) | XI.32 | Action-driven time model, tick costs |
+| 01 | [`01_META_AUTHORITY.md`](01_CORE_DESIGN/01_META_AUTHORITY.md) | I.1 | Reality layers, authority hierarchy, canon types |
+| 02 | [`02_COSMOLOGY_METAPHYSICS.md`](01_CORE_DESIGN/02_COSMOLOGY_METAPHYSICS.md) | I.2–3 | Chaos Realm, Lux-Ar, time, souls, death |
+| 03 | [`03_RACES_SPECIES_BIOLOGY.md`](01_CORE_DESIGN/03_RACES_SPECIES_BIOLOGY.md) | IV | Elfin, Beastkin, morphing, biology |
+| 04 | [`04_MAGIC_SYSTEMS.md`](01_CORE_DESIGN/04_MAGIC_SYSTEMS.md) | VII.22 | 5 disciplines, costs, spell learning |
+| 05 | [`05_COMBAT_SYSTEMS.md`](01_CORE_DESIGN/05_COMBAT_SYSTEMS.md) | VII.20–21 | Weapons, styles, resolution flow, health |
+| 06 | [`06_BELIEF_LAYER_WTOL.md`](01_CORE_DESIGN/06_BELIEF_LAYER_WTOL.md) | VI | Belief attributes, obfuscation (WTOL) |
+| 07 | [`07_FACTIONS_POLITICS.md`](01_CORE_DESIGN/07_FACTIONS_POLITICS.md) | II.6 | Faction taxonomy, attributes, power graphs |
+| 08 | [`08_RELICS_ARTIFACTS.md`](01_CORE_DESIGN/08_RELICS_ARTIFACTS.md) | VIII | Relics of Virtue, Weapons of Sin, crafting |
+| 09 | [`09_HISTORICAL_TIMELINE.md`](01_CORE_DESIGN/09_HISTORICAL_TIMELINE.md) | III | Major eras, canonical events, timeline DB |
+| 10 | [`10_PLAYABLE_CHARACTERS_MORPHING.md`](01_CORE_DESIGN/10_PLAYABLE_CHARACTERS_MORPHING.md) | V.14, IV.11 | Attributes, morphing, character creation |
+| 11 | [`11_PLAYER_PROGRESSION_LEVELING.md`](01_CORE_DESIGN/11_PLAYER_PROGRESSION_LEVELING.md) | X.29 | XP table, skill trees, level-up flow |
+| 12 | [`12_QUEST_SYSTEM.md`](01_CORE_DESIGN/12_QUEST_SYSTEM.md) | X.28 | Quest types, Tracking, generation |
+| 13 | [`13_INVENTORY_CRAFTING.md`](01_CORE_DESIGN/13_INVENTORY_CRAFTING.md) | VIII.24 | Inventory UI, items, crafting, resources |
+| 14 | [`14_NPC_SYSTEM.md`](01_CORE_DESIGN/14_NPC_SYSTEM.md) | V.15–16 | NPC types, DM Synthesis, patrol |
+| 15 | [`15_RANDOM_ENCOUNTERS_EXPLORATION.md`](01_CORE_DESIGN/15_RANDOM_ENCOUNTERS_EXPLORATION.md) | IX | Encounter weighting, rare entities |
+| 16 | [`16_FACTION_POWER_DYNAMICS.md`](01_CORE_DESIGN/16_FACTION_POWER_DYNAMICS.md) | IX.26–27 | Influence metrics, emergent politics |
+| 17 | [`17_SESSION_CONTINUITY.md`](01_CORE_DESIGN/17_SESSION_CONTINUITY.md) | XII.35 | Persistence, tracked components, rollback |
+| 18 | [`18_ANTI_METAGAMING.md`](01_CORE_DESIGN/18_ANTI_METAGAMING.md) | XI.33 | Knowledge rules, DM enforcement |
+| 19 | [`19_ENDGAME_REPLAYABILITY.md`](01_CORE_DESIGN/19_ENDGAME_REPLAYABILITY.md) | X.30 | Triggers, conclusions, legacy, seeds |
+| 20 | [`20_ALPHA_DATA_SCHEMA.md`](01_CORE_DESIGN/20_ALPHA_DATA_SCHEMA.md) | XII.34 | DB schema, operational flow, AI DM rules |
+| 28 | [`28_CHRONO_ACTION_PIPELINE.md`](01_CORE_DESIGN/28_CHRONO_ACTION_PIPELINE.md) | XI.32 | Action-driven time model, tick costs |
 
-### 3.2 Milestones & Roadmaps (`plans/milestones/`)
-| Milestone | File | One-Line Summary |
-|---|---|---|
-| **M28** | [`28_ROADMAP.md`](milestones/28_ROADMAP.md) | Strategic roadmap and phase gates |
-| **M42** | [`M42_INDEX.md`](milestones/M42_INDEX.md) | Current Sprint Index (Social Scaling) |
-| **M42** | [`42_ROADMAP.md`](milestones/42_ROADMAP.md) | M42 Strategic Overview |
-| **M42** | [`M42_TASK_LIST.md`](milestones/M42_TASK_LIST.md) | Sprint tasks and subtasks |
-| **M42** | [`M42_QUICK_START.md`](milestones/M42_QUICK_START.md) | 15-min developer guide |
-| **M54** | [`54_RESTORATION_MEMORY.md`](milestones/54_RESTORATION_MEMORY.md) | Restoration & Living Memory (AI) - COMPLETED |
-| **M55** | [`55_PROSPERITY_WHISPERS.md`](milestones/55_PROSPERITY_WHISPERS.md) | Scalable AI & Social Autonomy - ACTIVE |
+### 3.2 Technical & Implementation Specs (`plans/02_TECHNICAL_SPEC/`)
+> **AI Usage:** Load these to understand how specific features were coded.
+- [Combat Arena](02_TECHNICAL_SPEC/COMBAT_ARENA_IMPLEMENTATION.md)
+- [Audio Resilience](02_TECHNICAL_SPEC/AUDIO_RESILIENCE_IMPLEMENTATION.md)
+- [Milestone 28 Guide](02_TECHNICAL_SPEC/MILESTONE_28_DEVELOPER_GUIDE.md)
 
-### 3.3 Implementation History (`plans/implementation/`)
-- Includes technical logs for Combat, Audio, and specific Milestone summaries.
-- See the [Implementation Folder](implementation/) for full details.
+### 3.3 Historical Logs & Milestones (`plans/03_HISTORY_LOGS/`)
+> **AI Usage:** Reference for project history, past decisions, and completed tasks.
+- [Roadmap (Current)](03_HISTORY_LOGS/28_ROADMAP.md)
+- [M55 Summary](03_HISTORY_LOGS/55_PROSPERITY_WHISPERS.md)
+- [M54 Summary](03_HISTORY_LOGS/54_RESTORATION_MEMORY.md)
+- [Phase 30 Complete](03_HISTORY_LOGS/PHASE_30_COMPLETE.md)
 
-### 3.4 External Guides (`plans/guides/`)
+### 3.4 Beta Readiness & AI Testing (`plans/04_BETA_READINESS/`)
+> **AI Usage:** Critical for current Beta phase (M55+).
+- [Beta Readiness Roadmap](04_BETA_READINESS/BETA_READINESS_ROADMAP.md)
+- [AI Weaver Beta Testing](04_BETA_READINESS/AI_WEAVER_BETA_TESTING.md)
+- [Beta Graduation Report](04_BETA_READINESS/BETA_GRADUATION_REPORT.md)
+
+### 3.5 External Guides (`plans/guides/`)
 - [`WORLD_TEMPLATE_AUTHORS_GUIDE.md`](guides/WORLD_TEMPLATE_AUTHORS_GUIDE.md)
 - [`UI_UX_DESCRIPTION.md`](guides/UI_UX_DESCRIPTION.md)
 
@@ -147,6 +145,8 @@ Layer 17 (Session Continuity) ← reads from all
 Layer 19 (Endgame & Replayability) ← reads from all
 Layer 20 (Alpha Data Schema) ← consolidates all into DB
 Layers 21–27 (SQL Seeds) ← implements Layer 20 schema
+
+AI Weaver Beta Testing (New) ← `plans/AI_WEAVER_BETA_TESTING.md`
 ```
 
 ---

@@ -75,10 +75,10 @@ export function calculateBuyPrice(
 
   // Phase 11: Apply embargo modifier based on faction relationships
   const embargoData = applyEmbargoToPrice(
-    vendorLocation,
+    price,
     state.player?.location || vendorLocation,
-    state.factions || [],
-    state.factionRelationships || [],
+    vendorLocation,
+    state,
     state.player?.factionReputation || {}
   );
   if (embargoData.isEmbargoed) {
@@ -128,10 +128,10 @@ export function calculateSellPrice(
 
   // Phase 11: Apply embargo modifier based on faction relationships
   const embargoData = applyEmbargoToPrice(
-    vendorLocation,
+    price,
     playerLocation,
-    state.factions || [],
-    state.factionRelationships || [],
+    vendorLocation,
+    state,
     state.player?.factionReputation || {}
   );
   if (embargoData.isEmbargoed) {
@@ -190,7 +190,7 @@ export function calculateScarcityModifier(
     const inventory = npc.inventory || [];
     const item = inventory.find((i: any) => i.itemId === itemId);
     if (item) {
-      totalQuantityAtLocation += item.quantity || 0;
+      totalQuantityAtLocation += (item as any).quantity || 0;
     }
   }
 
@@ -244,6 +244,44 @@ export function calculateScarcityModifier(
 }
 
 /**
+ * Get a basic price quote for an item
+ */
+export function getPriceQuote(
+  itemId: string,
+  vendorLocation: string,
+  playerLocation: string,
+  state: WorldState,
+  action: 'buy' | 'sell'
+): PriceQuote {
+  const marketValue = getMarketValue(itemId);
+  const basePrice = marketValue?.basePrice || 0;
+
+  const buyPrice = calculateBuyPrice(itemId, vendorLocation, state);
+  const sellPrice = calculateSellPrice(itemId, vendorLocation, playerLocation, state);
+
+  // Calculate modifiers for transparency
+  const distance = calculateLocationDistance(playerLocation, vendorLocation);
+  const distanceMod = 1.0 + distance * 0.001;
+
+  // For now, use default location modifier
+  const locMod = 1.0;
+
+  return {
+    itemId,
+    buyPrice,
+    sellPrice,
+    location: vendorLocation,
+    modifiers: {
+      location: locMod,
+      distance: distanceMod,
+      supply: marketValue?.supplyMultiplier || 1.0,
+      demand: marketValue?.demandMultiplier || 1.0,
+      seasonal: 1.0, // Placeholder for seasonal effects
+    },
+  };
+}
+
+/**
  * Get a price quote with scarcity-based dynamic pricing (Phase 6)
  * Now factors in regional supply when calculating trade values
  */
@@ -287,35 +325,6 @@ export function calculateTradeProfitWithScarcity(
   
   const profitPerUnit = targetSellPrice - sourceBuyPrice;
   return Math.round(profitPerUnit * quantity);
-}
-
-
-  const marketValue = getMarketValue(itemId);
-  const basePrice = marketValue?.basePrice || 0;
-
-  const buyPrice = calculateBuyPrice(itemId, vendorLocation, state);
-  const sellPrice = calculateSellPrice(itemId, vendorLocation, playerLocation, state);
-
-  // Calculate modifiers for transparency
-  const distance = calculateLocationDistance(playerLocation, vendorLocation);
-  const distanceMod = 1.0 + distance * 0.001;
-
-  const locationModifiers = (registryData as any).locationPriceModifiers;
-  const locMod = locationModifiers?.[vendorLocation]?.sellMultiplier ?? 1.0;
-
-  return {
-    itemId,
-    buyPrice,
-    sellPrice,
-    location: vendorLocation,
-    modifiers: {
-      location: locMod,
-      distance: distanceMod,
-      supply: marketValue?.supplyMultiplier || 1.0,
-      demand: marketValue?.demandMultiplier || 1.0,
-      seasonal: 1.0, // Placeholder for seasonal effects
-    },
-  };
 }
 
 /**
@@ -370,6 +379,222 @@ export function calculateTradeProfit(
   const sellPrice = calculateSellPrice(itemId, targetLocation, sourceLocation, state);
   const profitPerUnit = sellPrice - buyPrice;
   return profitPerUnit * quantity;
+}
+
+/**
+ * Phase 16: Calculate macro-economic modifier (global inflation + paradox scarcity)
+ * Applies inflation and paradox-based scarcity to all transactions
+ * 
+ * globalInflation: 0.05 = 5% price increase globally
+ * scarcityBias: 1.2 = 20% additional scarcity multiplier
+ * paradoxLevel: 0-100, maps to additional scarcity (0% at paradox=0, +100% at paradox=100)
+ */
+export function calculateMacroModifier(state: WorldState): number {
+  const economics = (state as any).economics || {};
+  const globalInflation = economics.globalInflation || 0;
+  const scarcityBias = economics.scarcityBias || 1.0;
+  
+  // Paradox-driven scarcity: at 100% paradox, adds 100% scarcity on top of scarcityBias
+  const paradoxLevel = (state as any).paradoxScale || 0;
+  const paradoxScarcity = (paradoxLevel / 100) * scarcityBias;
+  
+  // Total modifier: base inflation + scarcity bias + paradox scarcity
+  // Example: 0.05 (inflation) + 1.2 (scarcity) + 0.6 (paradox at 50%) = 1.85x multiplier
+  const totalModifier = 1.0 + globalInflation + scarcityBias + paradoxScarcity;
+  
+  return totalModifier;
+}
+
+/**
+ * Phase 16: Calculate taxation modifier for a location based on faction control
+ * 
+ * Returns tax rate applied to prices in hostile/controlled territory
+ * - Essential materials: 0% tax (subsidy/favor)
+ * - Regular items: baseTaxRate (e.g., 15%)
+ * - Forbidden items: 300% confiscation tax
+ */
+export function calculateTaxModifier(
+  itemId: string,
+  location: string,
+  state: WorldState
+): number {
+  // Find controlling faction for this location
+  const controllingFactionId = findLocationControllingFaction(location, state);
+  if (!controllingFactionId) {
+    return 1.0; // No faction control = no tax
+  }
+  
+  // Look up faction pricing rules from world state
+  const factionRules = (state as any).factionPricingRules?.[controllingFactionId];
+  if (!factionRules) {
+    return 1.0; // No pricing rules = no tax
+  }
+  
+  const baseTaxRate = factionRules.baseTaxRate || 0;
+  
+  // Check if item is forbidden by this faction
+  const forbiddenItems = (state.factions || [])
+    .find(f => f.id === controllingFactionId)
+    ?.forbiddenItems || [];
+  
+  const isForbidden = forbiddenItems.some(fi => fi.itemId === itemId);
+  if (isForbidden) {
+    // Confiscation tax: 300% markup (item.priceMultiplier or default 3.0)
+    const forbiddenItem = forbiddenItems.find(fi => fi.itemId === itemId);
+    return forbiddenItem?.priceMultiplier || 3.0;
+  }
+  
+  // Check if item is in faction's modifier list
+  const modifiers = factionRules.modifiers || {};
+  for (const [modKey, modData] of Object.entries(modifiers)) {
+    // Check if this modifier applies to this item
+    // For now, apply based on category matching (luxury, war, void, etc.)
+    const data = modData as any;
+    if (itemId.includes('void') && modKey.includes('void')) {
+      return data.baseModifier || 1.0;
+    }
+    if (itemId.includes('steel') && modKey.includes('iron')) {
+      return data.baseModifier || 0.8;
+    }
+  }
+  
+  // Default: apply base tax rate (1 + 0.15 = 1.15x for 15% tax)
+  return 1.0 + baseTaxRate;
+}
+
+/**
+ * Phase 16: Check if an item is "Essential" (has faction subsidy)
+ * Essential items get reduced taxes or free trades
+ */
+export function isEssentialMaterial(itemId: string, factionId: string, state: WorldState): boolean {
+  const essentialItems = ['copper-ore', 'starlight-iron', 'solar-steel-ingot'];
+  return essentialItems.includes(itemId);
+}
+
+/**
+ * Phase 16: Apply all economic modifiers to a base price
+ * Combines macro inflation, taxation, scarcity, and faction modifiers
+ */
+export function applyAllEconomicModifiers(
+  basePrice: number,
+  itemId: string,
+  location: string,
+  state: WorldState,
+  modifierContext?: {
+    isSelling?: boolean; // true if player is selling to vendor
+    quantity?: number;
+    distanceMultiplier?: number;
+  }
+): { finalPrice: number; breakdown: { base: number; inflation: number; tax: number; scarcity: number; distance: number } } {
+  let price = basePrice;
+  
+  // 1. Apply macro modifier (inflation + paradox scarcity)
+  const macroMod = calculateMacroModifier(state);
+  price *= macroMod;
+  
+  // 2. Apply taxation
+  const taxMod = calculateTaxModifier(itemId, location, state);
+  price *= taxMod;
+  
+  // 3. Apply scarcity-based dynamic pricing if available
+  const scarcityMod = calculateScarcityModifier(itemId, location, state);
+  price *= scarcityMod;
+  
+  // 4. Apply distance multiplier if provided
+  const distanceMult = modifierContext?.distanceMultiplier || 1.0;
+  price *= distanceMult;
+  
+  return {
+    finalPrice: Math.round(price),
+    breakdown: {
+      base: basePrice,
+      inflation: Math.round(basePrice * (macroMod - 1)),
+      tax: Math.round(basePrice * (taxMod - 1)),
+      scarcity: Math.round(basePrice * (scarcityMod - 1)),
+      distance: Math.round(basePrice * (distanceMult - 1))
+    }
+  };
+}
+
+/**
+ * Phase 16: Apply epoch-based item corruption to world state
+ * Transforms loot tables and item templates when epoch transitions
+ * 
+ * Example: Epoch II: Fracture transforms iron-scrap → corroded-relics (5x value)
+ */
+export function applyEpochCorruption(state: WorldState, fromEpoch: string, toEpoch: string): WorldState {
+  if (toEpoch !== 'epoch_ii_fracture') {
+    return state; // Only fracture epoch has corruption rules for now
+  }
+  
+  // Import getEpochCorruptedItem from merchantEngine
+  const { getEpochCorruptedItem } = require('./merchantEngine');
+  
+  // Transform itemTemplates
+  let updatedTemplates = (state.itemTemplates || []).map((template: any) => {
+    const corruption = getEpochCorruptedItem(template.id, toEpoch);
+    
+    if (corruption.corruptedId) {
+      // Create corrupted version with new ID and inflated value
+      return {
+        ...template,
+        id: corruption.corruptedId,
+        name: `${template.name} (Corrupted)`,
+        basePrice: (template as any).basePrice * corruption.valueMultiplier,
+        description: `${(template as any).description || ''} [Paradox Corrupted]`,
+        kind: 'unique' // Corrupted items become unique
+      };
+    }
+    
+    return template;
+  });
+  
+  // Add corrupted items to the list
+  const corruptionMap: Record<string, { corruptedId: string; multiplier: number }> = {
+    'iron-scrap': { corruptedId: 'corroded-relics', multiplier: 5.0 },
+    'copper-ore': { corruptedId: 'oxidized-fragments', multiplier: 3.0 },
+    'starlight-iron': { corruptedId: 'fractured-starlight', multiplier: 4.0 }
+  };
+  
+  Object.entries(corruptionMap).forEach(([original, { corruptedId, multiplier }]) => {
+    const originalTemplate = updatedTemplates.find((t: any) => t.id === original);
+    if (originalTemplate && !updatedTemplates.find((t: any) => t.id === corruptedId)) {
+      updatedTemplates.push({
+        id: corruptedId,
+        name: `${originalTemplate.name} (Fractured)`,
+        rarity: 'epic',
+        kind: 'unique',
+        basePrice: (originalTemplate as any).basePrice * multiplier,
+        description: 'Corrupted by the Fracture - extremely rare and unstable',
+      });
+    }
+  });
+  
+  // Update loot tables to include corrupted items
+  let updatedLootTables = (state.lootTables || []).map((table: any) => {
+    const corruptedDrops = (table.drops || []).map((drop: any) => {
+      const corruption = getEpochCorruptedItem(drop.itemId, toEpoch);
+      if (corruption.corruptedId) {
+        return {
+          ...drop,
+          itemId: corruption.corruptedId,
+          chance: drop.chance * 0.5 // Corrupted items are half as common
+        };
+      }
+      return drop;
+    });
+    
+    return {
+      ...table,
+      drops: corruptedDrops
+    };
+  });
+  
+  return {
+    ...state,
+    itemTemplates: updatedTemplates,
+    lootTables: updatedLootTables
+  };
 }
 /**
  * Phase 11: Calculate trade embargo price modifier
@@ -455,13 +680,15 @@ export function applyEmbargoToPrice(
   basePrice: number,
   buyerLocation: string,
   sellerLocation: string,
-  state: WorldState
-): { price: number; isEmbargoed: boolean; embargoReason?: string } {
-  const embargo = calculateEmbargoModifier(buyerLocation, sellerLocation, state);
+  state: WorldState,
+  playerFactionReputation?: Record<string, number>
+): { price: number; isEmbargoed: boolean; modifier: number; embargoReason?: string } {
+  const embargo = calculateEmbargoModifier(buyerLocation, sellerLocation, state, playerFactionReputation);
   
   return {
     price: Math.round(basePrice * embargo.modifier),
     isEmbargoed: embargo.isEmbargoed,
+    modifier: embargo.modifier,
     embargoReason: embargo.reason
   };
 }

@@ -1,0 +1,478 @@
+/**
+ * narrativeCodecs.css - Phase 30 Task 9: CSS Variables & Narrative Codec Styles
+ * 
+ * Defines CSS custom properties for all three narrative codecs.
+ * These variables are injected into :root by themeManager.ts
+ * and consumed throughout the application.
+ * 
+ * The cascade works as follows:
+ * 1. themeManager.setCodec() injects variables into :root
+ * 2. All components reference these variables in their inline styles or CSS
+ * 3. Switching codecs instantly updates all UI without page reload
+ * 4. Paradox glitch effects temporarily override specific variables
+ */
+
+/* ===================================================================
+   DEFAULT VARIABLES (Fallback to CODENAME_GLITCH)
+   === */
+
+:root {
+  /* Colors - Default to GLITCH codec */
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #1a0a2e;
+  --bg-tertiary: #260a4e;
+  --border-accent: #ff00c4;
+  --border-secondary: #00ffc8;
+  --text-primary: #e8d7c3;
+  --text-secondary: #00ffc8;
+  --accent-main: #ff00c4;
+  --accent-alt: #00ffff;
+  --glitch-color: #ff0080;
+  --warning-color: #ff00c4;
+
+  /* Typography */
+  --font-family-body: 'Share Tech Mono', monospace;
+  --font-family-heading: 'Share Tech Mono', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+  --font-weight-normal: 400;
+  --font-weight-bold: 500;
+  --font-weight-heavy: 600;
+
+  /* Shadows */
+  --shadow-sm: 0 0 10px rgba(255, 0, 196, 0.3);
+  --shadow-md: 0 0 20px rgba(0, 255, 200, 0.4);
+  --shadow-lg: 0 0 40px rgba(255, 0, 196, 0.5);
+
+  /* Animations */
+  --transition-speed: 0.2s;
+  --pulse-speed: 1.5s;
+
+  /* Legacy color variables (for gradual migration) */
+  --color-void: #0a0a1a;
+  --color-void-purple: #1a0a2e;
+  --color-magenta: #ff00c4;
+  --color-cyan: #00ffc8;
+  --color-parchment: #e8d7c3;
+  --color-error: #ff4444;
+  --color-warning: #ff9944;
+  --color-success: #44ff44;
+}
+
+/* ===================================================================
+   CODEC-SPECIFIC CLASSES (Optional - for direct codec targeting)
+   === */
+
+/* Medieval Codec Styles */
+.codec-medieval {
+  --bg-primary: #2a2416;
+  --bg-secondary: #3a3426;
+  --bg-tertiary: #4a4436;
+  --border-accent: #d4af37;
+  --border-secondary: #8b4513;
+  --text-primary: #e8d7c3;
+  --text-secondary: #c9b596;
+  --accent-main: #b8341d;
+  --accent-alt: #d4af37;
+  --glitch-color: #ff4444;
+  --warning-color: #ff9944;
+
+  --font-family-body: 'Georgia', serif;
+  --font-family-heading: 'Cinzel', serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 24px;
+  --font-weight-normal: 400;
+  --font-weight-bold: 600;
+  --font-weight-heavy: 700;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.8);
+
+  --transition-speed: 0.4s;
+  --pulse-speed: 3s;
+}
+
+/* Glitch Codec Styles (Default) */
+.codec-glitch {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #1a0a2e;
+  --bg-tertiary: #260a4e;
+  --border-accent: #ff00c4;
+  --border-secondary: #00ffc8;
+  --text-primary: #e8d7c3;
+  --text-secondary: #00ffc8;
+  --accent-main: #ff00c4;
+  --accent-alt: #00ffff;
+  --glitch-color: #ff0080;
+  --warning-color: #ff00c4;
+
+  --font-family-body: 'Share Tech Mono', monospace;
+  --font-family-heading: 'Share Tech Mono', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+  --font-weight-normal: 400;
+  --font-weight-bold: 500;
+  --font-weight-heavy: 600;
+
+  --shadow-sm: 0 0 10px rgba(255, 0, 196, 0.3);
+  --shadow-md: 0 0 20px rgba(0, 255, 200, 0.4);
+  --shadow-lg: 0 0 40px rgba(255, 0, 196, 0.5);
+
+  --transition-speed: 0.2s;
+  --pulse-speed: 1.5s;
+}
+
+/* Minimal Codec Styles */
+.codec-minimal {
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ececec;
+  --bg-tertiary: #e0e0e0;
+  --border-accent: #2c3e50;
+  --border-secondary: #95a5a6;
+  --text-primary: #2c3e50;
+  --text-secondary: #7f8c8d;
+  --accent-main: #3498db;
+  --accent-alt: #2ecc71;
+  --glitch-color: #e74c3c;
+  --warning-color: #f39c12;
+
+  --font-family-body: 'Inter', '-apple-system', 'Segoe UI', sans-serif;
+  --font-family-heading: 'Inter', '-apple-system', 'Segoe UI', sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-weight-normal: 400;
+  --font-weight-bold: 500;
+  --font-weight-heavy: 600;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.2);
+
+  --transition-speed: 0.3s;
+  --pulse-speed: 2.5s;
+}
+
+/* ===================================================================
+   PARADOX GLITCH OVERRIDES (High Paradox Levels)
+   === */
+
+/**
+ * When paradoxLevel > 60%, the world destabilizes the visual codec
+ * Colors flicker and shift, text becomes harder to read, shadows glow
+ */
+.paradox-glitch-heavy {
+  animation: paradox-color-flicker 0.15s infinite;
+}
+
+@keyframes paradox-color-flicker {
+  0% {
+    --border-accent: #ff00c4;
+  }
+  33% {
+    --border-accent: #00ffff;
+  }
+  66% {
+    --border-accent: #ff0080;
+  }
+  100% {
+    --border-accent: #ff00c4;
+  }
+}
+
+/**
+ * When paradoxLevel > 30%, subtle destabilization effect
+ */
+.paradox-glitch-mild {
+  animation: paradox-opacity-flicker 0.4s infinite;
+}
+
+@keyframes paradox-opacity-flicker {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* ===================================================================
+   UTILITY CLASSES (Use with var() in components)
+   === */
+
+/**
+ * Text utility classes
+ */
+.text-primary {
+  color: var(--text-primary);
+  font-family: var(--font-family-body);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+  font-family: var(--font-family-body);
+}
+
+.text-heading {
+  color: var(--text-primary);
+  font-family: var(--font-family-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.text-xs {
+  font-size: var(--font-size-xs);
+}
+
+.text-sm {
+  font-size: var(--font-size-sm);
+}
+
+.text-base {
+  font-size: var(--font-size-base);
+}
+
+.text-lg {
+  font-size: var(--font-size-lg);
+}
+
+.text-xl {
+  font-size: var(--font-size-xl);
+}
+
+/**
+ * Background utility classes
+ */
+.bg-primary {
+  background-color: var(--bg-primary);
+  transition: background-color var(--transition-speed) ease;
+}
+
+.bg-secondary {
+  background-color: var(--bg-secondary);
+  transition: background-color var(--transition-speed) ease;
+}
+
+.bg-tertiary {
+  background-color: var(--bg-tertiary);
+  transition: background-color var(--transition-speed) ease;
+}
+
+/**
+ * Border utility classes
+ */
+.border-accent {
+  border-color: var(--border-accent);
+  transition: border-color var(--transition-speed) ease;
+}
+
+.border-secondary {
+  border-color: var(--border-secondary);
+  transition: border-color var(--transition-speed) ease;
+}
+
+/**
+ * Shadow utility classes
+ */
+.shadow-sm {
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-speed) ease;
+}
+
+.shadow-md {
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--transition-speed) ease;
+}
+
+.shadow-lg {
+  box-shadow: var(--shadow-lg);
+  transition: box-shadow var(--transition-speed) ease;
+}
+
+/**
+ * Accent utility classes
+ */
+.accent-main {
+  color: var(--accent-main);
+}
+
+.accent-alt {
+  color: var(--accent-alt);
+}
+
+.bg-accent-main {
+  background-color: var(--accent-main);
+}
+
+.bg-accent-alt {
+  background-color: var(--accent-alt);
+}
+
+/**
+ * State indicator classes
+ */
+.state-warning {
+  color: var(--warning-color);
+}
+
+.state-error {
+  color: var(--glitch-color);
+}
+
+/**
+ * Transition classes
+ */
+.transition-fast {
+  transition: all var(--transition-speed) ease;
+}
+
+/**
+ * Animation classes
+ */
+@keyframes pulse-theme {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse {
+  animation: pulse-theme var(--pulse-speed) ease-in-out infinite;
+}
+
+/* ===================================================================
+   CODEC PREVIEW STYLES (For WeaverSettings preview)
+   === */
+
+.codec-preview {
+  padding: 20px;
+  border-radius: 4px;
+  background-color: var(--bg-primary);
+  border: 2px solid var(--border-accent);
+  color: var(--text-primary);
+  font-family: var(--font-family-body);
+  transition: all 0.3s ease;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.codec-preview:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.codec-preview-title {
+  font-family: var(--font-family-heading);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-lg);
+  color: var(--accent-main);
+  margin-bottom: 8px;
+}
+
+.codec-preview-description {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: 12px;
+}
+
+.codec-preview-colors {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.codec-color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 2px;
+  border: 1px solid var(--text-secondary);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.codec-color-swatch:hover {
+  transform: scale(1.1);
+}
+
+/* ===================================================================
+   THEME TRANSITION ANIMATIONS
+   === */
+
+/**
+ * Smooth color transitions when switching codecs
+ * Applied to elements that should animate during theme changes
+ */
+.theme-transition {
+  transition-property: background-color, color, border-color, box-shadow;
+  transition-duration: var(--transition-speed);
+  transition-timing-function: ease-out;
+}
+
+/**
+ * Fade + shift animation for codec switch
+ */
+@keyframes codec-switch-fade {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.codec-switching {
+  animation: codec-switch-fade 0.3s ease-out;
+}
+
+/* ===================================================================
+   DARK MODE & LIGHT MODE SUPPORT
+   === */
+
+@media (prefers-color-scheme: dark) {
+  /* Dark mode is default for GLITCH and MEDIEVAL */
+  /* No changes needed */
+}
+
+@media (prefers-color-scheme: light) {
+  /* For light mode preference, could enhance MINIMAL codec */
+  .codec-minimal {
+    --bg-primary: #f8f9fa;
+    --bg-secondary: #f0f2f5;
+    --bg-tertiary: #e4e6eb;
+  }
+}
+
+/* ===================================================================
+   PRINT STYLES
+   === */
+
+@media print {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --border-accent: #cccccc;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+}

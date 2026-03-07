@@ -2,9 +2,10 @@ import type { WorldState, NPC } from './worldEngine';
 import { random } from './prng';
 import type { NarrativePivot } from './canonJournal';
 import { generateNpcPrompt, parseNpcResponse, callLlmApi, type DialogueContext as AiDialogueContext, type NpcKnowledgeScope, type LlmConfig } from './aiDmEngine';
+import { multiverseAdapter } from './multiverseAdapter';
 
 export interface DialogueContext {
-  weather: 'clear' | 'snow' | 'rain';
+  weather: 'clear' | 'snow' | 'rain' | 'ash_storm' | 'cinder_fog' | 'mana_static'; // Phase 17: Extended causal weather types
   season: 'winter' | 'spring' | 'summer' | 'autumn';
   hour: number;
   dayPhase: 'night' | 'morning' | 'afternoon' | 'evening';
@@ -103,7 +104,7 @@ export async function synthesizeNpcDialogue(
 
     // Call LLM API with configuration (provider defaults to 'openai', can be overridden)
     const llmConfig: LlmConfig = {
-      provider: (process.env.LLM_PROVIDER || 'openai') as 'openai' | 'anthropic' | 'local',
+      provider: (process.env.LLM_PROVIDER || 'openai') as 'openai' | 'claude' | 'gemini' | 'groq' | 'ollama' | 'mock',
       apiKey: process.env.LLM_API_KEY || process.env.OPENAI_API_KEY,
       model: process.env.LLM_MODEL || 'gpt-4-turbo-preview',
       temperature: 0.8,
@@ -122,14 +123,26 @@ export async function synthesizeNpcDialogue(
     };
   } catch (error) {
     console.error(`Failed to synthesize dialogue for NPC ${npcId}:`, error);
-    return { text: getStaticFallbackResponse(npc), synthesized: false };
+    return { text: getStaticFallbackResponse(npc, state), synthesized: false };
   }
 }
 
 /**
  * Get static fallback response when synthesis is unavailable
  */
-function getStaticFallbackResponse(npc: NPC): string {
+function getStaticFallbackResponse(npc: NPC, state?: WorldState): string {
+  // Phase 29: Multiverse Dissonance Injection
+  if (state && npc.id === 'chronicler_main') {
+    const playerParadox = (state as any).player?.paradoxCount || 0;
+    const dissonanceLines = multiverseAdapter.getDissonanceDialogue(npc.id, playerParadox);
+    if (dissonanceLines.length > 0) {
+      // 30% chance to say a dissonance line instead of static response
+      if (Math.random() < 0.3) {
+        return dissonanceLines[Math.floor(Math.random() * dissonanceLines.length)];
+      }
+    }
+  }
+
   const emotion = npc.emotionalState;
   if (!emotion) return `${npc.name} looks at you curiously.`;
 

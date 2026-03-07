@@ -1,0 +1,2471 @@
+{
+  "name": "The Ethereal Expanse",
+  "description": "A high-fidelity 'lived boardgame' template where magic and steel collide. The Solar Aegis maintains a fragile order while the Void Cult gathers in the rifts, and the Gilded Circle profits from the resulting chaos. Experience 10,000 years of emergent narrative through social scars and causal weather.",
+  "genre": "dark-fantasy",
+  "version": "2.0",
+  "season": "spring",
+  "baseEpoch": "epoch_i_awakening",
+  "multiEpochEnabled": true,
+  "timeSettings": {
+    "ticksPerMinute": 1,
+    "ticksPerHour": 60,
+    "ticksPerDay": 1440,
+    "startingHour": 8
+  },
+  "chroniclerFacts": [
+    {
+      "id": "creation-myth",
+      "text": "The world was born from the first breath of the Sun, but the Shadow was always there, waiting in the exhale.",
+      "epoch": "pre-epoch",
+      "relevance": 1.0
+    },
+    {
+      "id": "silver-guard-fall",
+      "text": "The Silver Guard didn't just fail; they were consumed by the very light they swore to protect.",
+      "epoch": "epoch_i_awakening",
+      "relevance": 0.8
+    },
+    {
+      "id": "mercantile-betrayal",
+      "text": "Gold is the blood of the Gilded Circle, and they will bleed the world dry to keep their coffers full.",
+      "epoch": "epoch_i_awakening",
+      "relevance": 0.6
+    },
+    {
+      "id": "relic-rebellion-lore",
+      "text": "A blade with a memory is a dangerous companion. If its mood sours, it may refuse your strike.",
+      "category": "system-tutorial",
+      "relevance": 1.0
+    },
+    {
+      "id": "market-scarcity-lore",
+      "text": "Gold follows the safe path. When a region fractures, the price of iron follows the risk.",
+      "category": "system-tutorial",
+      "relevance": 0.9
+    },
+    {
+      "id": "paradox-shadow-lore",
+      "text": "They are echoes of who we were, or who we might have been. Do not look into their eyes.",
+      "category": "system-tutorial",
+      "relevance": 0.8
+    },
+    {
+      "id": "paradox-explanation",
+      "text": "World Paradox is the background noise of reality's breakdown; Item Paradox is the scream of a single object being torn between two timelines.",
+      "category": "system-glossary",
+      "relevance": 1.0,
+      "link": "system:paradox_mechanics"
+    },
+    {
+      "id": "tick-economy-primer",
+      "text": "Time is the only true currency. A search takes 15 ticks of focus, while a night's rest requires 480 ticks to truly mend a fractured soul.",
+      "category": "system-glossary",
+      "relevance": 0.9,
+      "link": "system:time_economy"
+    },
+    {
+      "id": "social-scars-primer",
+      "text": "Betrayal leaves an invisible stain. Some NPCs carry resentment as a family heirloom; what you do today may haunt your blood for five generations.",
+      "category": "system-glossary",
+      "relevance": 0.8,
+      "link": "system:social_echoes"
+    }
+  ],
+  "chroniclerGuidancePrompts": {
+    "tier_1_foundling": {
+      "tone": "protective",
+      "intro": "Sleep now, child of the sun. The first breaths of the world are the hardest, and I am here to witness your awakening. Follow the light, and do not stray from the path.",
+      "requirement": "int < 10"
+    },
+    "tier_2_scholar": {
+      "tone": "academic",
+      "intro": "The records indicate you are a thread of unusual density. Your potential for impact on the 5th generation of the Solar Aegis is significant. Let us proceed with the analysis of the Silver Guard.",
+      "requirement": "int >= 10 && knowledge_count < 5"
+    },
+    "tier_3_anomalous": {
+      "tone": "cryptic",
+      "intro": "You are a self-aware thread in a loom that is unraveling. I remember when we first spoke... but that was in a timeline you have since paved over. Welcome back, anomaly.",
+      "requirement": "int >= 15 && paradox_threshold > 50"
+    }
+  },
+  "standardActionCosts": {
+    "search": 15,
+    "rest_short": 60,
+    "rest_long": 480,
+    "dialogue_per_word": 0.1,
+    "combat_round": 10
+  },
+  "economics": {
+    "globalInflation": 0.05,
+    "scarcityBias": 1.2,
+    "markets": [
+      {
+        "id": "luminara-central-bazaar",
+        "locationId": "luminara-market",
+        "name": "Luminara Central Bazaar"
+      },
+      {
+        "id": "stonepeak-military-quarter",
+        "locationId": "stonepeak-citadel",
+        "name": "Stonepeak Military Quarter"
+      }
+    ]
+  },
+  "factionPricingRules": {
+    "solar-aegis": {
+      "name": "Solar Aegis Standard",
+      "economicModel": "militant",
+      "baseTaxRate": 0.15,
+      "modifiers": {
+        "luxury_tax": {
+          "baseModifier": 2.0,
+          "reason": "luxury_inflation",
+          "description": "High tax on non-essential luxuries."
+        },
+        "iron_subsidy": {
+          "baseModifier": 0.8,
+          "reason": "faction_favor",
+          "description": "Reduced price for essential war materials."
+        }
+      }
+    },
+    "merchant-guild": {
+      "name": "Gilded Circle Trade",
+      "economicModel": "mercantile",
+      "baseTaxRate": 0.05,
+      "modifiers": {
+        "illegal_premium": {
+          "baseModifier": 2.2,
+          "reason": "illegal",
+          "description": "Heavy premium on contraband items."
+        },
+        "void_luxury": {
+          "baseModifier": 2.0,
+          "reason": "luxury_inflation",
+          "description": "High prices for rare void-touched goods."
+        }
+      }
+    }
+  },
+  "travelMatrix": {
+    "stonepeak-citadel": { "whispering-wilds": 120, "eldergrove-village": 60, "luminara-market": 90, "forge-summit": 45 },
+    "whispering-wilds": { "stonepeak-citadel": 120, "shadowed-rift": 180, "moonwell-shrine": 30, "thornwood-depths": 90 },
+    "shadowed-rift": { "whispering-wilds": 180, "luminara-market": 210, "thornwood-depths": 60 },
+    "eldergrove-village": { "stonepeak-citadel": 60, "whispering-wilds": 90, "luminara-market": 45 },
+    "luminara-market": { "stonepeak-citadel": 90, "eldergrove-village": 45, "whispering-wilds": 60, "shadowed-rift": 210 },
+    "forge-summit": { "stonepeak-citadel": 45 },
+    "moonwell-shrine": { "whispering-wilds": 30 },
+    "thornwood-depths": { "whispering-wilds": 90, "shadowed-rift": 60 }
+  },
+  "factions": [
+    {
+      "id": "solar-aegis",
+      "name": "The Solar Aegis",
+      "philosophy": "Upholding order and light through military discipline. They seek to purge all void corruption through strict governance and martial law.",
+      "initialInfluence": 60,
+      "baseStrength": 0.9,
+      "isExpansionist": true,
+      "economicModel": "militant",
+      "baseColor": "#f1c40f",
+      "rivalries": ["void-cult"],
+      "stabilityThreshold": 100,
+      "collapseRules": {
+        "lowStabilityThreshold": 20,
+        "mutationType": "MARTIAL_LAW",
+        "narrativeManifesto": "The Solar Aegis has cast aside the law; the Era of Martial Rule has begun. Order must be maintained at any cost, even the blood of the innocent.",
+        "effects": {
+          "taxMultiplier": 2.0,
+          "npcAggressionChance": 0.7,
+          "restrictedLocations": ["luminara-market"]
+        }
+      },
+      "forbiddenItems": [
+        { "itemId": "void-shard", "priceMultiplier": 3.0, "disposition": "confiscate" },
+        { "itemId": "rift-essence", "priceMultiplier": 2.5, "disposition": "confiscate" }
+      ]
+    },
+    {
+      "id": "merchant-guild",
+      "name": "The Gilded Circle",
+      "philosophy": "Profit is the only true law. They trade with anyone, using gold to bridge the gap between factions while subtly undermining military control.",
+      "initialInfluence": 50,
+      "baseStrength": 0.5,
+      "isExpansionist": false,
+      "economicModel": "mercantile",
+      "baseColor": "#e67e22",
+      "rivalries": ["solar-aegis"],
+      "stabilityThreshold": 100,
+      "collapseRules": {
+        "lowStabilityThreshold": 15,
+        "mutationType": "SHADOW_SYNDICATE",
+        "narrativeManifesto": "The Gilded Circle has slipped into the dark. Profit is the only god now, and they no longer trade in gold, but in lives and secrets.",
+        "effects": {
+          "moveLocationTo": "gilded-shadow",
+          "illegalPremiumMultiplier": 3.0,
+          "gossipIsolationRate": 0.8
+        }
+      }
+    },
+    {
+      "id": "void-cult",
+      "name": "The Void Cult",
+      "philosophy": "The end is inevitable. Embracing the entropy is the only path to transcendence. They move through the cracks in reality that greed and war create.",
+      "initialInfluence": 20,
+      "baseStrength": 0.7,
+      "isExpansionist": false,
+      "economicModel": "isolationist",
+      "baseColor": "#8e44ad",
+      "rivalries": ["merchant-guild"],
+      "forbiddenItems": [
+        { "itemId": "pure-moonwell-water", "priceMultiplier": 0.1, "disposition": "destroy" },
+        { "itemId": "solar-steel-ingot", "priceMultiplier": 0.5, "disposition": "corrupt" }
+      ]
+    }
+  ],
+  "locationInfluences": {
+    "stonepeak-citadel": { "solar-aegis": 0.9, "void-cult": 0.05, "merchant-guild": 0.05 },
+    "shadowed-rift": { "solar-aegis": 0.1, "void-cult": 0.8, "merchant-guild": 0.1 },
+    "luminara-market": { "solar-aegis": 0.33, "merchant-guild": 0.34, "void-cult": 0.33 },
+    "eldergrove-village": { "solar-aegis": 0.4, "void-cult": 0.1, "merchant-guild": 0.5 }
+  },
+  "hardFacts": [
+    {
+      "id": "betrayal_stonepeak_500",
+      "eventType": "betrayal",
+      "description": "The Silver Guard betrayed the local clans 500 years ago during the Great Siege of Stonepeak, forever staining the Solar Aegis reputation. The massacre was so absolute that the mountain wind is said to carry the names of the fallen, and the Aegis Blade itself wept silver for a century.",
+      "originLocationId": "stonepeak-citadel",
+      "originEpochTick": -262800000,
+      "factionIds": ["solar-aegis"],
+      "severity": 85,
+      "truthRadius": 100,
+      "truthDecayRate": 0.05,
+      "survivalProbability": 0.7,
+      "stabilityCost": 50,
+      "corruptedVariants": [
+        "In Stonepeak, the wind doesn't carry names, it carries screams of a betrayal that never truly happened.",
+        "The Silver Guard were the victims of a clan massacre that we now blame on the Aegis to hide our own shame."
+      ],
+      "diegeticEchoes": [
+        {
+          "description": "Faint blood-red stains appear on the snow where the massacre occurred.",
+          "visualEffect": "blood-stains",
+          "paradoxRequired": 40
+        },
+        {
+          "description": "Silent, translucent figures of the Silver Guard re-enact their final moments.",
+          "visualEffect": "ghostly-figures",
+          "paradoxRequired": 80
+        }
+      ]
+    },
+    {
+      "id": "miracle_moonwell_200",
+      "eventType": "miracle",
+      "description": "The Moonwell overflowed with liquid light in 1240 AD, ending the great famine and purifying the surrounding forest.",
+      "originLocationId": "moonwell-shrine",
+      "originEpochTick": -105120000,
+      "severity": 70,
+      "truthRadius": 500,
+      "truthDecayRate": 0.1,
+      "diegeticEchoes": [
+        {
+          "description": "Luminescent particles drift upward from the well, shimmering with historical light.",
+          "visualEffect": "golden-particles",
+          "paradoxRequired": 20
+        }
+      ]
+    },
+    {
+      "id": "catastrophe_rift_100",
+      "eventType": "catastrophe",
+      "description": "The floor of the Shadowed Rift collapsed 100 years ago, swallowing three whole villages and releasing a wave of Mana Static.",
+      "originLocationId": "shadowed-rift",
+      "originEpochTick": -52560000,
+      "factionIds": ["void-cult"],
+      "severity": 95,
+      "truthRadius": 1000,
+      "truthDecayRate": 0.02,
+      "diegeticEchoes": [
+        {
+          "description": "Fractures in reality open at the canyon's edge, leaking the static of five centuries.",
+          "visualEffect": "void-cracks",
+          "paradoxRequired": 60
+        },
+        {
+          "description": "A field of mana-static crackles where the third village once stood.",
+          "visualEffect": "mana-static",
+          "paradoxRequired": 25
+        }
+      ]
+    }
+  ],
+  "rumors": [
+    {
+      "id": "rumor_ghostly_guard",
+      "originalFactId": "betrayal_stonepeak_500",
+      "description": "The Silver Guard never found rest. In Stonepeak, when the stars go dark, you can see their armor bleeding silver.",
+      "claimedLocationId": "stonepeak-citadel",
+      "confidenceLevel": 40,
+      "spreadsToLocations": ["eldergrove-village", "luminara-market"],
+      "sourceNpcIds": ["elder-rowan"]
+    },
+    {
+      "id": "rumor_liquid_light_well",
+      "originalFactId": "miracle_moonwell_200",
+      "description": "Deep within the wilds, a well holds liquid light that can heal any wound, if the spirits allow it.",
+      "claimedLocationId": "moonwell-shrine",
+      "confidenceLevel": 65,
+      "spreadsToLocations": ["whispering-wilds", "eldergrove-village"]
+    }
+  ],
+  "locations": [
+    {
+      "id": "stonepeak-citadel",
+      "name": "Stonepeak Citadel",
+      "x": 100, "y": 900,
+      "spiritDensity": 0.1,
+      "biome": "mountain",
+      "description": "A fortress city carved into the highest peaks, guarded by the Solar Aegis.",
+      "geography": "The fortress sits atop the tallest peaks in the realm, accessible only by ancient stone staircases carved from the mountain itself. The architecture is purely geometric, with sharp angles and perfect symmetry.",
+      "factionPresence": "Solar Aegis (primary), Council of Architects",
+      "lore": "Built ten thousand years ago by the first architects, the Citadel has never fallen in battle. Some whisper that the stone itself is alive, protecting its inhabitants from harm.",
+      "atmosphericSinks": [
+        {
+          "paradoxThreshold": 50,
+          "manifestation": "The stone walls of the citadel begin to hum with a low, metallic vibration.",
+          "visualFilter": "static"
+        },
+        {
+          "paradoxThreshold": 80,
+          "manifestation": "Liquid silver bleeds from the cracks in the masonry, defying gravity as it flows upward toward the peaks.",
+          "visualFilter": "bleached",
+          "soundscapeOverride": "citadel_echoes_fractured"
+        }
+      ],
+      "resourceNodes": [
+        {
+          "id": "solar-spire-scrap-heap",
+          "name": "Solar Spire Scrap Heap",
+          "type": "salvage",
+          "baseYield": 5,
+          "respawnTicks": 1440,
+          "depletionRate": 0.05
+        }
+      ]
+    },
+    {
+      "id": "whispering-wilds",
+      "name": "Whispering Wilds",
+      "x": 300, "y": 700,
+      "spiritDensity": 0.4,
+      "biome": "forest",
+      "description": "An ancient, thick-canopied forest where the trees are said to murmur secrets. Home to rare spirit-infused flora.",
+      "geography": "Towering cedars and ancient oaks create a canopy so dense that daylight barely reaches the forest floor. Bioluminescent moss covers the ground, providing an eerie blue-green glow.",
+      "factionPresence": "Wildkin Collective, Druid's Circle",
+      "lore": "The forest was old when civilization was young. The trees remember every story ever spoken within them, and they whisper these tales to those patient enough to listen.",
+      "resourceNodes": [
+        {
+          "id": "starlight-iron-vein",
+          "name": "Starlight Iron Vein",
+          "type": "mining",
+          "baseYield": 2,
+          "respawnTicks": 2880,
+          "depletionRate": 0.1
+        },
+        {
+          "id": "eldergrove-moss-patch",
+          "name": "Eldergrove Moss Patch",
+          "type": "foraging",
+          "baseYield": 10,
+          "respawnTicks": 720,
+          "depletionRate": 0.02
+        }
+      ]
+    },
+    {
+      "id": "shadowed-rift",
+      "name": "The Shadowed Rift",
+      "x": 900, "y": 100,
+      "spiritDensity": 1.0,
+      "biome": "cave",
+      "description": "A deep chasm where darkness and secrets pool like black water. Extreme spirit density.",
+      "geography": "A bottomless crevasse carved into the earth itself, with walls of black stone that seem to absorb light. The air is cold and tastes of minerals and ancient stone.",
+      "factionPresence": "The Void Watchers, Shadowborn Enclave",
+      "lore": "The Rift is said to be where the world's nightmares gather. Even seasoned adventurers speak of it in hushed tones. Those who survive the Rift speak of transcendent visions at the boundary between sanity and madness.",
+      "atmosphericSinks": [
+        {
+          "paradoxThreshold": 60,
+          "manifestation": "Void-tentacles flicker in the peripheral vision, vanishing when looked at directly.",
+          "visualFilter": "void-violet",
+          "soundscapeOverride": "rift_void_hum"
+        },
+        {
+          "paradoxThreshold": 90,
+          "manifestation": "The darkness here has become physical; it clings to your skin like cold oil, and the stars are visible beneath your feet.",
+          "visualFilter": "glitched"
+        }
+      ],
+      "resourceNodes": [
+        {
+          "id": "rift-crystal-vein",
+          "type": "mining",
+          "locked": false,
+          "difficulty": 15,
+          "yield": { "itemId": "void-shard", "quantity": 2 },
+          "regeneratesInHours": 24
+        },
+        {
+          "id": "void-spider-clutch",
+          "type": "gathering",
+          "locked": false,
+          "difficulty": 12,
+          "yield": { "itemId": "void-infused-silk", "quantity": 3 },
+          "regeneratesInHours": 12
+        }
+      ]
+    },
+    {
+      "id": "eldergrove-village",
+      "name": "Eldergrove Village",
+      "x": 300, "y": 300,
+      "spiritDensity": 0.3,
+      "biome": "village",
+      "description": "A peaceful settlement nestled in a valley, famous for its giant oak trees.",
+      "geography": "A gentle valley with rolling green hills. Six colossal oak trees, each hundreds of years old, form a protective circle around the village center.",
+      "factionPresence": "Oak Keepers, Harvest Consortium",
+      "lore": "The village was founded beneath these oaks, believed to be the last remnants of the primordial forest. The trees are said to grant sanctuary to anyone who seeks peace.",
+      "resourceNodes": [
+        {
+          "id": "ancient-oak-tap",
+          "type": "gathering",
+          "locked": false,
+          "difficulty": 5,
+          "yield": { "itemId": "elder-sap", "quantity": 2 },
+          "regeneratesInHours": 48
+        }
+      ]
+    },
+    {
+      "id": "forge-summit",
+      "name": "Forge Summit",
+      "x": 150, "y": 850,
+      "spiritDensity": 0.4,
+      "biome": "mountain",
+      "description": "An industrial hub where volcanic heat is harnessed for masterwork smithing.",
+      "geography": "Carved directly into a volcanic mountain, with rivers of flowing magma channeled through stone conduits. The heat shimmers the air in visible waves, and the ground rumbles with geothermal power.",
+      "factionPresence": "Forge Collective, Smiths' Guild",
+      "lore": "The summit is where legendary weapons are born. Master smiths from across the world come here to test their skills. A single blade forged in Forge Summit's fires is worth more than a year's wages.",
+      "resourceNodes": [
+        {
+          "id": "magma-vent-extraction",
+          "type": "gathering",
+          "locked": false,
+          "difficulty": 20,
+          "yield": { "itemId": "volcanic-catalyst", "quantity": 1 },
+          "regeneratesInHours": 72
+        }
+      ]
+    },
+    {
+      "id": "luminara-market",
+      "name": "Luminara Grand Market",
+      "x": 500, "y": 500,
+      "spiritDensity": 0.0,
+      "biome": "village",
+      "description": "The largest trade hub in the frontier. Zero spirit density due to commercial anti-magic seals.",
+      "geography": "An enormous sprawling marketplace with thousands of stalls, warehouses, and trading posts. The market is divided into districts by commodity type, and bustling crowds fill every street from dawn to dusk.",
+      "factionPresence": "Mercantile Syndicate, Trader's Council, Solar Aegis (regulatory)",
+      "lore": "Luminara was built at the crossroads to become the world's beating mercantile heart. Here, fortunes are made and lost in a heartbeat. The saying goes: 'If it exists anywhere, it can be found in Luminara—if the price is right.'",
+      "demandedItems": [
+        { "itemId": "iron-scrap", "urgency": "high", "reason": "blockade", "priceModifier": 1.5 }
+      ],
+      "subAreas": [
+        {
+          "id": "gilded-shadow",
+          "name": "The Gilded Shadow",
+          "description": "A windowless basement beneath a spice shop where the laws of the Solar Aegis are merely a suggestion.",
+          "difficulty": 12,
+          "discovered": false,
+          "environmentalEffects": ["muffled_audio"],
+          "rewards": []
+        }
+      ],
+      "resourceNodes": [
+        {
+          "id": "guild-refuse-pile",
+          "type": "scavenging",
+          "locked": false,
+          "difficulty": 10,
+          "yield": { "itemId": "merchant-ledger-scrap", "quantity": 1 },
+          "regeneratesInHours": 12
+        }
+      ]
+    },
+    {
+      "id": "thornwood-depths",
+      "name": "Thornwood Depths",
+      "x": 450, "y": 450,
+      "spiritDensity": 0.9,
+      "biome": "corrupted",
+      "description": "The corrupted heart of the Whispering Wilds, where only the brave or foolish tread.",
+      "subAreas": [
+        {
+          "id": "heart_of_rot",
+          "name": "The Heart of Rot",
+          "description": "A clearing where the blight is so thick the air turns black.",
+          "difficulty": 18,
+          "discovered": false,
+          "environmentalEffects": ["reduced_hearing", "spirit_amplification"],
+          "rewards": [{ "itemId": "corrupted-essence", "quantity": 1, "rarity": "rare" }]
+        }
+      ]
+    },
+    {
+      "id": "moonwell-shrine",
+      "name": "Moonwell Shrine",
+      "x": 350, "y": 350,
+      "spiritDensity": 1.0,
+      "biome": "shrine",
+      "description": "A tranquil pond that perfectly reflects the moonlight, a place of deep magic.",
+      "tags": ["TUTORIAL_HINT:sanctified_zone"],
+      "tutorialHint": {
+        "title": "Sanctified Zones",
+        "text": "The Moonwell is a sanctuary in a fracturing world. Here, the hazard of the wild is reduced by 50%, and the tick economy is 20% more efficient for resting."
+      },
+      "subAreas": [
+        {
+          "id": "grotto_of_echoes",
+          "name": "Grotto of Echoes",
+          "description": "A hidden cave behind the waterfall where the spirits of the past whisper secrets.",
+          "difficulty": 22,
+          "discovered": false,
+          "environmentalEffects": ["historical_clarity"],
+          "rewards": [{ "itemId": "echo-fragment", "quantity": 1, "rarity": "epic" }]
+        }
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "shadow-valerius",
+      "name": "Shadow of Valerius",
+      "race": "Manifestation",
+      "age": 10000,
+      "maxAge": 10000,
+      "lineageId": "broken-valerius",
+      "locationId": "rift-chamber",
+      "factionId": "none",
+      "factionRole": "paradox-shadow",
+      "persona": "A flickering, glitched remnant of the legendary hero. It repeats disjointed fragments of a forgotten history.",
+      "quirks": ["Static discharge when moving", "Speech loops periodically"],
+      "voiceDescriptor": "Fragmented, echoing with multiple temporal layers",
+      "routine": { "0-24": "rift-chamber" },
+      "stats": { "str": 88, "agi": 99, "int": 99, "cha": 1, "end": 88, "luk": 0, "perception": 100 },
+      "hp": 9999, "maxHp": 9999,
+      "inventory": [],
+      "isParadoxShadow": true,
+      "dialogueHooks": [
+        {
+          "triggerParadox": 0.5,
+          "text": "They say the blade was meant for protection... but look at what it has done to me."
+        },
+        {
+          "triggerParadox": 0.8,
+          "text": "The code is unravelling... I can feel the memory of the first epoch."
+        }
+      ],
+      "personality": {
+        "greediness": 0.0,
+        "piety": 0.0,
+        "ambition": 0.0,
+        "loyalty": 0.0,
+        "risk": 1.0,
+        "sociability": 0.05
+      },
+      "emotionalState": {
+        "trust": 0,
+        "fear": 0,
+        "gratitude": 0,
+        "resentment": 100
+      }
+    },
+    {
+      "id": "commander-valerius-iii",
+      "name": "Commander Valerius III",
+      "race": "Human",
+      "age": 48,
+      "maxAge": 82,
+      "lineageId": "valerius-house",
+      "locationId": "stonepeak-citadel",
+      "factionId": "solar-aegis",
+      "factionRole": "leader",
+      "persona": "A stern, veteran commander haunted by the Silver War. He values loyalty above all and hides his doubt behind rigid military protocol.",
+      "quirks": ["Polishes his sword obsessively", "Always stands with his back to a wall"],
+      "voiceDescriptor": "Deep, raspy authority",
+      "routine": { "6-18": "stonepeak-citadel", "18-6": "barracks" },
+      "stats": { "str": 18, "agi": 12, "int": 14, "cha": 16, "end": 17, "luk": 10, "perception": 15 },
+      "hp": 150, "maxHp": 150,
+      "inventory": [
+        { "kind": "unique", "itemId": "legendary-aegis-blade", "instanceId": "aegis-01", "metadata": { "experience": 5000, "sentience": 20 } },
+        { "kind": "stackable", "itemId": "healing-potion-major", "quantity": 3 }
+      ],
+      "tradeLogic": {
+        "willingToTrade": false,
+        "preferredBarter": ["solar-steel-ingot"],
+        "tradeThreshold": 80
+      },
+      "emotionalState": {
+        "trust": 40,
+        "fear": 20,
+        "gratitude": 0,
+        "resentment": 10
+      },
+      "personality": {
+        "greediness": 0.1,
+        "piety": 0.6,
+        "ambition": 0.4,
+        "loyalty": 0.9,
+        "risk": 0.3,
+        "sociability": 0.2
+      }
+    },
+    {
+      "id": "elder-rowan",
+      "name": "Elder Rowan",
+      "race": "Elf",
+      "age": 442,
+      "maxAge": 910,
+      "lineageId": "rowan-seed",
+      "locationId": "eldergrove-village",
+      "factionRole": "civilian",
+      "persona": "A weary sage who remembers the Moonwell miracle. He seeks only peace for his people and fears the rising paradox.",
+      "quirks": ["Smells of lavender and old paper", "Always carries a leather-bound journal"],
+      "voiceDescriptor": "Soft and melodic, like rustling leaves",
+      "routine": { "8-16": "moonwell-shrine", "16-8": "eldergrove-village" },
+      "stats": { "str": 8, "agi": 9, "int": 19, "cha": 15, "end": 10, "luk": 12, "perception": 18 },
+      "hp": 60, "maxHp": 60,
+      "inventory": [
+        { "kind": "stackable", "itemId": "ancient-herbs", "quantity": 10 },
+        { "kind": "unique", "itemId": "journal-of-light", "instanceId": "journal-01" }
+      ],
+      "tradeLogic": {
+        "willingToTrade": true,
+        "preferredBarter": ["ancient-herbs", "pure-moonwell-water"],
+        "tradeThreshold": 50
+      },
+      "emotionalState": {
+        "trust": 70,
+        "fear": 30,
+        "gratitude": 0,
+        "resentment": 0
+      },
+      "personality": {
+        "greediness": 0.05,
+        "piety": 0.8,
+        "ambition": 0.1,
+        "loyalty": 0.7,
+        "risk": 0.2,
+        "sociability": 0.5
+      }
+    },
+    {
+      "id": "shady-silas",
+      "name": "Shady Silas",
+      "race": "Beastkin",
+      "age": 29,
+      "maxAge": 135,
+      "lineageId": "silas-shadows",
+      "locationId": "luminara-market",
+      "factionId": "merchant-guild",
+      "factionRole": "merchant",
+      "persona": "A cunning artifact dealer who would sell his own shadow for a handful of gold. He views the war as a marketing opportunity.",
+      "quirks": ["Refers to everyone as 'friend' or 'customer'", "Fingers jump as if counting coins"],
+      "voiceDescriptor": "Wheezing, rapid-fire pitch",
+      "routine": { "10-22": "luminara-market", "22-10": "backroom" },
+      "stats": { "str": 10, "agi": 16, "int": 15, "cha": 18, "end": 12, "luk": 19, "perception": 14 },
+      "hp": 85, "maxHp": 85,
+      "inventory": [
+        { "kind": "stackable", "itemId": "gold-coin", "quantity": 500 },
+        { "kind": "unique", "itemId": "bribe-ledger", "instanceId": "ledger-silas" },
+        { "kind": "stackable", "itemId": "void-shard", "quantity": 2 }
+      ],
+      "tradeLogic": {
+        "willingToTrade": true,
+        "preferredBarter": ["gold-coin", "void-shard", "merchant-ledger-scrap"],
+        "tradeThreshold": 20
+      },
+      "personality": {
+        "greediness": 0.95,
+        "piety": 0.05,
+        "ambition": 0.85,
+        "loyalty": 0.20,
+        "risk": 0.60,
+        "sociability": 0.95
+      },
+      "emotionalState": {
+        "trust": 30,
+        "fear": 20,
+        "gratitude": 10,
+        "resentment": 10
+      }
+    },
+    {
+      "id": "acolyte-nyx",
+      "name": "Acolyte Nyx",
+      "race": "Human",
+      "age": 22,
+      "maxAge": 78,
+      "lineageId": "nyx-void",
+      "locationId": "shadowed-rift",
+      "factionId": "void-cult",
+      "factionRole": "soldier",
+      "persona": "A zealot of the Void who truly believes the end of existence is a release from suffering. She is surprisingly kind but utterly dedicated.",
+      "quirks": ["Speaks in metaphors about darkness", "Her eyes never seem to blink"],
+      "voiceDescriptor": "Hauntingly calm and whisper-thin",
+      "routine": { "0-24": "shadowed-rift" },
+      "stats": { "str": 12, "agi": 17, "int": 14, "cha": 11, "end": 15, "luk": 8, "perception": 19 },
+      "hp": 110, "maxHp": 110,
+      "inventory": [
+        { "kind": "unique", "itemId": "void-dagger", "instanceId": "void-nyx-01" },
+        { "kind": "stackable", "itemId": "entropic-catalyst", "quantity": 2 },
+        { "kind": "stackable", "itemId": "void-shard", "quantity": 5 }
+      ],
+      "personality": {
+        "greediness": 0.10,
+        "piety": 0.90,
+        "ambition": 0.40,
+        "loyalty": 1.00,
+        "risk": 0.80,
+        "sociability": 0.10
+      },
+      "emotionalState": {
+        "trust": 10,
+        "fear": 5,
+        "gratitude": 0,
+        "resentment": 5
+      }
+    },
+    {
+      "id": "black-market-thul",
+      "name": "Thul the Unseen",
+      "race": "Beastkin",
+      "age": 52,
+      "maxAge": 140,
+      "lineageId": "thul-nomad",
+      "locationId": "gilded-shadow",
+      "factionId": "none",
+      "factionRole": "outlaw",
+      "persona": "A pragmatic middleman who facilitates the transit of 'difficult' goods. He doesn't care about politics, only about the margin. He smells of old copper and ozone.",
+      "quirks": ["Checks over his shoulder every few seconds", "Always speaks in a forced whisper"],
+      "voiceDescriptor": "Gravelly and low, like grinding stones",
+      "routine": { "0-24": "gilded-shadow" },
+      "stats": { "str": 14, "agi": 11, "int": 16, "cha": 13, "end": 15, "luk": 17, "perception": 18 },
+      "hp": 120, "maxHp": 120,
+      "inventory": [
+        { "kind": "stackable", "itemId": "gold-coin", "quantity": 1200 },
+        { "kind": "stackable", "itemId": "void-shard", "quantity": 3 },
+        { "kind": "stackable", "itemId": "merchant-ledger-scrap", "quantity": 4 }
+      ],
+      "tradeLogic": {
+        "willingToTrade": true,
+        "baseMultiplier": 2.5,
+        "preferredBarter": ["void-shard", "merchant-ledger-scrap", "rift-essence"],
+        "tradeThreshold": 10
+      },
+      "personality": {
+        "greediness": 0.8,
+        "piety": 0.0,
+        "ambition": 0.3,
+        "loyalty": 0.1,
+        "risk": 0.7,
+        "sociability": 0.4
+      }
+    },
+    {
+      "id": "artificer-kael",
+      "name": "Artificer Kael",
+      "race": "Dwarf",
+      "age": 115,
+      "maxAge": 340,
+      "lineageId": "kael-iron",
+      "locationId": "forge-summit",
+      "factionId": "merchant-guild",
+      "factionRole": "contractor",
+      "persona": "A high-INT, low-CHA specialist who builds war machines for whoever pays the most. He is the technical bridge between factions.",
+      "quirks": ["Smells of ozone", "Adjusts his monocle when lying"],
+      "voiceDescriptor": "Clipping, fast-paced technical jargon",
+      "routine": { "6-22": "forge-summit", "22-6": "workshop" },
+      "stats": { "str": 9, "agi": 14, "int": 20, "cha": 6, "end": 11, "luk": 13, "perception": 17 },
+      "hp": 90, "maxHp": 90,
+      "inventory": [
+        { "kind": "stackable", "itemId": "mana-battery", "quantity": 5 },
+        { "kind": "unique", "itemId": "master-wrench", "instanceId": "wrench-kael" },
+        { "kind": "stackable", "itemId": "iron-scrap", "quantity": 20 }
+      ],
+      "personality": {
+        "greediness": 0.80,
+        "piety": 0.10,
+        "ambition": 0.75,
+        "loyalty": 0.30,
+        "risk": 0.40,
+        "sociability": 0.30
+      },
+      "emotionalState": {
+        "trust": 40,
+        "fear": 15,
+        "gratitude": 20,
+        "resentment": 0
+      }
+    },
+    {
+      "id": "aria-valerius",
+      "name": "Aria Valerius",
+      "race": "Human",
+      "age": 19,
+      "maxAge": 85,
+      "lineageId": "valerius-house",
+      "descendantOf": "captain-valerius",
+      "locationId": "stonepeak-citadel",
+      "factionId": "solar-aegis",
+      "factionRole": "cadet",
+      "persona": "Daughter of Valerius. She admires her father but questions the rigidity of the Aegis. She has a natural talent for diplomacy.",
+      "stats": { "str": 12, "agi": 15, "int": 16, "cha": 18, "end": 13, "luk": 15, "perception": 14 },
+      "hp": 100, "maxHp": 100,
+      "personality": {
+        "greediness": 0.2, "piety": 0.4, "ambition": 0.6, "loyalty": 0.7, "risk": 0.5, "sociability": 0.8
+      }
+    },
+    {
+      "id": "min-max-anomaly",
+      "name": "The Unbreakable Anomaly",
+      "race": "Automaton",
+      "age": 2,
+      "maxAge": 1000000,
+      "lineageId": "anomaly-protocol",
+      "locationId": "thornwood-depths",
+      "factionRole": "outsider",
+      "persona": "A test-case entity designed to push the engine to its limits. Maximum Endurance and Perception, Minimum Luck and Charisma.",
+      "quirks": ["Flickers in and out of reality", "Speaks in binary-like pulses"],
+      "voiceDescriptor": "Synthesized and echoing",
+      "routine": { "0-24": "thornwood-depths" },
+      "stats": { "str": 20, "agi": 1, "int": 20, "cha": 1, "end": 20, "luk": 1, "perception": 20 },
+      "hp": 999, "maxHp": 999,
+      "inventory": [
+        { "kind": "unique", "itemId": "test-artifact-alpha", "instanceId": "anomaly-01", "metadata": { "corruption": 99 } },
+        { "kind": "stackable", "itemId": "test-data-shard", "quantity": 10 }
+      ],
+      "personality": {
+        "greediness": 0.10,
+        "piety": 0.10,
+        "ambition": 1.00,
+        "loyalty": 0.00,
+        "risk": 1.00,
+        "sociability": 0.00
+      },
+      "emotionalState": {
+        "trust": 0,
+        "fear": 100,
+        "gratitude": 0,
+        "resentment": 100
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "fromNpcId": "shady-silas",
+      "toNpcId": "artificer-kael",
+      "trust": 10,
+      "affinity": -20,
+      "debt": 5000,
+      "status": "rival"
+    },
+    {
+      "fromNpcId": "captain-valerius",
+      "toNpcId": "elder-rowan",
+      "trust": 40,
+      "affinity": 50,
+      "status": "allied"
+    }
+  ],
+  "investigationClues": {
+    "betrayal_stonepeak_500": [
+      {
+        "source": "npc_dialogue",
+        "description": "Elder Rowan's voice drops to a whisper when the Silver Guard is mentioned.",
+        "confidenceBonus": 15
+      },
+      {
+        "source": "location_search",
+        "description": "Evidence of blackened silver found in the Stonepeak foundations.",
+        "confidenceBonus": 25
+      }
+    ],
+    "miracle_moonwell_200": [
+      {
+        "source": "artifact_inspection",
+        "description": "Shady Silas owns a shard of lunar glass that hums with the same frequency as the Moonwell.",
+        "confidenceBonus": 20
+      }
+    ]
+  },
+  "worldFragments": [
+    {
+      "id": "aegis_pillar",
+      "name": "The Aegis Pillar",
+      "type": "monument",
+      "locationId": "stonepeak-citadel",
+      "description": "A monolith inscribed with the names of the Silver Guard. It feels cold to the touch.",
+      "durability": 1.0,
+      "weatheringRate": 0.01,
+      "historicalFactId": "betrayal_stonepeak_500"
+    },
+    {
+      "id": "sunken_village_ruins",
+      "name": "Sunken Village Ruins",
+      "type": "ruin",
+      "locationId": "shadowed-rift",
+      "description": "Half-submerged rooftops and broken wheels from a village lost a century ago.",
+      "durability": 0.25,
+      "weatheringRate": 0.05,
+      "historicalFactId": "catastrophe_rift_100"
+    },
+    {
+      "id": "northern_trade_road",
+      "name": "Northern Trade Road",
+      "type": "road",
+      "locationId": "luminara-market",
+      "description": "A stone-paved road that speeds travel between Luminara and Stonepeak.",
+      "durability": 0.8,
+      "weatheringRate": 0.02,
+      "travelBonus": 0.2
+    }
+  ],
+  "itemTemplates": [
+    {
+      "id": "glitched-chronometer",
+      "name": "Glitched Chronometer",
+      "description": "A device that counts time in reverse. It jitters with chronological instability.",
+      "kind": "unique",
+      "rarity": "rare",
+      "baseValue": 1500,
+      "stats": { "paradoxScale": 0.05 },
+      "isGlitched": true
+    },
+    {
+      "id": "unidentified-memory-chip",
+      "name": "Unidentified Memory Chip",
+      "description": "A crystalline sliver containing fragments of a life that may never have existed.",
+      "kind": "unique",
+      "rarity": "epic",
+      "baseValue": 5000,
+      "isNarrativeTrigger": true
+    },
+    {
+      "id": "corroded-relic",
+      "name": "Corroded Relic",
+      "description": "A heavily decayed object from a previous epoch. Its original purpose is long lost.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 300
+    },
+    {
+      "id": "legendary-aegis-blade",
+      "name": "Legendary Aegis Blade",
+      "description": "A blade forged from solar steel, originally carried by the Silver Guard. It resonates with the player's STR.",
+      "diegeticDescriptions": {
+        "low": "A polished solar steel blade, reflecting the sun with blinding clarity.",
+        "high": "A [bleeding] shard of [stuttering] light that seems to hum with the screams of Stonepeak."
+      },
+      "kind": "unique",
+      "rarity": "legendary",
+      "baseValue": 5000,
+      "stats": { "damage": 25, "power": 10, "paradoxScale": 0.05 },
+      "requirements": { "str": 15 },
+      "memoryIds": ["betrayal_stonepeak_500"],
+      "originLineage": ["Valerius I", "Valerius II"],
+      "personality": {
+        "preferredActions": ["Combat", "Sanctification"],
+        "dislikedActions": ["Theft", "Fleeing"],
+        "voiceDescriptor": "Clipped, militaristic, echoes of a marching legion.",
+        "narrativeTone": "Commanding and rhythmic",
+        "moodBaseline": {
+          "bloodthirsty": 0.2,
+          "curious": 0.1,
+          "sullen": 0.4,
+          "protective": 0.8
+        },
+        "dialogueHooks": [
+          {
+            "triggerLocationId": "stonepeak-citadel",
+            "text": "The stones here... they remember the weight of our boots. Don't let the silence fool you, Commander."
+          },
+          {
+            "triggerLocationId": "shadowed-rift",
+            "text": "This place is a wound. It stinks of cowardice and entropy. Keep your hand on the hilt."
+          }
+        ]
+      }
+    },
+    {
+      "id": "weavers-needle",
+      "name": "The Weaver's Needle",
+      "description": "A slender rapier that seems to stitch through the fabric of reality itself.",
+      "diegeticDescriptions": {
+        "low": "A needle-like rapier of iridescent silver.",
+        "high": "A [flickering] thread of [impossibility] that leaves trails of static in the air."
+      },
+      "kind": "unique",
+      "rarity": "epic",
+      "baseValue": 3500,
+      "stats": { "damage": 18, "agiBonus": 5, "paradoxScale": 0.12 },
+      "requirements": { "agi": 18 },
+      "personality": {
+        "preferredActions": ["Exploration", "Crafting"],
+        "dislikedActions": ["Stagnation", "Void-Use"],
+        "voiceDescriptor": "Sibilant, inquisitive, speaks in metaphors of thread and tapestry.",
+        "narrativeTone": "Enigmatic and philosophical",
+        "moodBaseline": {
+          "bloodthirsty": 0.0,
+          "curious": 0.9,
+          "sullen": 0.1,
+          "protective": 0.3
+        },
+        "dialogueHooks": [
+          {
+            "triggerLocationId": "whispering-wilds",
+            "text": "See how the canopy weaves the sun? This world is but a tapestry waiting for a sharper edge."
+          },
+          {
+            "triggerLocationId": "luminara-market",
+            "text": "So many loose threads in one place. One pull, and the whole guild collapses. Exquisite."
+          }
+        ]
+      }
+    },
+    {
+      "id": "healing-potion-major",
+      "name": "Major Healing Potion",
+      "description": "A potent mix of herbs and refined mana.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 250
+    },
+    {
+      "id": "ancient-herbs",
+      "name": "Ancient Herbs",
+      "description": "Rare flora found in the heart of the Whispering Wilds.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 50
+    },
+    {
+      "id": "void-shard",
+      "name": "Void Shard",
+      "description": "A crystalline remnant of entropy, cold to the touch.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 150,
+      "stats": { "paradoxScale": 0.1 }
+    },
+    {
+      "id": "iron-scrap",
+      "name": "Iron Scrap",
+      "description": "Rusty metal salvaged from ruins.",
+      "kind": "stackable",
+      "rarity": "common",
+      "baseValue": 10
+    },
+    {
+      "id": "volcanic-catalyst",
+      "name": "Volcanic Catalyst",
+      "description": "A glowing ember containing the heat of Forge Summit.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 300
+    },
+    {
+      "id": "pure-moonwell-water",
+      "name": "Pure Moonwell Water",
+      "description": "Luminescent water that purifies the soul.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 200
+    },
+    {
+      "id": "aegis-restoration-kit",
+      "name": "Aegis Restoration Kit",
+      "description": "A specialized toolset for repairing ancient Solar Aegis artifacts.",
+      "kind": "stackable",
+      "rarity": "epic",
+      "baseValue": 1200
+    },
+    {
+      "id": "rift-essence",
+      "name": "Rift Essence",
+      "description": "Glimmering energy harvested from the Shadowed Rift. Highly unstable.",
+      "kind": "stackable",
+      "rarity": "epic",
+      "baseValue": 450,
+      "stats": { "paradoxScale": 0.15 }
+    },
+    {
+      "id": "elder-sap",
+      "name": "Elder Sap",
+      "description": "Thick, amber-like sap from the Eldergrove trees. Smells of ancient earth.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 75
+    },
+    {
+      "id": "solar-steel-ingot",
+      "name": "Solar Steel Ingot",
+      "description": "Refined steel imbued with the essence of the sun. Core material for Aegis gear.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 500
+    },
+    {
+      "id": "starlight-iron",
+      "name": "Starlight Iron",
+      "description": "Meteoric iron that glows softly in the dark.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 350
+    },
+    {
+      "id": "void-infused-silk",
+      "name": "Void-Infused Silk",
+      "description": "Fabric that seems to swallow light, woven by rift-spiders.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 200,
+      "stats": { "paradoxScale": 0.08 }
+    },
+    {
+      "id": "merchant-ledger-scrap",
+      "name": "Merchant Ledger Scrap",
+      "description": "A torn page from a Luminara trade ledger. Might contain valuable secrets.",
+      "kind": "stackable",
+      "rarity": "common",
+      "baseValue": 25
+    },
+    {
+      "id": "solar-aegis-pauldrons",
+      "name": "Solar Aegis Pauldrons",
+      "description": "Heavy shoulder guards bearing the emblem of the Solar Aegis.",
+      "kind": "unique",
+      "rarity": "rare",
+      "baseValue": 1500,
+      "stats": { "defense": 15, "power": 5, "paradoxScale": 0.02 },
+      "requirements": { "str": 12, "end": 10 }
+    }
+  ],
+  "lootTables": [
+    {
+      "id": "wilds-loot",
+      "locationId": "whispering-wilds",
+      "biome": "forest",
+      "drops": [
+        { "itemId": "ancient-herbs", "chance": 0.6, "minQuantity": 1, "maxQuantity": 3 },
+        { "itemId": "iron-scrap", "chance": 0.2, "minQuantity": 1, "maxQuantity": 2 }
+      ]
+    },
+    {
+      "id": "forge-loot",
+      "locationId": "forge-summit",
+      "biome": "mountain",
+      "drops": [
+        { "itemId": "iron-scrap", "chance": 0.7, "minQuantity": 2, "maxQuantity": 5 },
+        { "itemId": "volcanic-catalyst", "chance": 0.1, "minQuantity": 1, "maxQuantity": 1 }
+      ]
+    },
+    {
+      "id": "moonwell-loot",
+      "locationId": "moonwell-shrine",
+      "biome": "shrine",
+      "drops": [
+        { "itemId": "pure-moonwell-water", "chance": 0.8, "minQuantity": 1, "maxQuantity": 1 },
+        { "itemId": "ancient-herbs", "chance": 0.3, "minQuantity": 1, "maxQuantity": 1 }
+      ]
+    },
+    {
+      "id": "rift-loot",
+      "locationId": "shadowed-rift",
+      "biome": "cave",
+      "drops": [
+        { "itemId": "rift-essence", "chance": 0.15, "minQuantity": 1, "maxQuantity": 1 },
+        { "itemId": "void-shard", "chance": 0.4, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "void-infused-silk", "chance": 0.25, "minQuantity": 1, "maxQuantity": 3 }
+      ]
+    },
+    {
+      "id": "market-loot",
+      "locationId": "luminara-market",
+      "biome": "village",
+      "drops": [
+        { "itemId": "merchant-ledger-scrap", "chance": 0.6, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "iron-scrap", "chance": 0.3, "minQuantity": 1, "maxQuantity": 5 }
+      ]
+    },
+    {
+      "id": "eldergrove-loot",
+      "locationId": "eldergrove-village",
+      "biome": "village",
+      "drops": [
+        { "itemId": "elder-sap", "chance": 0.7, "minQuantity": 1, "maxQuantity": 3 },
+        { "itemId": "ancient-herbs", "chance": 0.2, "minQuantity": 1, "maxQuantity": 2 }
+      ]
+    }
+  ],
+  "craftingRecipes": [
+    {
+      "id": "recipe-aegis-kit",
+      "resultItemId": "aegis-restoration-kit",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "volcanic-catalyst", "quantity": 1 },
+        { "itemId": "iron-scrap", "quantity": 5 },
+        { "itemId": "pure-moonwell-water", "quantity": 1 }
+      ],
+      "requiredFacility": "forge"
+    },
+    {
+      "id": "recipe-solar-steel",
+      "resultItemId": "solar-steel-ingot",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "iron-scrap", "quantity": 3 },
+        { "itemId": "volcanic-catalyst", "quantity": 1 },
+        { "itemId": "pure-moonwell-water", "quantity": 1 }
+      ],
+      "requiredFacility": "forge"
+    },
+    {
+      "id": "recipe-starlight-iron",
+      "resultItemId": "starlight-iron",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "iron-scrap", "quantity": 2 },
+        { "itemId": "rift-essence", "quantity": 1 }
+      ],
+      "requiredFacility": "forge"
+    },
+    {
+      "id": "recipe-solar-pauldrons",
+      "resultItemId": "solar-aegis-pauldrons",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "solar-steel-ingot", "quantity": 2 },
+        { "itemId": "void-infused-silk", "quantity": 1 }
+      ],
+      "requiredFacility": "forge"
+    }
+  ],
+  "soulEchoes": [
+    {
+      "id": "echo_silver_resilience",
+      "name": "Silver Guard Resilience",
+      "description": "An echo of the Guard's unbreakable discipline, passed through the timeline.",
+      "ancestorName": "Commander Valerius I",
+      "echoType": "bloodline_blessing",
+      "rarity": "rare",
+      "mechanicalEffect": "Increases Endurance by 2 points permanently.",
+      "powerLevel": 60
+    },
+    {
+      "id": "echo_void_affinity",
+      "name": "Void Affinity",
+      "description": "The whispers of the chasm no longer sound like threats, but guidance. You can carry entropic artifacts with less strain on your reality.",
+      "ancestorName": "Acolyte Nyx (Ascended)",
+      "echoType": "skill_specialization",
+      "rarity": "rare",
+      "mechanicalEffect": "Reduces total inventory Paradox contribution by 25%.",
+      "powerLevel": 45
+    }
+  ],
+  "causalWeatherRules": [
+    {
+      "id": "ash_storm_conflict",
+      "name": "Ashen Conflict Storm",
+      "condition": "high_contention",
+      "triggerThreshold": 0.6,
+      "weatherResult": "ash_storm",
+      "intensity": "heavy",
+      "duration": 180,
+      "priority": 1,
+      "narrative": "The smoke of burning ambitions chokes the sky, raining ash upon the contested ground of Luminara.",
+      "stabilityImpact": [
+        { "factionId": "solar-aegis", "value": -0.5, "perTick": true },
+        { "factionId": "merchant-guild", "value": -0.3, "perTick": true }
+      ]
+    },
+    {
+      "id": "magical_surge_well",
+      "name": "Moonlight Surge",
+      "condition": "magical_surge",
+      "triggerThreshold": 0.8,
+      "weatherResult": "mana_static",
+      "intensity": "moderate",
+      "duration": 120,
+      "priority": 2,
+      "narrative": "The Moonwell overflows with raw essence, flooding the wilds with mana-static that burns the uninitiated."
+    }
+  ],
+  "hazards": [
+    {
+      "id": "thornwood_weather_death",
+      "name": "Corrupted Rain",
+      "affectedLocationId": "thornwood-depths",
+      "condition": { "weather": "rain" },
+      "effect": {
+        "type": "health_drain",
+        "severity": "severe",
+        "chance": 0.5,
+        "damagePerTick": 50,
+        "statusEffect": "corrupted"
+      }
+    },
+    {
+      "id": "void_possession_surge",
+      "name": "Void Resonance Surge",
+      "affectedLocationId": "shadowed-rift",
+      "condition": { "weather": "mana_static" },
+      "effect": {
+        "type": "status_apply",
+        "severity": "severe",
+        "chance": 0.3,
+        "statusEffect": "paradox_resonance"
+      }
+    }
+  ],
+  "epochs": {
+    "epoch_i_awakening": {
+      "id": "epoch_i_awakening",
+      "sequenceNumber": 1,
+      "name": "The Era of Awakening",
+      "theme": "Restoration",
+      "chronologyYear": 1024,
+      "description": "A time of fragile peace and rediscoveries.",
+      "nextEpochId": "epoch_ii_fracture",
+      "transitionRules": [
+        {
+          "targetEpochId": "epoch_ii_fracture",
+          "condition": "paradox_threshold",
+          "threshold": 70,
+          "description": "When Paradox exceeds 70%, the world fractures.",
+          "evolutionPaths": [
+            {
+              "id": "material-ascension-starlight",
+              "originalItemId": "starlight-iron",
+              "resultItemId": "fossilized-starlight",
+              "narrative": "The raw energy of the peaks cools over a millennium, brittle and crackling with paradox."
+            },
+            {
+              "id": "bloodline-divergence-valerius",
+              "lineageId": "broken-valerius",
+              "divergentPaths": [
+                {
+                  "condition": "player_alignment >= 50",
+                  "resultLineageId": "blessed-protectors",
+                  "statBonus": { "cha": 10 },
+                  "narrative": "The Valerius memory is a beacon of hope; their descendants are reborn as the Blessed Protectors."
+                },
+                {
+                  "condition": "player_alignment < 50",
+                  "resultLineageId": "hollowed-vengeance",
+                  "statBonus": { "str": 15, "agi": 10, "cha": -20 },
+                  "narrative": "Betrayed and bitter, the Valerius name becomes a curse. They hunt the shadows as agents of vengeance."
+                }
+              ]
+            }
+          ],
+          "physicalBlight": {
+            "biomes": {
+              "whispering-wilds": "corrupted",
+              "eldergrove-village": "shanty-ruin"
+            },
+            "spiritDensityDelta": 0.4
+          },
+          "materialEvolution": {
+            "iron-scrap": "corroded-relics",
+            "elder-sap": "crystallized-ember",
+            "void-shard": "drifting-entropy"
+          }
+        },
+        {
+          "targetEpochId": "epoch_ii_fracture",
+          "condition": "chronology_limit",
+          "years": 500,
+          "description": "500 years of peace come to an end by the weight of time itself.",
+          "materialEvolution": {
+            "iron-scrap": "rusted-history",
+            "pure-moonwell-water": "stagnant-essence"
+          }
+        }
+      ]
+    },
+    "epoch_ii_fracture": {
+      "id": "epoch_ii_fracture",
+      "sequenceNumber": 2,
+      "name": "The Fracture Epoch",
+      "theme": "Waning Light",
+      "chronologyYear": 1500,
+      "description": "Reality itself has begun to splinter, and the old laws no longer apply. Iron is a luxury of the past, and star-touched metals are the only currency that matters.",
+      "previousEpochId": "epoch_i_awakening"
+    }
+  },
+  "quests": [
+    {
+      "id": "cradle_ritual_finale",
+      "name": "The Cradle of the Loom",
+      "description": "The era is ending, and the tapestry of time is frayed. You must perform the final ritual to stabilize or shatter the next millennium.",
+      "status": "not-started",
+      "type": "epoch_finale",
+      "objectives": [
+        {
+          "id": "collect_components",
+          "description": "Gather 3 Void Shards, 1 Solar Steel Ingot, and the Legendary Aegis Blade.",
+          "status": "pending",
+          "requiredItems": [
+            { "itemId": "void-shard", "quantity": 3 },
+            { "itemId": "solar-steel-ingot", "quantity": 1 },
+            { "itemId": "legendary-aegis-blade", "quantity": 1 }
+          ]
+        },
+        {
+          "id": "choose_epoch_flavor",
+          "description": "Choose your intent at the Loom of Time.",
+          "status": "pending",
+          "options": [
+            { "choice": "stabilize", "nextEpochFlavor": "golden_age", "requirement": "paradox < 30" },
+            { "choice": "fracture", "nextEpochFlavor": "shattered_world", "requirement": "paradox >= 70" },
+            { "choice": "equilibrium", "nextEpochFlavor": "eternal_twilight", "requirement": "paradox >= 30 && paradox < 70" }
+          ]
+        }
+      ],
+      "rewards": {
+        "experience": 5000,
+        "narrativeConclusion": "Your choice echoes through 1,000 years of silence. The thread you pulled has fundamentally reshaped the pattern of all that follows."
+      }
+    },
+    {
+      "id": "prologue_awakening",
+      "name": "The Waking Dream",
+      "description": "The world feels... wrong. The air tastes like copper and the shadows stretch too far. You must find someone who remembers the 'Old Rules'.",
+      "status": "active",
+      "type": "main",
+      "giverId": "system",
+      "objectives": [
+        {
+          "id": "find_harbinger",
+          "description": "Speak with Old Man Hael at the Silver Spire",
+          "status": "pending",
+          "tutorialTrigger": "milestone:first_interaction",
+          "chroniclerWhisper": "Connections are the bedrock of the world. Speak with them, even those who have forgotten their own names. Their recognition is a tether."
+        },
+        {
+          "id": "explore_outskirts",
+          "description": "Travel to the Whispering Wilds",
+          "status": "pending",
+          "tutorialTrigger": "milestone:first_move",
+          "chroniclerWhisper": "Look around you. This landscape is but a layer of paint over the void. Each step is a choice, and the Weaver watches every path you take."
+        },
+        {
+          "id": "search_ruins",
+          "description": "Search for fragments of the forgotten past",
+          "status": "pending",
+          "tutorialTrigger": "milestone:first_search",
+          "chroniclerWhisper": "The act of searching is a prayer to the Weaver's lost eyes. Sometimes they look back. Dig deeper, for the truth is buried beneath the ash."
+        }
+      ],
+      "rewards": {
+        "experience": 100,
+        "items": []
+      }
+    },
+    {
+      "id": "investigate_the_betrayal",
+      "name": "Echoes of Silver",
+      "description": "Ancient records speak of a betrayal within the Silver Guard. Use your perception to find trace evidence in the Moonwell Ruins.",
+      "status": "not-started",
+      "type": "main",
+      "objectives": [
+        {
+          "id": "gather_clues",
+          "description": "Collect 3 fragments of the Silver Vow at the Moonwell",
+          "status": "pending",
+          "requiredClues": ["clue_silver_guard_vow_01", "clue_silver_guard_vow_02", "clue_silver_guard_vow_03"]
+        }
+      ],
+      "preRequisites": ["prologue_awakening"]
+    },
+    {
+      "id": "silas_repayment",
+      "name": "A Debt of Blood and Gold",
+      "description": "Shady Silas is hiding from Artificer Kael. The social web demands repayment. Decide who to support.",
+      "status": "not-started",
+      "type": "social",
+      "objectives": [
+        {
+          "id": "confront_silas",
+          "description": "Find Silas in the Underworld District",
+          "status": "pending"
+        },
+        {
+          "id": "resolve_debt",
+          "description": "Force Silas to pay Kael or help Silas vanish",
+          "status": "pending"
+        }
+      ],
+      "preRequisites": ["prologue_awakening"]
+    },
+    {
+      "id": "the_first_crack",
+      "name": "The Gilded Fracture",
+      "description": "The Paradox is reaching a breaking point. Travel to the Merchant Guild and witness the first physical manifestation of the reality breakdown.",
+      "status": "not-started",
+      "type": "main",
+      "objectives": [
+        {
+          "id": "witness_glitch",
+          "description": "Check the 'Paradox Sink' in the Guild Plaza",
+          "status": "pending"
+        }
+      ],
+      "preRequisites": ["investigate_the_betrayal"]
+    },
+    {
+      "id": "sate_the_blade",
+      "name": "Blood for the Aegis",
+      "description": "The Legendary Aegis Blade feels hollow and dormant. It demands the heat of battle to remain loyal. If its bloodthirst stays too low, it may rebel against your grip.",
+      "status": "not-started",
+      "type": "hidden",
+      "giverId": "legendary-aegis-blade",
+      "objectives": [
+        {
+          "id": "combat_engagement",
+          "description": "Defeat 3 NPCs of the void-cult faction while 'protect_allies' is active.",
+          "status": "pending",
+          "targetValue": 3,
+          "targetFaction": "void-cult",
+          "requiredStance": "protect_allies"
+        }
+      ],
+      "rewards": {
+        "experience": 500,
+        "moodBoost": { "itemId": "legendary-aegis-blade", "targetMood": "bloodthirsty", "value": 1.0 },
+        "resetFlag": { "itemId": "legendary-aegis-blade", "property": "rebellionCounter", "value": 0 },
+        "statusEffect": { "id": "silver_guard_clarity", "duration": 1440 }
+      }
+    },
+    {
+      "id": "sanctify_the_shard",
+      "name": "The Weight of Entropy",
+      "description": "The Void Shard is vibrating at a frequency that threatens your sanity. You must take it to the Moonwell Shrine and bathe it in pure water to stabilize its paradox.",
+      "status": "not-started",
+      "type": "hidden",
+      "giverId": "item_void_shard",
+      "objectives": [
+        {
+          "id": "reach_shrine",
+          "description": "Travel to the Moonwell Shrine with a Void Shard",
+          "status": "pending"
+        },
+        {
+          "id": "use_moonwell",
+          "description": "Use the 'Sanctify' action at the Moonwell",
+          "status": "pending"
+        }
+      ],
+      "rewards": {
+        "experience": 150,
+        "items": [{ "itemId": "pure-moonwell-water", "quantity": -1 }],
+        "statModification": { "itemId": "void-shard", "stat": "paradoxScale", "value": -0.05 }
+      }
+    }
+  ],
+  "itemTemplates": [
+    {
+      "id": "starlight-iron",
+      "name": "Starlight Iron Ore",
+      "description": "A luminescent metal ore that hums with celestial energy. Often found near ancient shrine sites.",
+      "kind": "stackable",
+      "rarity": "common",
+      "baseValue": 50
+    },
+    {
+      "id": "echoing-moss",
+      "name": "Echoing Moss",
+      "description": "Soft, bioluminescent moss that whispers when touched. Prized by alchemists for mood-stabilizing tinctures.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 75,
+      "stats": { "power": 2 }
+    },
+    {
+      "id": "void-ash",
+      "name": "Void Ash",
+      "description": "Spectral particles left behind when reality tears. Dangerous to handle; increases paradox sensitivity.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 200,
+      "stats": { "paradoxScale": 5 }
+    },
+    {
+      "id": "spirit-silk",
+      "name": "Spirit Silk",
+      "description": "Ethereal thread woven by creatures of the In-Between. Incredibly rare and highly sought by crafters.",
+      "kind": "stackable",
+      "rarity": "epic",
+      "baseValue": 400
+    },
+    {
+      "id": "copper-ore",
+      "name": "Copper Ore",
+      "description": "Common metallic ore, found throughout grasslands and foothills.",
+      "kind": "stackable",
+      "rarity": "common",
+      "baseValue": 25
+    },
+    {
+      "id": "ancient-fragment",
+      "name": "Ancient Fragment",
+      "description": "A shard of pre-fracture civilization. Stone-marked with forgotten runes.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 180
+    },
+    {
+      "id": "cursed-shard",
+      "name": "Cursed Shard",
+      "description": "A twisted piece of dark crystal. Radiates malice and void corruption.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 220,
+      "stats": { "paradoxScale": 3 }
+    },
+    {
+      "id": "luminous-gem",
+      "name": "Luminous Gem",
+      "description": "A gemstone that glows with inner light. Used in enchantments and relics.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 120
+    },
+    {
+      "id": "deep-metal",
+      "name": "Deep Metal",
+      "description": "A heavy, dark alloy found in cavern depths. Forged into weapons of tremendous power.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 100
+    },
+    {
+      "id": "legendary-aegis-blade",
+      "name": "The Aegis Blade",
+      "description": "An ancient relic weapon of the Solar Aegis. It hums with barely contained power and demands constant battle to remain loyal. Its mood shifts between bloodthirsty and contemplative.",
+      "kind": "unique",
+      "rarity": "legendary",
+      "baseValue": 5000,
+      "stats": { "damage": 25, "defense": 8 },
+      "requirements": { "str": 15, "agi": 10 }
+    },
+    {
+      "id": "void-shard",
+      "name": "Void Shard",
+      "description": "A fragment of the Void itself, sealed in crystal. Corrupts all it touches if left too long. Must be purified at the Moonwell or it will consume the wearer.",
+      "kind": "unique",
+      "rarity": "epic",
+      "baseValue": 1000,
+      "stats": { "paradoxScale": 10, "damage": 5 }
+    },
+    {
+      "id": "pure-moonwell-water",
+      "name": "Pure Moonwell Water",
+      "description": "Sacred water from the Moonwell Shrine. Cleanses paradox corruption and restores clarity.",
+      "kind": "stackable",
+      "rarity": "rare",
+      "baseValue": 300,
+      "stats": { "paradoxScale": -5 }
+    },
+    {
+      "id": "solar-steel-ingot",
+      "name": "Solar Steel Ingot",
+      "description": "Pure, refined solar steel. Crafted in the Forge Summit. Highly resistant to void corruption.",
+      "kind": "stackable",
+      "rarity": "uncommon",
+      "baseValue": 150
+    }
+  ],
+  "lootTables": [
+    {
+      "id": "grasslands-common",
+      "locationId": "whispering-wilds",
+      "biome": "plains",
+      "drops": [
+        { "itemId": "copper-ore", "chance": 0.6, "minQuantity": 1, "maxQuantity": 3 },
+        { "itemId": "echoing-moss", "chance": 0.3, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "starlight-iron", "chance": 0.1, "minQuantity": 1, "maxQuantity": 1 }
+      ]
+    },
+    {
+      "id": "ruins-rare",
+      "locationId": "shadowed-rift",
+      "biome": "corrupted",
+      "drops": [
+        { "itemId": "ancient-fragment", "chance": 0.5, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "cursed-shard", "chance": 0.4, "minQuantity": 1, "maxQuantity": 1 },
+        { "itemId": "void-ash", "chance": 0.2, "minQuantity": 1, "maxQuantity": 1 }
+      ]
+    },
+    {
+      "id": "caverns-deep",
+      "locationId": "thornwood-depths",
+      "biome": "cave",
+      "drops": [
+        { "itemId": "luminous-gem", "chance": 0.4, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "deep-metal", "chance": 0.6, "minQuantity": 1, "maxQuantity": 3 },
+        { "itemId": "spirit-silk", "chance": 0.05, "minQuantity": 1, "maxQuantity": 1 }
+      ]
+    },
+    {
+      "id": "shrine-sacred",
+      "locationId": "moonwell-shrine",
+      "biome": "shrine",
+      "drops": [
+        { "itemId": "pure-moonwell-water", "chance": 0.3, "minQuantity": 1, "maxQuantity": 1 },
+        { "itemId": "starlight-iron", "chance": 0.4, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "echoing-moss", "chance": 0.5, "minQuantity": 1, "maxQuantity": 3 }
+      ]
+    },
+    {
+      "id": "forge-premium",
+      "locationId": "forge-summit",
+      "biome": "mountain",
+      "drops": [
+        { "itemId": "solar-steel-ingot", "chance": 0.4, "minQuantity": 1, "maxQuantity": 2 },
+        { "itemId": "deep-metal", "chance": 0.5, "minQuantity": 1, "maxQuantity": 2 }
+      ]
+    }
+  ],
+  "craftingRecipes": [
+    {
+      "id": "recipe_steel_blade",
+      "resultItemId": "solar-steel-ingot",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "copper-ore", "quantity": 3 },
+        { "itemId": "starlight-iron", "quantity": 1 }
+      ],
+      "requiredFacility": "forge"
+    },
+    {
+      "id": "recipe_clarity_potion",
+      "resultItemId": "pure-moonwell-water",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "echoing-moss", "quantity": 2 },
+        { "itemId": "void-ash", "quantity": 1 }
+      ],
+      "requiredFacility": "alchemy_bench"
+    },
+    {
+      "id": "recipe_void_amplifier",
+      "resultItemId": "cursed-shard",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "ancient-fragment", "quantity": 1 },
+        { "itemId": "void-ash", "quantity": 2 }
+      ],
+      "requiredFacility": "alchemy_bench"
+    },
+    {
+      "id": "recipe_luminous_focus",
+      "resultItemId": "spirit-silk",
+      "resultQuantity": 1,
+      "ingredients": [
+        { "itemId": "luminous-gem", "quantity": 2 },
+        { "itemId": "echoing-moss", "quantity": 3 },
+        { "itemId": "deep-metal", "quantity": 1 }
+      ],
+      "requiredFacility": "alchemy_bench"
+    }
+  ],
+  "ancestryTrees": [
+    {
+      "id": "human_fantasy_versatile",
+      "race": "Human",
+      "codec": "fantasy",
+      "name": "The Versatile Bloodline",
+      "description": "Humans are known for their adaptability and boundless ambition. This ancestral line grants flexible growth and accelerated learning.",
+      "baseStats": {
+        "STR": 8,
+        "DEX": 8,
+        "AGI": 8,
+        "CON": 8,
+        "INT": 8,
+        "WIS": 8,
+        "CHA": 8,
+        "PER": 8
+      },
+      "innatePassive": {
+        "id": "adaptive-learning",
+        "name": "Adaptive Learning",
+        "lore": "Natural capacity for rapid adaptation.",
+        "effect": "+10% XP Gain",
+        "icon": "🧠",
+        "color": "#FFD700"
+      },
+      "rootNodeId": "human_root_versatility",
+      "nodes": [
+        {
+          "id": "human_root_versatility",
+          "name": "Versatile Spirit",
+          "description": "The foundational human trait: the ability to excel in any endeavor.",
+          "cost": 0,
+          "requirements": {
+            "prerequisites": [],
+            "minimumLevel": 1
+          },
+          "modifiers": [
+            { "statName": "xpMultiplier", "value": 0.1 },
+            { "statName": "str", "value": 1 }
+          ],
+          "unlocks": ["human_branch_scholar", "human_branch_warrior"],
+          "aesthetics": {
+            "icon": "🌟",
+            "color": "#FFD700",
+            "tier": 0
+          }
+        },
+        {
+          "id": "human_branch_scholar",
+          "name": "Scholar's Insight",
+          "description": "Enhance intellect and increase proficiency XP gain.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["human_root_versatility"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "int", "value": 2 },
+            { "statName": "xpMultiplier", "value": 0.15 }
+          ],
+          "unlocks": ["human_mastery_arcane"],
+          "aesthetics": {
+            "icon": "📖",
+            "color": "#87CEEB",
+            "tier": 1
+          }
+        },
+        {
+          "id": "human_branch_warrior",
+          "name": "Warrior's Resolve",
+          "description": "Strengthen body and increase physical damage.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["human_root_versatility"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "str", "value": 3 },
+            { "statName": "resistPhysical", "value": 0.05 }
+          ],
+          "unlocks": ["human_mastery_combat"],
+          "aesthetics": {
+            "icon": "⚔️",
+            "color": "#CD5C5C",
+            "tier": 1
+          }
+        },
+        {
+          "id": "human_mastery_arcane",
+          "name": "Arcane Mastery",
+          "description": "Master the flow of magical energies.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["human_branch_scholar"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Arcane", "level": 5 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "int", "value": 3 },
+            { "statName": "manaRegen", "value": 0.1 }
+          ],
+          "aesthetics": {
+            "icon": "✨",
+            "color": "#9370DB",
+            "tier": 2
+          }
+        },
+        {
+          "id": "human_mastery_combat",
+          "name": "Combat Mastery",
+          "description": "Achieve the peak of martial prowess.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["human_branch_warrior"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Blades", "level": 5 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "str", "value": 3 },
+            { "statName": "agi", "value": 2 },
+            { "statName": "damageMultiplier", "value": 0.1 }
+          ],
+          "aesthetics": {
+            "icon": "⚔️",
+            "color": "#8B0000",
+            "tier": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "elf_fantasy_leyweaver",
+      "race": "Elf",
+      "codec": "fantasy",
+      "name": "The Ley-Weavers",
+      "description": "Elves are eternal keepers of the magical ley lines. Their bloodline grants supernatural connection to mana and perception.",
+      "baseStats": {
+        "STR": 7,
+        "DEX": 9,
+        "AGI": 10,
+        "CON": 6,
+        "INT": 10,
+        "WIS": 8,
+        "CHA": 7,
+        "PER": 7
+      },
+      "innatePassive": {
+        "id": "ley-sight",
+        "name": "Ley-Sight",
+        "lore": "Attuned to mana flows, piercing magical fog.",
+        "effect": "+20 Arcane Resistance",
+        "icon": "🌿",
+        "color": "#228B22"
+      },
+      "rootNodeId": "elf_root_attunement",
+      "nodes": [
+        {
+          "id": "elf_root_attunement",
+          "name": "Ley Attunement",
+          "description": "The primal connection between elf and ley line energy.",
+          "cost": 0,
+          "requirements": {
+            "minimumLevel": 1
+          },
+          "modifiers": [
+            { "statName": "perception", "value": 2 },
+            { "statName": "manaRegen", "value": 0.05 }
+          ],
+          "unlocks": ["elf_branch_oracle", "elf_branch_wildblood"],
+          "aesthetics": {
+            "icon": "🌿",
+            "color": "#228B22",
+            "tier": 0
+          }
+        },
+        {
+          "id": "elf_branch_oracle",
+          "name": "Oracle's Foresight",
+          "description": "Heighten perceptual senses and magical awareness.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["elf_root_attunement"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "perception", "value": 3 },
+            { "statName": "int", "value": 2 },
+            { "statName": "manaRegen", "value": 0.1 }
+          ],
+          "unlocks": ["elf_mastery_prescience"],
+          "aesthetics": {
+            "icon": "👁️",
+            "color": "#FFD700",
+            "tier": 1
+          }
+        },
+        {
+          "id": "elf_branch_wildblood",
+          "name": "Wildblood Heritage",
+          "description": "Reclaim the primal nature of ancient elf bloodlines.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["elf_root_attunement"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "agi", "value": 3 },
+            { "statName": "str", "value": 1 },
+            { "statName": "resistNature", "value": 0.1 }
+          ],
+          "unlocks": ["elf_mastery_wilderness"],
+          "aesthetics": {
+            "icon": "🦌",
+            "color": "#32CD32",
+            "tier": 1
+          }
+        },
+        {
+          "id": "elf_mastery_prescience",
+          "name": "Prescient Weaver",
+          "description": "Achieve true foresight and magical omniscience.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["elf_branch_oracle"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Arcane", "level": 8 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "perception", "value": 5 },
+            { "statName": "int", "value": 3 },
+            { "statName": "manaRegen", "value": 0.2 }
+          ],
+          "aesthetics": {
+            "icon": "🔮",
+            "color": "#DA70D6",
+            "tier": 2
+          }
+        },
+        {
+          "id": "elf_mastery_wilderness",
+          "name": "Wilderness Sovereign",
+          "description": "Command nature itself as your domain.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["elf_branch_wildblood"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Survival", "level": 8 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "agi", "value": 5 },
+            { "statName": "str", "value": 2 },
+            { "statName": "resistNature", "value": 0.25 }
+          ],
+          "aesthetics": {
+            "icon": "🌲",
+            "color": "#00AA00",
+            "tier": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "dwarf_fantasy_deepforge",
+      "race": "Dwarf",
+      "codec": "fantasy",
+      "name": "The Deep-Forgers",
+      "description": "Dwarves are masters of stone and steel, with ancestral knowledge passed through generations of craftsmanship.",
+      "baseStats": {
+        "STR": 10,
+        "DEX": 6,
+        "AGI": 7,
+        "CON": 11,
+        "INT": 7,
+        "WIS": 8,
+        "CHA": 7,
+        "PER": 8
+      },
+      "innatePassive": {
+        "id": "stone-sinew",
+        "name": "Stone-Sinew",
+        "lore": "Muscles forged by heavy mountain labor.",
+        "effect": "+25 Carry Weight",
+        "icon": "⛏️",
+        "color": "#696969"
+      },
+      "rootNodeId": "dwarf_root_stoneheart",
+      "nodes": [
+        {
+          "id": "dwarf_root_stoneheart",
+          "name": "Stone Heart",
+          "description": "The fundamental dwarven connection to earth and industry.",
+          "cost": 0,
+          "requirements": {
+            "minimumLevel": 1
+          },
+          "modifiers": [
+            { "statName": "str", "value": 2 },
+            { "statName": "resistPhysical", "value": 0.1 }
+          ],
+          "unlocks": ["dwarf_branch_crafter", "dwarf_branch_defender"],
+          "aesthetics": {
+            "icon": "⛏️",
+            "color": "#696969",
+            "tier": 0
+          }
+        },
+        {
+          "id": "dwarf_branch_crafter",
+          "name": "Master Smith",
+          "description": "Unlock superior crafting speed and item quality.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["dwarf_root_stoneheart"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "craftingSpeedBonus", "value": 0.2 },
+            { "statName": "itemQualityBonus", "value": 0.15 }
+          ],
+          "unlocks": ["dwarf_mastery_artifice"],
+          "aesthetics": {
+            "icon": "🔨",
+            "color": "#FF8C00",
+            "tier": 1
+          }
+        },
+        {
+          "id": "dwarf_branch_defender",
+          "name": "Guardian's Aegis",
+          "description": "Harden your body against all manner of harm.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["dwarf_root_stoneheart"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "resistPhysical", "value": 0.15 },
+            { "statName": "resistMagical", "value": 0.1 },
+            { "statName": "hpMultiplier", "value": 0.1 }
+          ],
+          "unlocks": ["dwarf_mastery_fortress"],
+          "aesthetics": {
+            "icon": "🛡️",
+            "color": "#696969",
+            "tier": 1
+          }
+        },
+        {
+          "id": "dwarf_mastery_artifice",
+          "name": "Legendary Artificer",
+          "description": "Create items of legendary quality and power.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["dwarf_branch_crafter"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Smithing", "level": 10 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "craftingSpeedBonus", "value": 0.4 },
+            { "statName": "itemQualityBonus", "value": 0.35 },
+            { "statName": "discoverNewRecipesChance", "value": 0.2 }
+          ],
+          "aesthetics": {
+            "icon": "👑",
+            "color": "#FFD700",
+            "tier": 2
+          }
+        },
+        {
+          "id": "dwarf_mastery_fortress",
+          "name": "Unyielding Citadel",
+          "description": "Become an impenetrable bastion of strength.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["dwarf_branch_defender"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Blunt", "level": 8 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "resistPhysical", "value": 0.35 },
+            { "statName": "resistMagical", "value": 0.2 },
+            { "statName": "hpMultiplier", "value": 0.25 },
+            { "statName": "damageReduction", "value": 0.1 }
+          ],
+          "aesthetics": {
+            "icon": "🏰",
+            "color": "#2F4F4F",
+            "tier": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "orc_fantasy_warborn",
+      "race": "Orc",
+      "codec": "fantasy",
+      "name": "The Warborn Clans",
+      "description": "Orcs are fierce warriors born from tribes of legendary strength. Their bloodline grants natural ferocity and physical dominance.",
+      "baseStats": {
+        "STR": 12,
+        "DEX": 8,
+        "AGI": 8,
+        "CON": 10,
+        "INT": 5,
+        "WIS": 7,
+        "CHA": 7,
+        "PER": 7
+      },
+      "innatePassive": {
+        "id": "warborn-fury",
+        "name": "Warborn Fury",
+        "lore": "The rage of your ancestors flows through your veins.",
+        "effect": "+15% Melee Damage",
+        "icon": "⚔️",
+        "color": "#DC143C"
+      },
+      "rootNodeId": "orc_root_primal",
+      "nodes": [
+        {
+          "id": "orc_root_primal",
+          "name": "Primal Fury",
+          "description": "The foundational orcish trait: raw power and war-hungry instinct.",
+          "cost": 0,
+          "requirements": {
+            "minimumLevel": 1
+          },
+          "modifiers": [
+            { "statName": "str", "value": 2 },
+            { "statName": "damageMultiplier", "value": 0.1 }
+          ],
+          "unlocks": ["orc_branch_berserker", "orc_branch_savage"],
+          "aesthetics": {
+            "icon": "⚔️",
+            "color": "#DC143C",
+            "tier": 0
+          }
+        },
+        {
+          "id": "orc_branch_berserker",
+          "name": "Berserker Rage",
+          "description": "Channel pure aggression into devastating combat power.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["orc_root_primal"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "str", "value": 3 },
+            { "statName": "damageMultiplier", "value": 0.2 }
+          ],
+          "unlocks": ["orc_mastery_onslaught"],
+          "aesthetics": {
+            "icon": "🔥",
+            "color": "#FF4500",
+            "tier": 1
+          }
+        },
+        {
+          "id": "orc_branch_savage",
+          "name": "Savage Resilience",
+          "description": "Harden your frame against punishment.",
+          "cost": 100,
+          "requirements": {
+            "prerequisiteNodeIds": ["orc_root_primal"],
+            "minimumLevel": 5
+          },
+          "modifiers": [
+            { "statName": "con", "value": 2 },
+            { "statName": "resistPhysical", "value": 0.15 }
+          ],
+          "unlocks": ["orc_mastery_unyielding"],
+          "aesthetics": {
+            "icon": "🛡️",
+            "color": "#8B0000",
+            "tier": 1
+          }
+        },
+        {
+          "id": "orc_mastery_onslaught",
+          "name": "Unstoppable Onslaught",
+          "description": "Become a walking hurricane of destruction.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["orc_branch_berserker"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Blades", "level": 8 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "str", "value": 4 },
+            { "statName": "damageMultiplier", "value": 0.35 }
+          ],
+          "aesthetics": {
+            "icon": "💥",
+            "color": "#FF6347",
+            "tier": 2
+          }
+        },
+        {
+          "id": "orc_mastery_unyielding",
+          "name": "Unyielding Brute",
+          "description": "Stand against overwhelming odds and refuse to break.",
+          "cost": 200,
+          "requirements": {
+            "prerequisiteNodeIds": ["orc_branch_savage"],
+            "minimumLevel": 10,
+            "minimumProficiency": [
+              { "proficiencyName": "Blunt", "level": 8 }
+            ]
+          },
+          "modifiers": [
+            { "statName": "con", "value": 3 },
+            { "statName": "resistPhysical", "value": 0.35 },
+            { "statName": "hpMultiplier", "value": 0.2 }
+          ],
+          "aesthetics": {
+            "icon": "🏔️",
+            "color": "#2F4F4F",
+            "tier": 2
+          }
+        }
+      ]
+    }
+  ],
+  "talentPool": [
+    {
+      "id": "shadow-stalk",
+      "name": "Shadow Stalk",
+      "description": "Move undetected through darkness and crowds.",
+      "type": "active",
+      "mechanics": "Stealth for 3 turns",
+      "cooldown": "10 ticks",
+      "cost": "15 MP",
+      "effect": "stealth_bonus_25"
+    },
+    {
+      "id": "midas-touch",
+      "name": "Midas Touch",
+      "description": "Your commerce always yields higher profits.",
+      "type": "passive",
+      "mechanics": "Innate greed for gold",
+      "cooldown": null,
+      "cost": null,
+      "effect": "gold_multiplier_1.2"
+    },
+    {
+      "id": "arcane-insight",
+      "name": "Arcane Insight",
+      "description": "Detect and decipher magical auras.",
+      "type": "active",
+      "mechanics": "Burst of mana detection",
+      "cooldown": "5 ticks",
+      "cost": "10 MP",
+      "effect": "magic_detection_30"
+    },
+    {
+      "id": "primal-fear",
+      "name": "Primal Fear",
+      "description": "Enemies hesitate when they face your presence.",
+      "type": "passive",
+      "mechanics": "Presence unbalances foes",
+      "cooldown": null,
+      "cost": null,
+      "effect": "intimidation_bonus_20"
+    },
+    {
+      "id": "ancient-lineage",
+      "name": "Ancient Lineage",
+      "description": "NPCs recognize bloodlines of power in you.",
+      "type": "passive",
+      "mechanics": "Ancestral charisma",
+      "cooldown": null,
+      "cost": null,
+      "effect": "reputation_boost_10"
+    },
+    {
+      "id": "adrenaline-rush",
+      "name": "Adrenaline Rush",
+      "description": "Instant burst of speed and reflexes.",
+      "type": "active",
+      "mechanics": "Instant action surge",
+      "cooldown": "20 ticks",
+      "cost": "5 SP",
+      "effect": "speed_boost_high"
+    }
+  ],
+  "startingGearChoices": [
+    {
+      "id": "gear_offense_sword",
+      "category": "offense",
+      "equipmentSlot": "mainHand",
+      "name": "Rusty Iron Sword",
+      "icon": "⚔️",
+      "description": "A simple iron blade, worn but serviceable.",
+      "flavorText": "Your first weapon. Heavy, but honest work.",
+      "mechanics": "Melee attack with +2 STR bonus. Single-handed.",
+      "statBonuses": "+2 STR",
+      "lore": "This blade has seen countless adventures. The rust is not decay—it's the accumulated dust of a thousand journeys waiting to be resumed."
+    },
+    {
+      "id": "gear_offense_staff",
+      "category": "offense",
+      "equipmentSlot": "mainHand",
+      "name": "Apprentice's Staff",
+      "icon": "🔮",
+      "description": "A wooden staff wrapped with cloth and arcane runes.",
+      "flavorText": "Carved from ancient willow. It hums with dormant potential.",
+      "mechanics": "Arcane channeling with +3 INT bonus. Enables spellcasting.",
+      "statBonuses": "+3 INT, +1 WIS",
+      "lore": "Carved from a willow tree that grew in the Luminant Gardens. The runes are not written—they simply appeared as the wood aged."
+    },
+    {
+      "id": "gear_defense_leather",
+      "category": "defense",
+      "equipmentSlot": "chest",
+      "name": "Padded Leather Armor",
+      "icon": "🛡️",
+      "description": "Well-worn leather reinforced with cloth padding.",
+      "flavorText": "Uncomfortable at first, but you'll grow into it.",
+      "mechanics": "Physical defense with -2 AGI debuff but +3 CON resistance.",
+      "statBonuses": "+3 CON, -2 AGI",
+      "lore": "The padding is stuffed with kapok—a fiber that absorbs blows without restricting movement. A skilled crafter's work."
+    },
+    {
+      "id": "gear_defense_robes",
+      "category": "defense",
+      "equipmentSlot": "chest",
+      "name": "Rough Traveling Robes",
+      "icon": "🧶",
+      "description": "Simple robes dyed with natural color, practical and humble.",
+      "flavorText": "A wanderer's garment. The road is long.",
+      "mechanics": "Elemental defense with +2 WIS and +2 CHA to social encounters.",
+      "statBonuses": "+2 WIS, +2 CHA",
+      "lore": "These robes have been worn by countless wanderers. Each thread carries fragments of their stories—victories, sorrows, discoveries."
+    }
+  ],
+  "curiosityPool": [
+    { "id": "curio_everlasting_candle", "name": "Everlasting Candle", "icon": "🕯️", "lore": "A wax candle that never burns down, no matter how long you light it." },
+    { "id": "curio_bent_spoon", "name": "Bent Spoon", "icon": "🥄", "lore": "A silver spoon twisted into an impossible shape. Impossible to eat with." },
+    { "id": "curio_soap", "name": "Vintage Soap", "icon": "🧴", "lore": "An old cake of soap with a strange minty scent. From a place long forgotten." },
+    { "id": "curio_soggy_map", "name": "Soggy Map", "icon": "🗺️", "lore": "A water-damaged map. Most of the landmarks are smudged beyond recognition." },
+    { "id": "curio_button", "name": "Brass Button", "icon": "👕", "lore": "A single brass button, orphaned from whatever uniform it once belonged to." },
+    { "id": "curio_feather", "name": "Raven Feather", "icon": "🪶", "lore": "A glossy black feather. It's still warm to the touch." },
+    { "id": "curio_marble", "name": "Swirled Marble", "icon": "⚪", "lore": "A glass marble with hypnotic patterns trapped inside. Mesmerizing to stare at." },
+    { "id": "curio_coin", "name": "Foreign Coin", "icon": "🪙", "lore": "Currency from a place you don't recognize. Utterly useless here." },
+    { "id": "curio_needle", "name": "Bone Needle", "icon": "🧵", "lore": "A needle carved from bone, impossibly sharp and white." },
+    { "id": "curio_bell", "name": "Silent Bell", "icon": "🔔", "lore": "A small copper bell that makes no sound when rung." },
+    { "id": "curio_rope", "name": "Frayed Rope", "icon": "🪢", "lore": "A length of rope, partially unraveled. Why were you carrying this?" },
+    { "id": "curio_lens", "name": "Crystal Lens", "icon": "🔍", "lore": "A hand-polished lens of clear crystal. Focuses light beautifully." },
+    { "id": "curio_pebble", "name": "Warmed Pebble", "icon": "🪨", "lore": "A smooth pebble that is perpetually warm. Where does the heat come from?" },
+    { "id": "curio_vial", "name": "Empty Vial", "icon": "🧪", "lore": "A glass vial with no stopper. Whatever was in here is long gone." },
+    { "id": "curio_lantern", "name": "Shuttered Lantern", "icon": "🏮", "lore": "An ornate lantern with shutters sealed shut. Light flickers inside, but won't come out." },
+    { "id": "curio_bone", "name": "Carved Bone", "icon": "🦴", "lore": "Bone carved into an abstract shape. It might have meant something, once." },
+    { "id": "curio_whistle", "name": "Wooden Whistle", "icon": "🪘", "lore": "A whistle carved from hardwood. It plays a note that saddens the soul." },
+    { "id": "curio_crown", "name": "Brass Crown", "icon": "👑", "lore": "A small brass crown, child-sized. Was this a toy, or something more?" },
+    { "id": "curio_mirror", "name": "Pocket Mirror", "icon": "🪞", "lore": "A handheld mirror, but the reflection is always slightly delayed." },
+    { "id": "curio_lockpick", "name": "Silver Lockpick", "icon": "🔓", "lore": "A delicate lockpick of pure silver. Someone left this intentionally for you to find." },
+    { "id": "curio_ring", "name": "Tarnished Ring", "icon": "💍", "lore": "A silver ring with an inscription worn smooth by time." },
+    { "id": "curio_leaf", "name": "Golden Leaf", "icon": "🍂", "lore": "A leaf spray-painted gold. Someone's attempt at immortality." },
+    { "id": "curio_dice", "name": "Loaded Dice", "icon": "🎲", "lore": "A pair of dice. The weight distribution seems... intentional." },
+    { "id": "curio_charm", "name": "Rabbit's Foot", "icon": "🐰", "lore": "A lucky charm. Doesn't feel very lucky." },
+    { "id": "curio_token", "name": "Copper Token", "icon": "🪙", "lore": "A token stamped with a symbol you don't recognize. Some kind of pass?" }
+  ]
+}
+

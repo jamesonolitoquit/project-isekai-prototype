@@ -1,0 +1,58 @@
+{
+  "multiverseHooks": {
+    "version": "1.0.0-DISSONANCE",
+    "description": "Rules for cross-world leakage based on global Paradox pressure.",
+    "globalTriggers": [
+      {
+        "id": "PARADOX_CASCADE",
+        "threshold": 0.85,
+        "effect": "VISUAL_BLEED",
+        "narrative": "The sky fractures as a neighboring timeline collapses."
+      }
+    ],
+    "crossWorldItems": [
+      {
+        "id": "ECHO_DEAD_SUN",
+        "name": "Echo of a Dead Sun",
+        "requiredParadoxLevel": 0.8,
+        "originWorldType": "Apocalyptic-End",
+        "statModifiers": { "LUCK": -25, "manaRegen": 1.5, "baseDamage": 50 },
+        "lore": "Cold, black iron that still radiates the heat of a world that was erased.",
+        "passiveEffect": "Dying-Glow: Illuminates dark regions with a haunting, violet light."
+      },
+      {
+        "id": "HARMONIC_THREAD",
+        "name": "Thread of the Great Synthesis",
+        "requiredParadoxLevel": 0.1,
+        "originWorldType": "Golden-End",
+        "statModifiers": { "LUCK": 15, "manaRegen": 0.5 },
+        "lore": "A golden strand of logic from a world that reached perfect equilibrium.",
+        "passiveEffect": "Mending: Automatically repairs durability of nearby equipped gear."
+      },
+      {
+        "id": "GLITCH_CORE",
+        "name": "Unstable Reality-Node",
+        "requiredParadoxLevel": 0.95,
+        "originWorldType": "Unstable",
+        "statModifiers": { "STR": "RANDOM", "INT": "RANDOM" },
+        "lore": "A jagged piece of the world's source code, physicalized by shear paradox.",
+        "passiveEffect": "Flicker: 5% chance to dodge any incoming attack by briefly phasing out of the timeline."
+      }
+    ],
+    "dissonanceDialogue": {
+      "npcId": "chronicler_main",
+      "nodes": [
+        {
+          "trigger": "ifMultiverseConflict",
+          "text": "I hear the screams of a thousand blacksmiths from a world where the Iron Bridge never fell. Their steel is cold, but it remembers you.",
+          "requirement": "globalServerParadoxSum > 5.0"
+        },
+        {
+          "trigger": "ifMultiverseConflict",
+          "text": "Your shadows are bleeding, Traveler. They belong to a version of you that died three eons ago in a different sky.",
+          "requirement": "playerParadoxCount > 50"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,110 @@
+/* ========================================================
+   THEME COLOR SYSTEM - Heavy RPG Aesthetic
+   ======================================================== */
+
+:root {
+  /* Primary Colors */
+  --color-surface-primary: rgba(10, 15, 25, 0.88);
+  --color-accent: #d4af37;
+  --color-text-high: #f3f3f3;
+  --color-text-dim: #c8c8c8;
+  
+  /* Glass Morphism */
+  --glass-blur: 12px;
+  
+  /* RPG Extensions - Medieval Default */
+  --ui-accent: var(--color-accent);
+  --ui-accent-glow: rgba(212, 175, 55, 0.3);
+  --ui-accent-bright: rgba(212, 175, 55, 0.8);
+  --ui-highlight: #8b5cf6;
+  --ui-success: #1dd1a1;
+  --ui-warning: #f39c12;
+  --ui-danger: #e74c3c;
+  
+  /* Text Hierarchy */
+  --text-primary: #eeeeee;
+  --text-secondary: #d0d0d0;
+  --text-tertiary: #a0a0a0;
+  
+  /* Borders & Shadows */
+  --border-light: rgba(212, 175, 55, 0.2);
+  --border-bright: rgba(212, 175, 55, 0.4);
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-medium: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 20px var(--ui-accent-glow);
+  
+  /* Animation */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 300ms ease-out;
+  --transition-slow: 500ms ease-out;
+  
+  /* Parallax */
+  --parallax-depth: 1;
+}
+
+/* ========================================================
+   THEME: MEDIEVAL (Gold & Sepia)
+   ======================================================== */
+
+.theme-medieval {
+  --ui-accent: #d4af37;
+  --ui-accent-glow: rgba(212, 175, 55, 0.3);
+  --ui-accent-bright: rgba(212, 175, 55, 0.8);
+  --ui-highlight: #b8860b;
+  --ui-success: #1dd1a1;
+  --ui-warning: #f39c12;
+  --ui-danger: #e74c3c;
+  
+  --text-primary: #f4e4bc;
+  --text-secondary: #e8d7c3;
+  --text-tertiary: #c8b8a8;
+  
+  --border-light: rgba(212, 175, 55, 0.15);
+  --border-bright: rgba(212, 175, 55, 0.4);
+  --shadow-glow: 0 0 20px rgba(212, 175, 55, 0.2);
+  
+  font-family: 'Cinzel', 'Georgia', serif;
+  letter-spacing: 0.5px;
+}
+
+/* ========================================================
+   THEME: SCI-FI (Cyan & Magenta)
+   ======================================================== */
+
+.theme-sci {
+  --ui-accent: #00f3ff;
+  --ui-accent-glow: rgba(0, 243, 255, 0.4);
+  --ui-accent-bright: rgba(0, 243, 255, 0.9);
+  --ui-highlight: #00d9ff;
+  --ui-success: #00ff88;
+  --ui-warning: #ffaa00;
+  --ui-danger: #ff0055;
+  
+  --text-primary: #00ff99;
+  --text-secondary: #00eeff;
+  --text-tertiary: #00b8d4;
+  
+  --border-light: rgba(0, 243, 255, 0.15);
+  --border-bright: rgba(0, 243, 255, 0.4);
+  --shadow-glow: 0 0 20px rgba(0, 243, 255, 0.3);
+  
+  font-family: 'Share Tech Mono', 'JetBrains Mono', monospace;
+  letter-spacing: 1px;
+}
+
+/* ========================================================
+   UTILITY MAPPING
+   ======================================================== */
+
+.theme-parchment {
+  --ui-accent: #d4af37;
+  --ui-accent-glow: rgba(212, 175, 55, 0.2);
+  --ui-highlight: #b8860b;
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.theme-digital {
+  --ui-accent: #ff10f0;
+  --ui-highlight: #00d9ff;
+  font-family: 'Share Tech Mono', monospace;
+}

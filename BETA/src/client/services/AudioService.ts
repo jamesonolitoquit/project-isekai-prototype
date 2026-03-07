@@ -644,3 +644,535 @@ export async function ensureAudioStarted(topology: AudioNodeTopology): Promise<b
     return false;
   }
 }
+
+/**
+ * Phase 32: Diegetic Sound Effects (Physical Board Game Interactions)
+ * Synthesized sound effects for tabletop interactions
+ */
+
+/**
+ * Play a synthesized dice roll sound
+ * - Rapid frequency sweep (high to low)
+ * - Short duration with decay envelope
+ */
+export function playDiceRoll(topology: AudioNodeTopology) {
+  try {
+    const now = topology.context.currentTime;
+    const duration = 0.4;
+
+    // Dice clatter - 3 oscillators with different frequencies
+    for (let i = 0; i < 3; i++) {
+      const osc = topology.context.createOscillator();
+      const gain = topology.context.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(800 - i * 150, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + duration * 0.7);
+
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+      osc.connect(gain);
+      gain.connect(topology.context.destination);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    // Add a low-frequency "impact" thump
+    const bass = topology.context.createOscillator();
+    const bassGain = topology.context.createGain();
+
+    bass.type = 'sine';
+    bass.frequency.setValueAtTime(150, now);
+    bass.frequency.exponentialRampToValueAtTime(50, now + duration * 0.3);
+
+    bassGain.gain.setValueAtTime(0.15, now);
+    bassGain.gain.exponentialRampToValueAtTime(0, now + duration * 0.4);
+
+    bass.connect(bassGain);
+    bassGain.connect(topology.context.destination);
+
+    bass.start(now);
+    bass.stop(now + duration * 0.4);
+
+    console.log('[AudioService] Dice roll played');
+  } catch (e) {
+    console.warn('[AudioService] Error playing dice roll:', e);
+  }
+}
+
+/**
+ * Play a paper shuffle sound
+ * - Rapid white noise burst
+ * - Resonant frequencies around 2-4kHz
+ */
+export function playPaperShuffle(topology: AudioNodeTopology) {
+  try {
+    const now = topology.context.currentTime;
+    const duration = 0.3;
+
+    // Create white noise buffer
+    const bufferSize = topology.context.sampleRate * duration;
+    const noiseBuffer = topology.context.createBuffer(1, bufferSize, topology.context.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noiseSource = topology.context.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+
+    // Filter noise to paper-like frequencies (2-4kHz)
+    const filter = topology.context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(3000, now);
+    filter.Q.setValueAtTime(1.5, now);
+
+    const gain = topology.context.createGain();
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+    noiseSource.connect(filter);
+    filter.connect(gain);
+    gain.connect(topology.context.destination);
+
+    noiseSource.start(now);
+    noiseSource.stop(now + duration);
+
+    console.log('[AudioService] Paper shuffle played');
+  } catch (e) {
+    console.warn('[AudioService] Error playing paper shuffle:', e);
+  }
+}
+
+/**
+ * Play a stone click sound
+ * - Sharp attack with quick decay
+ * - Harmonic content around 500-800Hz
+ */
+export function playStoneClick(topology: AudioNodeTopology) {
+  try {
+    const now = topology.context.currentTime;
+    const duration = 0.15;
+
+    // Two-tone click (fundamental + harmonic)
+    for (const freq of [600, 1200]) {
+      const osc = topology.context.createOscillator();
+      const gain = topology.context.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0, now + duration);
+
+      osc.connect(gain);
+      gain.connect(topology.context.destination);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    console.log('[AudioService] Stone click played');
+  } catch (e) {
+    console.warn('[AudioService] Error playing stone click:', e);
+  }
+}
+
+/**
+ * Play metal clink sound
+ * - Bright, resonant tone
+ * - Frequency sweep to simulate vibration decay
+ */
+export function playMetalClink(topology: AudioNodeTopology) {
+  try {
+    const now = topology.context.currentTime;
+    const duration = 0.2;
+
+    const osc = topology.context.createOscillator();
+    const gain = topology.context.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.linearRampToValueAtTime(900, now + duration);
+
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+    osc.connect(gain);
+    gain.connect(topology.context.destination);
+
+    osc.start(now);
+    osc.stop(now + duration);
+
+    console.log('[AudioService] Metal clink played');
+  } catch (e) {
+    console.warn('[AudioService] Error playing metal clink:', e);
+  }
+}
+
+/**
+ * Play ambient crystalline resonance
+ * - Sustained tone with slow decay
+ * - Suggests magical energy
+ */
+export function playCrystalResonance(topology: AudioNodeTopology) {
+  try {
+    const now = topology.context.currentTime;
+    const duration = 0.8;
+
+    // Main tone
+    const osc1 = topology.context.createOscillator();
+    const osc2 = topology.context.createOscillator();
+    const gain = topology.context.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(432, now);
+
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(540, now);
+
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0, now + duration);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(topology.context.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + duration);
+    osc2.stop(now + duration);
+
+    console.log('[AudioService] Crystal resonance played');
+  } catch (e) {
+    console.warn('[AudioService] Error playing crystal resonance:', e);
+  }
+}
+
+/**
+ * Play stone thud sound
+ * - Low-frequency impact with percussive attack
+ * - Reinforces the "weight" of placing objects on the table
+ */
+export function playStoneThud(topology: AudioNodeTopology) {
+  try {
+    const now = topology.context.currentTime;
+    const duration = 0.25;
+
+    // Deep bass impact
+    const bass = topology.context.createOscillator();
+    const bassGain = topology.context.createGain();
+
+    bass.type = 'sine';
+    bass.frequency.setValueAtTime(120, now);
+    bass.frequency.exponentialRampToValueAtTime(60, now + duration * 0.6);
+
+    bassGain.gain.setValueAtTime(0.12, now);
+    bassGain.gain.exponentialRampToValueAtTime(0, now + duration);
+
+    bass.connect(bassGain);
+    bassGain.connect(topology.context.destination);
+
+    bass.start(now);
+    bass.stop(now + duration);
+
+    // Midrange harmonic
+    const mid = topology.context.createOscillator();
+    const midGain = topology.context.createGain();
+
+    mid.type = 'sine';
+    mid.frequency.setValueAtTime(250, now);
+    mid.frequency.exponentialRampToValueAtTime(150, now + duration * 0.5);
+
+    midGain.gain.setValueAtTime(0.06, now);
+    midGain.gain.exponentialRampToValueAtTime(0, now + duration);
+
+    mid.connect(midGain);
+    midGain.connect(topology.context.destination);
+
+    mid.start(now);
+    mid.stop(now + duration);
+
+    console.log('[AudioService] Stone thud played');
+  } catch (e) {
+    console.warn('[AudioService] Error playing stone thud:', e);
+  }
+}
+
+/**
+ * Phase 37: Play turn resolution stinger
+ * Event-driven audio to mark the end of a player action turn
+ * Tone and duration vary based on action outcome
+ * 
+ * - Success (margin > 0): Ascending minor arpeggio (300Hz → 400Hz → 500Hz)
+ * - Failure (margin < 0): Descending major arpeggio (600Hz → 400Hz → 200Hz)
+ * - Critical (margin > 10): Bright 5-note flourish
+ */
+export function playTurnStinger(topology: AudioNodeTopology, outcome: 'success' | 'failure' | 'critical' | 'neutral' = 'neutral', margin: number = 0) {
+  try {
+    const now = topology.context.currentTime;
+    const baseDuration = 0.15;
+    
+    let frequencies: number[] = [];
+    let durations: number[] = [];
+    
+    switch (outcome) {
+      case 'critical':
+        // Bright 5-note flourish: 400, 500, 600, 700, 800
+        frequencies = [400, 500, 600, 700, 800];
+        durations = Array(5).fill(0.12);
+        break;
+      case 'success':
+        // Ascending minor arpeggio
+        frequencies = [300, 350, 400, 450];
+        durations = Array(4).fill(baseDuration);
+        break;
+      case 'failure':
+        // Descending major arpeggio
+        frequencies = [600, 500, 400, 300];
+        durations = Array(4).fill(baseDuration);
+        break;
+      default:
+        // Neutral: single note
+        frequencies = [440];
+        durations = [0.2];
+        break;
+    }
+    
+    let currentTime = now;
+    for (let i = 0; i < frequencies.length; i++) {
+      const osc = topology.context.createOscillator();
+      const gain = topology.context.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(frequencies[i], currentTime);
+      
+      gain.gain.setValueAtTime(0.1, currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, currentTime + durations[i]);
+      
+      osc.connect(gain);
+      gain.connect(topology.context.destination);
+      
+      osc.start(currentTime);
+      osc.stop(currentTime + durations[i]);
+      
+      currentTime += durations[i] * 0.8; // Slight overlap
+    }
+    
+    console.log(`[AudioService] Turn stinger played (${outcome})`);
+  } catch (e) {
+    console.warn('[AudioService] Error playing turn stinger:', e);
+  }
+}
+
+/**
+ * Phase 37: Play atmospheric shift sound
+ * Event-driven audio to mark changes in scene state
+ * Examples: time-of-day transition, location change, weather shift, paradox surge
+ * 
+ * @param shiftType Type of atmospheric change
+ */
+export function playAtmosphericShift(topology: AudioNodeTopology, shiftType: 'dawn' | 'dusk' | 'location' | 'weather' | 'paradox' = 'location') {
+  try {
+    const now = topology.context.currentTime;
+    
+    switch (shiftType) {
+      case 'dawn':
+        // Gentle rising tone: 200Hz → 440Hz
+        const dawnOsc = topology.context.createOscillator();
+        const dawnGain = topology.context.createGain();
+        dawnOsc.type = 'sine';
+        dawnOsc.frequency.setValueAtTime(200, now);
+        dawnOsc.frequency.exponentialRampToValueAtTime(440, now + 0.5);
+        dawnGain.gain.setValueAtTime(0.06, now);
+        dawnGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        dawnOsc.connect(dawnGain);
+        dawnGain.connect(topology.context.destination);
+        dawnOsc.start(now);
+        dawnOsc.stop(now + 0.5);
+        console.log('[AudioService] Dawn transition played');
+        break;
+        
+      case 'dusk':
+        // Gentle falling tone: 440Hz → 200Hz
+        const duskOsc = topology.context.createOscillator();
+        const duskGain = topology.context.createGain();
+        duskOsc.type = 'sine';
+        duskOsc.frequency.setValueAtTime(440, now);
+        duskOsc.frequency.exponentialRampToValueAtTime(200, now + 0.5);
+        duskGain.gain.setValueAtTime(0.06, now);
+        duskGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        duskOsc.connect(duskGain);
+        duskGain.connect(topology.context.destination);
+        duskOsc.start(now);
+        duskOsc.stop(now + 0.5);
+        console.log('[AudioService] Dusk transition played');
+        break;
+        
+      case 'location':
+        // Location change: two-tone chime
+        for (let i = 0; i < 2; i++) {
+          const osc = topology.context.createOscillator();
+          const gain = topology.context.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(300 + i * 200, now + i * 0.1);
+          gain.gain.setValueAtTime(0.08, now + i * 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.3);
+          osc.connect(gain);
+          gain.connect(topology.context.destination);
+          osc.start(now + i * 0.1);
+          osc.stop(now + i * 0.1 + 0.3);
+        }
+        console.log('[AudioService] Location shift played');
+        break;
+        
+      case 'weather':
+        // Weather change: swirling effect with frequency modulation
+        const weatherOsc = topology.context.createOscillator();
+        const weatherGain = topology.context.createGain();
+        const lfo = topology.context.createOscillator();
+        const lfoGain = topology.context.createGain();
+        
+        weatherOsc.type = 'sine';
+        weatherOsc.frequency.setValueAtTime(350, now);
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(4, now); // 4Hz LFO
+        lfoGain.gain.setValueAtTime(50, now); // ±50Hz modulation
+        
+        lfo.connect(lfoGain);
+        lfoGain.connect(weatherOsc.frequency);
+        
+        weatherGain.gain.setValueAtTime(0.06, now);
+        weatherGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        
+        weatherOsc.connect(weatherGain);
+        weatherGain.connect(topology.context.destination);
+        
+        weatherOsc.start(now);
+        lfo.start(now);
+        weatherOsc.stop(now + 0.4);
+        lfo.stop(now + 0.4);
+        console.log('[AudioService] Weather shift played');
+        break;
+        
+      case 'paradox':
+        // Paradox surge: dissonant, unsettling tone (tritone)
+        for (let i = 0; i < 2; i++) {
+          const osc = topology.context.createOscillator();
+          const gain = topology.context.createGain();
+          osc.type = 'sine';
+          // Tritone interval (augmented 4th): 440Hz and 659Hz
+          osc.frequency.setValueAtTime(i === 0 ? 440 : 659, now);
+          gain.gain.setValueAtTime(0.05, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          osc.connect(gain);
+          gain.connect(topology.context.destination);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        }
+        console.log('[AudioService] Paradox surge played');
+        break;
+    }
+  } catch (e) {
+    console.warn('[AudioService] Error playing atmospheric shift:', e);
+  }
+}
+
+/**
+ * Singleton Audio Service Wrapper
+ * Provides convenient methods without requiring topology parameter
+ */
+class AudioServiceWrapper {
+  private topology: AudioNodeTopology | null = null;
+  private initialized = false;
+
+  initialize(manifest: AudioManifest = DEFAULT_AUDIO_MANIFEST): void {
+    if (!this.initialized) {
+      this.topology = initializeAudioContext(manifest);
+      this.initialized = true;
+      console.log('[AudioServiceWrapper] Initialized');
+    }
+  }
+
+  setTopology(topology: AudioNodeTopology): void {
+    this.topology = topology;
+    this.initialized = true;
+  }
+
+  playDiceRoll(): void {
+    if (this.topology) playDiceRoll(this.topology);
+  }
+
+  playPaperShuffle(): void {
+    if (this.topology) playPaperShuffle(this.topology);
+  }
+
+  playStoneClick(): void {
+    if (this.topology) playStoneClick(this.topology);
+  }
+
+  playMetalClink(): void {
+    if (this.topology) playMetalClink(this.topology);
+  }
+
+  playCrystalResonance(): void {
+    if (this.topology) playCrystalResonance(this.topology);
+  }
+
+  playStoneThud(): void {
+    if (this.topology) playStoneThud(this.topology);
+  }
+
+  /**
+   * Phase 37: Trigger turn resolution stinger
+   * @param outcome - 'success', 'failure', 'critical', or 'neutral'
+   * @param margin - Degree of success/failure (higher = more successful)
+   */
+  playTurnStinger(outcome: 'success' | 'failure' | 'critical' | 'neutral' = 'neutral', margin: number = 0): void {
+    if (this.topology) playTurnStinger(this.topology, outcome, margin);
+  }
+
+  /**
+   * Phase 37: Trigger atmospheric shift effect
+   * @param shiftType - Type of transition (dawn, dusk, location, weather, paradox)
+   */
+  playAtmosphericShift(shiftType: 'dawn' | 'dusk' | 'location' | 'weather' | 'paradox' = 'location'): void {
+    if (this.topology) playAtmosphericShift(this.topology, shiftType);
+  }
+
+  /**
+   * Phase 37: Handle turn resolution event
+   * Automatically selects appropriate audio feedback based on turn outcome
+   */
+  onTurnResolved(turnResult: { phase: string; tickResolved: number; eventCount: number; completed: boolean; margin?: number; isCritical?: boolean }): void {
+    try {
+      if (!turnResult.completed) {
+        console.log('[AudioService] Turn resolution failed or incomplete, no stinger');
+        return;
+      }
+
+      // Determine stinger type based on margin
+      let outcome: 'success' | 'failure' | 'critical' | 'neutral' = 'neutral';
+      const margin = turnResult.margin ?? 0;
+
+      if (turnResult.isCritical || margin > 10) {
+        outcome = 'critical';
+      } else if (margin > 0) {
+        outcome = 'success';
+      } else if (margin < 0) {
+        outcome = 'failure';
+      }
+
+      this.playTurnStinger(outcome, margin);
+      console.log(`[AudioService] Turn stinger triggered: ${outcome} (margin: ${margin})`);
+    } catch (err) {
+      console.warn('[AudioService] Error in onTurnResolved:', err);
+    }
+  }
+}
+
+// Export singleton instance
+export const audioService = new AudioServiceWrapper();

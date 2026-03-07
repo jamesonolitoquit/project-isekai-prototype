@@ -4,12 +4,15 @@
  * Implements world-scale events that override individual NPC GOAP goals,
  * creating emergency conditions that reshape NPC behavior autonomously.
  * Examples: plagues, invasions, eclipses, natural disasters.
+ * 
+ * Phase 22: Supports custom event injection from world template
  */
 
 import type { WorldState, NPC } from './worldEngine';
 import { createWorldScar, type WorldScar } from './worldScarsEngine';
 import { random } from './prng';
 import { Event } from '../events/mutationLog';
+import { getRuleIngestionEngine } from './ruleIngestionEngine';
 
 export type MacroEventType = 
   | 'PLAGUE' 
@@ -21,7 +24,8 @@ export type MacroEventType =
   | 'BLIZZARD'
   | 'TERRITORIAL_WAR'
   | 'COSMIC_ANOMALY'
-  | 'UNDEAD_RISING';
+  | 'UNDEAD_RISING'
+  | string;  // Phase 22: Allow custom event types from template
 
 export interface MacroEvent {
   id: string;
@@ -212,6 +216,7 @@ const MACRO_EVENT_DEFINITIONS: Record<MacroEventType, {
 /**
  * M50-A4: Process macro events for current tick
  * Returns events to register and effects to apply
+ * Phase 22: Checks RuleIngestionEngine for custom events
  */
 export function processMacroEvents(state: WorldState): {
   activeEvents: MacroEvent[];
@@ -223,6 +228,7 @@ export function processMacroEvents(state: WorldState): {
   const effects: MacroEventEffect[] = [];
   const newEvents: Event[] = [];
   const createdScars: WorldScar[] = [];
+  const ruleEngine = getRuleIngestionEngine();
 
   // Track which events were active before (to detect expiration)
   const prevActiveCount = activeEvents.length;
@@ -269,11 +275,37 @@ export function processMacroEvents(state: WorldState): {
 
   // Generate effects for all active events
   for (const macroEvent of stillActive) {
-    const definition = MACRO_EVENT_DEFINITIONS[macroEvent.type];
-    if (!definition) continue;
+    // Phase 22: Check for custom event definition first
+    const customEventDef = ruleEngine.getCustomMacroEvent(macroEvent.type);
+    
+    if (customEventDef) {
+      // Custom event: apply modifier effects to affected NPCs
+      const affectedNpcs = macroEvent.epicenter
+        ? state.npcs.filter(npc => npc.locationId === macroEvent.epicenter)
+        : (macroEvent.affectedLocationIds 
+            ? state.npcs.filter(npc => macroEvent.affectedLocationIds?.includes(npc.locationId))
+            : state.npcs.filter(() => random() < 0.3));
+      
+      for (const npc of affectedNpcs) {
+        const updatedNpc = applyCustomEventEffectsToNpc(npc, customEventDef);
+        // Create effect record for tracking
+        effects.push({
+          npcId: npc.id,
+          overrideGoal: customEventDef.npcGoalOverride || 'none',
+          statsModifier: customEventDef.modifierEffects?.reduce((acc: any, e: any) => {
+            acc[e.stat] = e.value;
+            return acc;
+          }, {})
+        });
+      }
+    } else {
+      // Built-in event: use standard definition logic
+      const definition = MACRO_EVENT_DEFINITIONS[macroEvent.type as keyof typeof MACRO_EVENT_DEFINITIONS];
+      if (!definition) continue;
 
-    const eventEffects = definition.effects(state, macroEvent);
-    effects.push(...eventEffects);
+      const eventEffects = definition.effects(state, macroEvent);
+      effects.push(...eventEffects);
+    }
 
     // Emit macro event tick event occasionally (not every tick)
     if ((state.tick || 0) % 12 === 0) {
@@ -361,6 +393,38 @@ export function cancelMacroEvent(state: WorldState, eventId: string): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Phase 22: Apply custom event modifier effects to NPCs
+ * Custom events define modifierEffects as stat name + value pairs
+ */
+export function applyCustomEventEffectsToNpc(npc: NPC, customEvent: any): NPC {
+  if (!customEvent || !customEvent.modifierEffects) return npc;
+
+  const updatedNpc = structuredClone(npc);
+  updatedNpc.stats = updatedNpc.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10, perception: 10 };
+
+  for (const effect of customEvent.modifierEffects) {
+    if (effect.stat && effect.value !== undefined) {
+      const mode = effect.mode || 'add';
+      const currentValue = (updatedNpc.stats as any)[effect.stat] || 10;
+
+      if (mode === 'multiply') {
+        (updatedNpc.stats as any)[effect.stat] = Math.max(1, Math.floor(currentValue * effect.value));
+      } else {
+        (updatedNpc.stats as any)[effect.stat] = Math.max(1, currentValue + effect.value);
+      }
+    }
+  }
+
+  // Apply optional goal override
+  if (customEvent.npcGoalOverride) {
+    (updatedNpc as any).alternativeGoal = customEvent.npcGoalOverride;
+    (updatedNpc as any).goalOverrideReason = 'CUSTOM_EVENT';
+  }
+
+  return updatedNpc;
 }
 
 /**

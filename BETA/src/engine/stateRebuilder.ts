@@ -1,7 +1,89 @@
-import type { WorldState } from './worldEngine';
+import type { WorldState, NPC, EquipmentSlots } from './worldEngine';
 import type { Event } from '../events/mutationLog';
 import { random } from './prng';
 import { createStackableItem, isStackableItem } from './worldEngine';
+import itemsData from '../data/items.json';
+
+/**
+ * Normalize equipment slot names from items.json (lowercase) to PlayerState format (camelCase)
+ * Supports 14-slot "Vessel" matrix:
+ * - Column 1 (Aetheric): head, neck, ring1, ring2
+ * - Column 2 (Physical): chest, waist, legs, feet
+ * - Column 3 (Martial): back, hands, ring3, ring4, mainHand, offHand
+ */
+function normalizeEquipmentSlot(slot: string): keyof EquipmentSlots | null {
+  const normalized = slot.toLowerCase().replace(/[-_]/g, '');
+  const slotMap: Record<string, keyof EquipmentSlots> = {
+    // Column 1: Aetheric & Resonance
+    'head': 'head',
+    'neck': 'neck',
+    'ring1': 'ring1',
+    'ring2': 'ring2',
+    
+    // Column 2: Physical Core
+    'chest': 'chest',
+    'waist': 'waist',
+    'legs': 'legs',
+    'feet': 'feet',
+    
+    // Column 3: Martial & Resonance
+    'back': 'back',
+    'hands': 'hands',
+    'hand': 'hands',
+    'ring3': 'ring3',
+    'ring4': 'ring4',
+    'mainhand': 'mainHand',
+    'offhand': 'offHand',
+    
+    // Legacy names
+    'accessory': 'ring1',
+    'ring': 'ring1',
+  };
+  return slotMap[normalized] ?? null;
+}
+
+/**
+ * Get item template from items.json by ID
+ */
+function getItemTemplate(itemId: string): any | null {
+  const items = (itemsData as any).items || [];
+  return items.find((item: any) => item.id === itemId) || null;
+}
+
+/**
+ * Calculate final player stats by summing base stats and all equipped item bonuses
+ * Iterates through all 14 equipment slots and aggregates stat modifiers
+ */
+function calculatePlayerStats(player: any): any {
+  // Base stats (from character creation or defaults)
+  const baseStats = player.stats || { str: 10, agi: 10, int: 10, cha: 10, end: 10, luk: 10 };
+  const aggregated = { ...baseStats };
+  
+  // Equipment slots to iterate through
+  const equipmentSlots: Array<keyof EquipmentSlots> = [
+    'head', 'neck', 'ring1', 'ring2',
+    'chest', 'waist', 'legs', 'feet',
+    'back', 'hands', 'ring3', 'ring4', 'mainHand', 'offHand'
+  ];
+  
+  // Sum bonuses from equipped items
+  for (const slotKey of equipmentSlots) {
+    const itemId = player.equipment?.[slotKey];
+    if (itemId) {
+      const itemTemplate = getItemTemplate(itemId);
+      if (itemTemplate?.stats) {
+        const itemStats = itemTemplate.stats;
+        Object.keys(itemStats).forEach(statKey => {
+          if (statKey in aggregated) {
+            aggregated[statKey] = (aggregated[statKey] || 0) + (itemStats[statKey] || 0);
+          }
+        });
+      }
+    }
+  }
+  
+  return aggregated;
+}
 
 export interface RebuildResult {
   candidateState: WorldState;
@@ -54,13 +136,22 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       break;
     }
 
+    case 'TARGET_LOCKED': {
+      // Phase 7: Targeting System - Mechanics for combat and interaction
+      const { targetId } = event.payload;
+      if (newState.player) {
+        newState.player.activeTargetId = targetId;
+      }
+      break;
+    }
+
     case 'INTERACT_NPC': {
-      const { npcId, dialogueText, options } = event.payload;
+      const { npcId, text: dialogueText, npcName, options } = event.payload;
       if (newState.player) {
         if (!newState.player.dialogueHistory) {
           newState.player.dialogueHistory = [];
         }
-        newState.player.dialogueHistory.push({ npcId, text: dialogueText, options, timestamp: event.timestamp });
+        newState.player.dialogueHistory.push({ npcId, npcName, text: dialogueText, options, timestamp: event.timestamp });
       }
       break;
     }
@@ -239,16 +330,30 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       if (!newState.player?.equipment) {
         newState.player!.equipment = {};
       }
-      // Simplified: determine slot from item type (would need items.json lookup in real impl)
-      // For now, default to mainHand
-      const slot = 'mainHand';
-      newState.player.equipment[slot as keyof typeof newState.player.equipment] = itemId;
+      // Look up item template to determine correct slot
+      const itemTemplate = getItemTemplate(itemId);
+      let slot: keyof EquipmentSlots = 'mainHand'; // Fallback default
+      
+      if (itemTemplate && itemTemplate.equipmentSlot) {
+        const normalizedSlot = normalizeEquipmentSlot(itemTemplate.equipmentSlot);
+        if (normalizedSlot) {
+          slot = normalizedSlot;
+        }
+      }
+      
+      newState.player.equipment[slot] = itemId;
+      // Recalculate stats after equipment change
+      newState.player.stats = calculatePlayerStats(newState.player);
       break;
     }
     case 'ITEM_UNEQUIPPED': {
       const { slot } = event.payload;
       if (newState.player?.equipment) {
         (newState.player.equipment as any)[slot] = undefined;
+      }
+      // Recalculate stats after equipment change
+      if (newState.player) {
+        newState.player.stats = calculatePlayerStats(newState.player);
       }
       break;
     }
@@ -393,7 +498,7 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       break;
     }
     case 'COMBAT_STARTED': {
-      const { participants, initiatorId } = event.payload;
+      const { participants, initiatorId, enemies: injectedEnemies } = event.payload;
       if (newState.combatState) {
         newState.combatState.active = true;
         newState.combatState.participants = participants || [];
@@ -401,6 +506,22 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         newState.combatState.turnIndex = 0;
         newState.combatState.roundNumber = 0;
         newState.combatState.log = [];
+        // Phase 8: Populate enemies from event payload or generate from targetIds
+        if (injectedEnemies && injectedEnemies.length > 0) {
+          newState.combatState.enemies = injectedEnemies;
+        } else {
+          const targetIds = (participants || []).filter((id: string) => id !== initiatorId);
+          newState.combatState.enemies = targetIds.map((tid: string) => {
+            // Check if target is a known NPC
+            const npc = (newState.npcs || []).find((n: any) => n.id === tid);
+            if (npc) {
+              return { id: npc.id, name: npc.name, hp: npc.hp ?? 30, maxHp: npc.maxHp ?? 30, stats: npc.stats || {} };
+            }
+            // Generate a procedural ambush creature
+            const baseHp = 15 + Math.floor(Math.random() * 20);
+            return { id: tid, name: 'Forest Wolf', hp: baseHp, maxHp: baseHp, stats: { str: 12, agi: 14, end: 10 } };
+          });
+        }
       }
       break;
     }
@@ -502,7 +623,7 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         if (!newState.player.knowledgeBase) {
           newState.player.knowledgeBase = new Map();
         }
-        newState.player.knowledgeBase.set(`${entityType}:${entityId}`, true);
+        (newState.player.knowledgeBase as Map<string, any>).set(`${entityType}:${entityId}`, true);
       }
       break;
     }
@@ -512,7 +633,7 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         if (!newState.player.knowledgeBase) {
           newState.player.knowledgeBase = new Map();
         }
-        newState.player.knowledgeBase.set(`npc:${npcId}`, true);
+        (newState.player.knowledgeBase as Map<string, any>).set(`npc:${npcId}`, true);
       }
       break;
     }
@@ -525,7 +646,7 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         }
         // Add knowledge entry
         const key = knowledgeKey || `${knowledgeType}:${knowledgeId}`;
-        newState.player.knowledgeBase.set(key, true);
+        (newState.player.knowledgeBase as Map<string, any>).set(key, true);
       }
       break;
     }
@@ -695,12 +816,12 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         
         // If OBFUSCATION_INVERSION, reset identification for some NPCs
         if (consequence === 'OBFUSCATION_INVERSION' && newState.player.knowledgeBase) {
-          const npcIdentifications = Array.from(newState.player.knowledgeBase.keys())
+          const npcIdentifications = Array.from((newState.player.knowledgeBase as Map<string, any>).keys())
             .filter(key => key.startsWith('npc:'))
             .slice(0, Math.floor(newState.npcs.length * 0.3));  // Forget 30% of NPCs
 
           npcIdentifications.forEach(id => {
-            newState.player.knowledgeBase!.delete(id);
+            (newState.player.knowledgeBase as Map<string, any>).delete(id);
           });
         }
       }
@@ -777,12 +898,12 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
         newState.player.soulStrain = Math.min(100, (newState.player.soulStrain || 0) + soulStrainGain);
         
         // Temporarily forget some NPC identifications (30%)
-        if (newState.player.knowledgeBase && newState.player.knowledgeBase.size > 0) {
-          const npcEntries = Array.from(newState.player.knowledgeBase.keys()).filter(k => k.startsWith('npc:'));
+        if (newState.player.knowledgeBase && (newState.player.knowledgeBase as Map<string, any>).size > 0) {
+          const npcEntries = Array.from((newState.player.knowledgeBase as Map<string, any>).keys()).filter(k => k.startsWith('npc:'));
           const forgotCount = Math.ceil(npcEntries.length * 0.3);
           for (let i = 0; i < forgotCount; i++) {
             const randIdx = Math.floor(random() * npcEntries.length);
-            newState.player.knowledgeBase.delete(npcEntries[randIdx]);
+            (newState.player.knowledgeBase as Map<string, any>).delete(npcEntries[randIdx]);
           }
         }
         
@@ -1458,10 +1579,13 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       
       // Apply climate mutations
       if (climate) {
-        if (!newState.weather) {
-          newState.weather = {};
+        if (typeof climate === 'string') {
+          newState.weather = climate as "clear" | "snow" | "rain";
+        } else if (typeof climate === 'object' && climate.weather) {
+          newState.weather = climate.weather as "clear" | "snow" | "rain";
         }
-        newState.weather = { ...newState.weather, ...climate };
+        // If climate is an object with other properties, they would need to be stored elsewhere
+        // For now, just update the weather string
       }
       break;
     }
@@ -1486,10 +1610,13 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
     case 'CLIMATE_OVERRIDE': {
       const { climate } = event.payload;
       if (climate) {
-        if (!newState.weather) {
-          newState.weather = {};
+        if (typeof climate === 'string') {
+          newState.weather = climate as "clear" | "snow" | "rain";
+        } else if (typeof climate === 'object' && climate.weather) {
+          newState.weather = climate.weather as "clear" | "snow" | "rain";
         }
-        newState.weather = { ...newState.weather, ...climate };
+        // If climate is an object with other properties, they would need to be stored elsewhere
+        // For now, just update the weather string
       }
       break;
     }
@@ -1527,6 +1654,41 @@ function applyEventToState(state: WorldState, event: Event): WorldState {
       }
       if (ageRotSeverity) {
         newState.ageRotSeverity = ageRotSeverity;
+      }
+      break;
+    }
+
+    // Phase 30 Task 6: Tutorial State Determinism
+    case 'TUTORIAL_MILESTONE_REACHED': {
+      const { milestoneId, tick } = event.payload;
+      if (newState.player?.tutorialState) {
+        if (!newState.player.tutorialState.milestones[milestoneId as keyof typeof newState.player.tutorialState.milestones]) {
+          newState.player.tutorialState.milestones[milestoneId as any] = {
+            id: milestoneId,
+            achieved: false,
+            achievedAtTick: 0,
+            achievedAtTimestamp: 0
+          };
+        }
+        const milestone = newState.player.tutorialState.milestones[milestoneId as any];
+        if (milestone && !milestone.achieved) {
+          milestone.achieved = true;
+          milestone.achievedAtTick = tick;
+          milestone.achievedAtTimestamp = event.timestamp;
+          newState.player.tutorialState.completedCount = (newState.player.tutorialState.completedCount || 0) + 1;
+        }
+      }
+      break;
+    }
+
+    case 'TUTORIAL_STEP_SET': {
+      const { overlayId, overlayText, overlayTitle } = event.payload;
+      if (newState.player?.tutorialState) {
+        newState.player.tutorialState.lastShownMilestoneId = overlayId;
+        if (newState.player.tutorialState.currentOverlay) {
+          newState.player.tutorialState.currentOverlay.text = overlayText || '';
+          newState.player.tutorialState.currentOverlay.title = overlayTitle || '';
+        }
       }
       break;
     }
@@ -1700,4 +1862,68 @@ export function fastStateReconstruction(
 
   // Rebuild from snapshot + replay only newer events
   return rebuildStateFromSnapshot(snapshotState, afterSnapshotEvents);
+}
+
+/**
+ * Phase 30 Task 6: Deep State Comparison for Determinism Verification
+ * Compares tutorial state and other critical systems for perfect determinism
+ * Used by ten-thousand-year-sim to validate state reconstruction
+ */
+export function compareState(state1: WorldState, state2: WorldState): { identical: boolean; differences: string[] } {
+  const differences: string[] = [];
+
+  // Compare tutorial state
+  if (state1.player?.tutorialState && state2.player?.tutorialState) {
+    const ts1 = state1.player.tutorialState;
+    const ts2 = state2.player.tutorialState;
+
+    // Compare milestone achievements
+    if (ts1.completedCount !== ts2.completedCount) {
+      differences.push(`Tutorial completedCount: ${ts1.completedCount} vs ${ts2.completedCount}`);
+    }
+
+    // Deep compare milestones
+    const milestoneKeys = Object.keys(ts1.milestones) as Array<keyof typeof ts1.milestones>;
+    for (const key of milestoneKeys) {
+      const m1 = ts1.milestones[key];
+      const m2 = ts2.milestones[key];
+      
+      if (!m2) {
+        differences.push(`Tutorial milestone ${String(key)} missing in state2`);
+        continue;
+      }
+
+      if (m1.achieved !== m2.achieved) {
+        differences.push(`Tutorial milestone ${String(key)}.achieved: ${m1.achieved} vs ${m2.achieved}`);
+      }
+      if (m1.achievedAtTick !== m2.achievedAtTick) {
+        differences.push(`Tutorial milestone ${String(key)}.achievedAtTick: ${m1.achievedAtTick} vs ${m2.achievedAtTick}`);
+      }
+    }
+
+    // Compare last shown milestone
+    if (ts1.lastShownMilestoneId !== ts2.lastShownMilestoneId) {
+      differences.push(`Tutorial lastShownMilestoneId: ${ts1.lastShownMilestoneId} vs ${ts2.lastShownMilestoneId}`);
+    }
+  } else if ((state1.player?.tutorialState === undefined) !== (state2.player?.tutorialState === undefined)) {
+    differences.push('Tutorial state presence mismatch');
+  }
+
+  // Compare other critical systems
+  if (state1.paradoxLevel !== state2.paradoxLevel) {
+    differences.push(`Paradox level: ${state1.paradoxLevel} vs ${state2.paradoxLevel}`);
+  }
+
+  if (state1.tick !== state2.tick) {
+    differences.push(`Tick: ${state1.tick} vs ${state2.tick}`);
+  }
+
+  if (state1.ageRotSeverity !== state2.ageRotSeverity) {
+    differences.push(`Age rot severity: ${state1.ageRotSeverity} vs ${state2.ageRotSeverity}`);
+  }
+
+  return {
+    identical: differences.length === 0,
+    differences
+  };
 }

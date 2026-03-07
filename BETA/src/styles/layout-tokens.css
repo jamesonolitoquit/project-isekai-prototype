@@ -1,0 +1,88 @@
+/* ============================================
+   LAYOUT TOKENS: Core CSS Custom Properties
+   Adaptive Triptych Architecture v1.0
+   ============================================ */
+
+:root {
+  /* Core Dimensions */
+  --layout-sidebar-width: 320px;
+  --layout-stage-min-width: 400px;
+  --layout-gap: 1.5rem;
+  --layout-padding: 1.5rem;
+  --layout-radius: 12px;
+  --layout-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Sidebar Styling */
+  --layout-sidebar-bg: rgba(10, 15, 25, 0.8);
+  --layout-sidebar-border: 1px solid rgba(255, 255, 255, 0.1);
+  --layout-sidebar-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+
+  /* Stage (Center) Styling */
+  --layout-stage-bg: transparent;
+  --layout-stage-border: 1px solid rgba(100, 200, 255, 0.2);
+
+  /* Form Container */
+  --layout-form-bg: rgba(10, 15, 25, 0.85);
+  --layout-form-border: 1px solid rgba(100, 200, 255, 0.15);
+  --layout-form-max-width: 900px;
+
+  /* Component Tokens */
+  --card-bg: rgba(20, 25, 40, 0.6);
+  --card-border: 1px solid rgba(100, 200, 255, 0.2);
+  --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --card-hover-shadow: 0 12px 48px rgba(100, 200, 255, 0.2);
+
+  /* Tooltip */
+  --tooltip-bg: rgba(10, 15, 25, 0.95);
+  --tooltip-border: 1px solid var(--wizard-accent, #74b9ff);
+  --tooltip-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Theme: Medieval */
+[data-theme="medieval"] {
+  --layout-sidebar-bg: rgba(139, 90, 43, 0.6);
+  --layout-sidebar-border: 2px solid #8B5A2B;
+  --layout-sidebar-shadow: 0 4px 20px rgba(139, 90, 43, 0.3);
+  --layout-stage-border: 2px solid #D4AF37;
+  --card-bg: rgba(50, 30, 20, 0.8);
+  --card-border: 1px solid #D4AF37;
+  --card-shadow: 0 8px 32px rgba(212, 175, 55, 0.15);
+  --card-hover-shadow: 0 12px 48px rgba(212, 175, 55, 0.25);
+}
+
+/* Theme: Sci-Fi */
+[data-theme="sci-fi"] {
+  --layout-sidebar-bg: rgba(0, 50, 100, 0.6);
+  --layout-sidebar-border: 1px solid #00F3FF;
+  --layout-sidebar-shadow: 0 4px 20px rgba(0, 243, 255, 0.15);
+  --layout-stage-border: 1px solid rgba(0, 243, 255, 0.4);
+  --card-bg: rgba(0, 30, 60, 0.8);
+  --card-border: 1px solid #00F3FF;
+  --card-shadow: 0 8px 32px rgba(0, 243, 255, 0.1);
+  --card-hover-shadow: 0 12px 48px rgba(0, 243, 255, 0.3);
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1366px) {
+  :root {
+    --layout-sidebar-width: 300px;
+    --layout-gap: 1.25rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --layout-sidebar-width: 280px;
+    --layout-gap: 1rem;
+    --layout-padding: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --layout-sidebar-width: 100%;
+    --layout-gap: 0.75rem;
+    --layout-padding: 1rem;
+    --layout-form-max-width: 100%;
+  }
+}

@@ -7,6 +7,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { Event } from '../../events/mutationLog';
+import type { Socket } from 'socket.io-client';
 
 export interface DirectorCommandInputProps {
   /**
@@ -33,6 +34,11 @@ export interface DirectorCommandInputProps {
    * Callback for feedback messages
    */
   onStatusMessage?: (msg: string) => void;
+
+  /**
+   * Phase 7: Socket.IO instance for broadcasting commands to server
+   */
+  socket?: Socket;
 }
 
 /**
@@ -46,7 +52,8 @@ export const DirectorCommandInput: React.FC<DirectorCommandInputProps> = ({
   actorId,
   currentTick,
   onCommandExecute,
-  onStatusMessage
+  onStatusMessage,
+  socket
 }) => {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
@@ -85,6 +92,18 @@ export const DirectorCommandInput: React.FC<DirectorCommandInputProps> = ({
 
       if (event) {
         onStatusMessage?.(`✓ Command executed: ${parsed.command}`);
+        
+        // Phase 7: Broadcast command to server via Socket.IO
+        if (socket) {
+          socket.emit('director:command', {
+            command: cmd,
+            parsed,
+            worldId: worldInstanceId,
+            actorId,
+            timestamp: Date.now()
+          });
+        }
+        
         onCommandExecute?.(cmd, event);
       } else {
         onStatusMessage?.(`⚠️ Command parsed but no event generated`);

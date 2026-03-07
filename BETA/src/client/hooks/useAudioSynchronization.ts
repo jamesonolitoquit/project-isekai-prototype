@@ -27,6 +27,7 @@ import {
   disposeAudioContext,
   preloadAudioSamples,
   DEFAULT_AUDIO_MANIFEST,
+  audioService,
   type AudioNodeTopology,
   type AudioManifest
 } from '../services/AudioService';
@@ -68,6 +69,9 @@ export function useAudioSynchronization(
         if (!topologyRef.current) {
           topologyRef.current = initializeAudioContext(manifest);
           audioContextStartedRef.current = true;
+          
+          // Set topology in the singleton audioService wrapper
+          audioService.setTopology(topologyRef.current);
           
           // Preload bgm tracks in the background (M8 Phase 2)
           const bgmUrls = Object.values(manifest.tracks);

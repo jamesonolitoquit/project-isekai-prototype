@@ -173,12 +173,12 @@ function extractLocationMutations(state: WorldState): WorldSeedExport['locationM
  * Extract lore mutations from state
  */
 function extractLoreMutations(state: WorldState): WorldSeedExport['loreMutations'] {
-  if (!state.player.knowledgeBase || state.player.knowledgeBase.size === 0) {
+  if (!state.player.knowledgeBase || (state.player.knowledgeBase as Map<string, any>).size === 0) {
     return [];
   }
   
   const lores: WorldSeedExport['loreMutations'] = [];
-  state.player.knowledgeBase.forEach((value, key) => {
+  (state.player.knowledgeBase as Map<string, any>).forEach((value, key) => {
     if (key.startsWith('lore-')) {
       lores.push({
         loreId: key,

@@ -129,3 +129,76 @@ export function applyHazardStatus(player: PlayerState, statusEffect: string): Pl
 
   return player;
 }
+
+/**
+ * Phase 17: Check for possession-triggered hazards
+ * Scans player inventory for items with high paradoxScale
+ * Triggers environmental effects (Void Surge, Reality Flicker) if threshold exceeded
+ */
+export function checkPossessionHazards(
+  state: WorldState,
+  player: PlayerState,
+  paradoxThreshold: number = 0.5
+): HazardCheckResult[] {
+  const results: HazardCheckResult[] = [];
+
+  if (!player.inventory || player.inventory.length === 0) {
+    return results;
+  }
+
+  // Sum paradoxScale from all items in inventory
+  let totalParadox = 0;
+  const itemTemplates = (state as any).itemTemplates || [];
+
+  for (const invItem of player.inventory) {
+    const itemId = (invItem as any).itemId || (invItem as any).id;
+    const template = itemTemplates.find((it: any) => it.id === itemId);
+    
+    if (template?.stats?.paradoxScale) {
+      totalParadox += template.stats.paradoxScale;
+    }
+  }
+
+  // Phase 17: Check for soul echo resistance that reduces paradox sensitivity
+  let effectiveThreshold = paradoxThreshold;
+  const unlockedEchoes = (state as any).unlockedSoulEchoes || [];
+  
+  // Soul echoes that reduce possession hazard threshold (increase resistance)
+  const hazardResistanceEchoes = unlockedEchoes.filter((echo: any) => 
+    echo.id?.includes('void_affinity') || 
+    echo.id?.includes('paradox_resistance') ||
+    echo.mechanicalEffect?.includes('Reduces') && echo.mechanicalEffect?.includes('Paradox')
+  );
+  
+  // Each hazard resistance echo reduces the effective threshold by 25%
+  if (hazardResistanceEchoes.length > 0) {
+    effectiveThreshold = paradoxThreshold * Math.pow(0.75, hazardResistanceEchoes.length);
+  }
+
+  // If total paradox exceeds effective threshold, trigger possession hazard
+  if (totalParadox > effectiveThreshold) {
+    const tick = state.tick ?? 0;
+    
+    // Determine hazard intensity based on how far over threshold
+    const intensity = totalParadox > 1.5 ? 'severe' : totalParadox > 1.0 ? 'moderate' : 'minor';
+    const hazardType = totalParadox > 1.5 ? 'void_surge' : 'reality_flicker';
+    const damage = intensity === 'severe' ? 25 : intensity === 'moderate' ? 15 : 5;
+    const statusEffect = intensity === 'severe' ? 'mana_burn' : 'paradox_weakness';
+
+    // Deterministic chance based on tick
+    const rng = (tick * 19 + totalParadox * 100) % 100 / 100;
+    const triggerChance = 0.3; // 30% chance each tick if over threshold
+
+    if (rng < triggerChance) {
+      results.push({
+        triggered: true,
+        hazardId: `possession_${hazardType}`,
+        hazardName: hazardType === 'void_surge' ? 'Void Surge' : 'Reality Flicker',
+        damage,
+        statusApplied: statusEffect
+      });
+    }
+  }
+
+  return results;
+}

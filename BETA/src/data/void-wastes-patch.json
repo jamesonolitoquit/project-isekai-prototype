@@ -1,0 +1,45 @@
+{
+  "id": "void-wastes-expansion-v1",
+  "version": "1.0",
+  "description": "Phase 27 Live Ops Patch: Void Wastes Expansion introduces new seasonal mechanics and corrupted zones",
+  "releaseDate": "2026-03-02",
+  "appliedAtTick": 0,
+  "status": "pending",
+  "seasonalRules": {
+    "WINTER": {
+      "visualPalette": {
+        "primaryColor": "#2d1b4e",
+        "accentColor": "#4a2c7a",
+        "foliageColor": "#1a0a2e"
+      },
+      "mechanicalModifiers": {
+        "manaRegenMult": 0.6,
+        "movementFatigueMult": 3.0
+      },
+      "seasonalLoot": [
+        { "itemId": "void-touched-shard", "dropRate": 0.08 }
+      ]
+    }
+  },
+  "injectedRules": {
+    "combatFormulas": {
+      "voidDamageAmplification": 1.8
+    },
+    "customMacroEvents": [
+      {
+        "type": "VOID_CONVERGENCE",
+        "name": "Void Convergence",
+        "description": "Multiple tears in reality align, creating a nexus of pure chaos.",
+        "baseSeverity": 100,
+        "modifierEffects": [
+          {
+            "stat": "sanity",
+            "value": -50,
+            "mode": "add"
+          }
+        ],
+        "npcGoalOverride": "flee"
+      }
+    ]
+  }
+}

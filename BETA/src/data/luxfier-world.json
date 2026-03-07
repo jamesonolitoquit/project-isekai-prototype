@@ -2,7 +2,552 @@
   "name": "Luxfier Alpha Prototype",
   "description": "A nascent world where magic stirs and ancient powers awaken. Five factions vie for control while corruption spreads from the Abyss edge.",
   "season": "spring",
+  "injectedRules": {
+    "combatFormulas": {
+      "critMultiplier": 3.5,
+      "baseCritChance": 8,
+      "baseArmorPiercing": 12,
+      "damageScaleFactor": 1.1,
+      "defenseScaleFactor": 1.0,
+      "healingScaleFactor": 1.05
+    },
+    "customMacroEvents": [
+      {
+        "type": "LIVE_FESTIVAL",
+        "name": "The Golden Age Festival",
+        "description": "A celebration of peace and prosperity spreads joy and fortune across the land.",
+        "baseSeverity": 25,
+        "isLocationSpecific": true,
+        "modifierEffects": [
+          {
+            "stat": "luk",
+            "value": 1.5,
+            "mode": "multiply"
+          },
+          {
+            "stat": "cha",
+            "value": 3,
+            "mode": "add"
+          }
+        ],
+        "npcGoalOverride": "celebrate"
+      },
+      {
+        "type": "VOID_INCURSION",
+        "name": "The Void Incursion",
+        "description": "Reality tears open. The abyss reaches in with hungry tendrils.",
+        "baseSeverity": 95,
+        "isLocationSpecific": false,
+        "modifierEffects": [
+          {
+            "stat": "int",
+            "value": 2.0,
+            "mode": "multiply"
+          },
+          {
+            "stat": "sanity",
+            "value": -20,
+            "mode": "add"
+          },
+          {
+            "stat": "str",
+            "value": -5,
+            "mode": "add"
+          }
+        ],
+        "npcGoalOverride": "survive"
+      }
+    ]
+  },
+  "historicalLandmarks": [
+    {
+      "id": "breaking-of-first-seal",
+      "name": "The Breaking of the First Seal",
+      "tick": 0,
+      "description": "The moment the barrier between the mortal realm and the Aether began to crumble.",
+      "significance": "major"
+    },
+    {
+      "id": "the-shattered-moon",
+      "name": "The Shattered Moon",
+      "tick": 500,
+      "description": "A celestial impact that fractured the primary moon, raining starlight-iron upon the peaks.",
+      "significance": "catastrophic"
+    }
+  ],
+  "narrativePruningWeights": {
+    "minImportanceForCanonicalStatus": 7,
+    "eventTypeWeights": {
+      "FACTION_COLLAPSE": 10,
+      "EPOCH_TRANSITION": 10,
+      "QUEST_COMPLETE": 8,
+      "BLOODLINE_DIVERGENCE": 8,
+      "MATERIAL_ASCENSION": 6,
+      "NPV_DEATH": 5,
+      "COMBAT_KILL": 2,
+      "ITEM_DROP": 1,
+      "WEATHER_CHANGE": 1
+    }
+  },
+  "epicSoulEvents": [
+    {
+      "id": "void-harvest-first-bloom",
+      "year": -1000,
+      "name": "The First Bloom of Void",
+      "description": "The first recorded instance of Aether-rot appearing in the Elder Grove.",
+      "isImmutable": true
+    },
+    {
+      "id": "ALIGNMENT_SEVEN_SUNS",
+      "occurrenceInterval": 100000,
+      "name": "The Alignment of Seven Suns",
+      "globalModifiers": { "LUCK": 50, "paradoxDrift": 2.0 },
+      "durationTicks": 100,
+      "lore": "When the seven stars align, the laws of causality are weakened."
+    },
+    {
+      "id": "THE_GREAT_SILENCE",
+      "occurrenceProbability": 0.00001,
+      "name": "The Great Silence",
+      "globalModifiers": { "manaRegen": -0.8, "baseArmorPiercing": 0.5 },
+      "durationTicks": 50,
+      "lore": "The mana in the air is suddenly replaced by a heavy, dense silence."
+    },
+    {
+      "id": "great-iron-purge",
+      "year": -500,
+      "name": "The Great Iron Purge",
+      "description": "The Ironsmith Guild's systematic reclamation of all 'tainted' starlight-iron.",
+      "isImmutable": true
+    },
+    {
+      "id": "luminara-economic-accord",
+      "year": -200,
+      "name": "The Luminara Accord",
+      "description": "The signing of the common-currency pact between the Five Powers.",
+      "isImmutable": true
+    }
+  ],
+  "legacyEchoTemplates": [
+    "The stones of [location] still hum with the resonance of [player_name]'s [epic_event] from the First Age.",
+    "Whispers of [player_name] and the [epic_event] are still told by the elders of [location].",
+    "Even as the world turns, the shadow of [player_name]'s [epic_event] remains etched into the history of this land."
+  ],
+  "narrativeConclusions": [
+    {
+      "id": "ending_golden_harmony",
+      "condition": "paradox_level < 20",
+      "title": "The Golden Harmony",
+      "description": "Reality crystallizes into a perfect, immutable state. The threads of time are woven into a tapestry of eternal peace. The Abyss recedes into myth, and the Five Powers unite under a single starlight sky."
+    },
+    {
+      "id": "ending_cycle_continues",
+      "condition": "paradox_level >= 20 && paradox_level <= 70",
+      "title": "The Cycle Continues",
+      "description": "The world survives, scarred but resilient. History begins to repeat its old patterns, waiting for a new soul to break the loop. The struggle between magic and industry remains, a balanced tension in the heart of Luxfier."
+    },
+    {
+      "id": "ending_unravelling",
+      "condition": "paradox_level > 70",
+      "title": "The Unravelling",
+      "description": "The fabric of existence frays beyond repair. Locations dissolve into static, and memories bleed into the void. Only the echoes of your actions remain, drifting in a silent, grey expanse where time once flowed."
+    }
+  ],
+  "scheduledEvents": [
+    {
+      "id": "live-ops-void-harvest",
+      "type": "VOID_HARVEST",
+      "startTick": 5000,
+      "duration": 500,
+      "locationId": "all"
+    },
+    {
+      "id": "live-ops-golden-festival",
+      "type": "THE_GOLDEN_FESTIVAL",
+      "startTick": 8000,
+      "duration": 1000,
+      "locationId": "luminara-grand-market"
+    }
+  ],
+  "seasonalRules": {
+    "paradoxBleedEffects": {
+      "lowThreshold": { "tint": "#0a0a0a", "alpha": 0.1 },
+      "highThreshold": { "tint": "#6d0000", "alpha": 0.4, "glitchIntensity": 0.8 },
+      "criticalThreshold": { "tint": "#inverse_rgb", "alpha": 0.7, "staticNoise": true }
+    },
+    "SPRING": {
+      "visualPalette": {
+        "primaryColor": "#e0f2f1",
+        "accentColor": "#81c784",
+        "foliageColor": "#7fd88f"
+      },
+      "mechanicalModifiers": {
+        "manaRegenMult": 1.3
+      },
+      "seasonalLoot": [
+        { "itemId": "blooming-aether-petal", "dropRate": 0.15 }
+      ]
+    },
+    "SUMMER": {
+      "visualPalette": {
+        "primaryColor": "#fff9c4",
+        "accentColor": "#ffb74d",
+        "foliageColor": "#4caf50"
+      },
+      "mechanicalModifiers": {
+        "staminaDecayMult": 1.2,
+        "fireResistanceBase": -10
+      },
+      "seasonalLoot": [
+        { "itemId": "sun-scorched-ore", "dropRate": 0.1 }
+      ]
+    },
+    "AUTUMN": {
+      "visualPalette": {
+        "primaryColor": "#ffe0b2",
+        "accentColor": "#ef6c00",
+        "foliageColor": "#bf360c"
+      },
+      "mechanicalModifiers": {
+        "luckBonus": 5,
+        "expGainMult": 1.1
+      },
+      "seasonalLoot": [
+        { "itemId": "golden-harvest-grain", "dropRate": 0.25 }
+      ]
+    },
+    "WINTER": {
+      "visualPalette": {
+        "primaryColor": "#e3f2fd",
+        "accentColor": "#64b5f2",
+        "foliageColor": "#ffffff"
+      },
+      "mechanicalModifiers": {
+        "manaRegenMult": 0.8,
+        "movementFatigueMult": 2.0
+      },
+      "seasonalLoot": [
+        { "itemId": "frost-touched-berries", "dropRate": 0.2 }
+      ]
+    }
+  },
+  "causalWeatherRules": [
+    {
+      "id": "mana-static-surge",
+      "name": "Mana-Static Surge",
+      "condition": "magical_surge",
+      "triggerThreshold": 0.6,
+      "weatherResult": "mana_static",
+      "intensity": "heavy",
+      "duration": 2000,
+      "priority": 80,
+      "stabilityImpact": -0.2,
+      "icon": "⚡",
+      "narrative": "Reality crackles with arcane energy, destabilizing the local threads of time."
+    },
+    {
+      "id": "ash-storm-decay",
+      "name": "Ash Storm",
+      "condition": "high_contention",
+      "triggerThreshold": 0.7,
+      "weatherResult": "ash_storm",
+      "intensity": "heavy",
+      "duration": 5000,
+      "priority": 50,
+      "stabilityImpact": -0.15,
+      "icon": "🌪️",
+      "narrative": "The residue of conflict chokes the land, eroding the world's structural integrity."
+    },
+    {
+      "id": "aetheric-resonance",
+      "name": "Aetheric Resonance",
+      "condition": "low_contention",
+      "triggerThreshold": 0.2,
+      "weatherResult": "clear",
+      "intensity": "light",
+      "duration": 10000,
+      "priority": 10,
+      "stabilityImpact": 0.05,
+      "icon": "✨",
+      "narrative": "A harmonic calm settles over the region, slowly mending minor temporal fractures."
+    }
+  ],
+  "bloodlineDivergence": [
+    {
+      "lineageId": "valerius",
+      "divergentPaths": [
+        {
+          "condition": "player_alignment >= 50",
+          "resultTrait": "Blessed Protector",
+          "description": "The Valerius line emerges as saintly guardians of the new era."
+        },
+        {
+          "condition": "player_alignment < 50",
+          "resultTrait": "Hollowed Vengeance",
+          "description": "Betrayal twists the Valerius blood into a line of spectral seekers."
+        }
+      ]
+    },
+    {
+      "lineageId": "eldritch-seekers",
+      "divergentPaths": [
+        {
+          "condition": "paradox_level > 70",
+          "resultTrait": "Void-Touched",
+          "description": "Too much exposure to the rift has fundamentally altered their essence."
+        }
+      ]
+    }
+  ],
+  "evolutionPaths": [
+    {
+      "id": "starlight-ascension",
+      "originalItemId": "starlight-iron",
+      "resultItemId": "fossilized-starlight",
+      "narrative": "Material hardened by a millennium of paradox exposure."
+    },
+    {
+      "id": "quartz-refinement",
+      "originalItemId": "aether-quartz",
+      "resultItemId": "resonant-crystal",
+      "narrative": "Mana-soaked quartz that has reached harmonic saturation."
+    },
+    {
+      "id": "obsidian-void",
+      "originalItemId": "obsidian-shard",
+      "resultItemId": "void-glass",
+      "narrative": "Volcanic glass that has absorbed the silence of the Abyss."
+    }
+  ],
+  "factions": [
+    {
+      "id": "silver-flame",
+      "name": "Silver Flame",
+      "philosophy": "Order Through Radiance",
+      "initialInfluence": 40,
+      "stabilityContribution": 0.1,
+      "baseStrength": 0.8,
+      "traits": ["Disciplined", "Radiant"]
+    },
+    {
+      "id": "iron-smiths",
+      "name": "Iron-Smiths",
+      "philosophy": "The World is an Anvil",
+      "initialInfluence": 30,
+      "stabilityContribution": 0.05,
+      "baseStrength": 0.9,
+      "traits": ["Industrious", "Resilient"]
+    },
+    {
+      "id": "void-cult",
+      "name": "Void Cult",
+      "philosophy": "Entropy is the Only Truth",
+      "initialInfluence": 10,
+      "stabilityContribution": -0.2,
+      "baseStrength": 0.6,
+      "traits": ["Secretive", "Destructive"]
+    }
+  ],
+  "metadata": {
+    "paradoxLevel": 25,
+    "narrativeIntensity": 0.6,
+    "worldWeightFactor": 1.0,
+    "maxParadoxLevel": 100
+  },
+  "baseEpoch": "epoch_i_awakening",
+  "epochs": {
+    "epoch_i_awakening": {
+      "id": "epoch_i_awakening",
+      "sequenceNumber": 1,
+      "name": "The Era of Awakening",
+      "theme": "Restoration",
+      "chronologyYear": 1024,
+      "description": "A time of fragile peace and rediscoveries.",
+      "nextEpochId": "epoch_ii_fracture",
+      "transitionRules": [
+        {
+          "targetEpochId": "epoch_ii_fracture",
+          "condition": "paradox_threshold",
+          "threshold": 70,
+          "description": "When Paradox exceeds 70%, the world fractures."
+        }
+      ]
+    },
+    "epoch_ii_fracture": {
+      "id": "epoch_ii_fracture",
+      "sequenceNumber": 2,
+      "name": "The Fractured Reality",
+      "theme": "Collapse",
+      "chronologyYear": 3024,
+      "description": "The skies are torn and the old laws no longer hold.",
+      "previousEpochId": "epoch_i_awakening",
+      "nameMutations": {
+        "eldergrove-village": "The Silent Patch",
+        "luminara-grand-market": "The Hollow Exchange",
+        "moonwell-shrine": "The Pale Ruin"
+      },
+      "transitionRules": [
+        {
+          "targetEpochId": "epoch_iii_starlight",
+          "condition": "paradox_threshold",
+          "threshold": 85,
+          "description": "When Paradox exceeds 85%, reality stabilizes into a new form.",
+          "evolutionPaths": [
+            {
+              "id": "starlight-ascension-fracture",
+              "originalItemId": "starlight-iron",
+              "resultItemId": "fossilized-starlight",
+              "narrative": "Material hardened by the fracture's paradox exposure."
+            },
+            {
+              "id": "quartz-refinement-fracture",
+              "originalItemId": "aether-quartz",
+              "resultItemId": "resonant-crystal",
+              "narrative": "Mana-soaked quartz resonates with the fractured reality."
+            }
+          ],
+          "bloodlineDivergence": [
+            {
+              "lineageId": "valerius",
+              "divergentPaths": [
+                {
+                  "condition": "player_alignment >= 50",
+                  "resultTrait": "Fracture-Blessed Protector",
+                  "description": "The Valerius line emerges as guardians of the new fractured era."
+                },
+                {
+                  "condition": "player_alignment < 50",
+                  "resultTrait": "Fracture-Hollowed Vengeance",
+                  "description": "Betrayal and fracture twist the Valerius blood into shadow seekers."
+                }
+              ]
+            },
+            {
+              "lineageId": "eldritch-seekers",
+              "divergentPaths": [
+                {
+                  "condition": "paradox_level > 70",
+                  "resultTrait": "Fracture-Void-Touched",
+                  "description": "The fracture has fundamentally altered their void-bond essence."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "epoch_iii_starlight": {
+      "id": "epoch_iii_starlight",
+      "sequenceNumber": 3,
+      "name": "The Starlight Ascension",
+      "theme": "Transcendence",
+      "chronologyYear": 5024,
+      "description": "Reality has been reforged into something new. Ancient powers return to the world.",
+      "previousEpochId": "epoch_ii_fracture",
+      "nameMutations": {
+        "eldergrove-village": "Aether-Fall Peak",
+        "luminara-grand-market": "The Gilded Husk",
+        "moonwell-shrine": "Glint-Stone Crater"
+      },
+      "transitionRules": [
+        {
+          "targetEpochId": "epoch_iv_end",
+          "condition": "paradox_threshold",
+          "threshold": 95,
+          "description": "The world reaches a narrative apex.",
+          "evolutionPaths": [
+            {
+              "id": "starlight-transcendence",
+              "originalItemId": "fossilized-starlight",
+              "resultItemId": "transcendent-starlight",
+              "narrative": "Material that has transcended time itself."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "factions": [
+    {
+      "id": "eldritch-seekers",
+      "name": "Eldritch Seekers",
+      "description": "Scholars and mages dedicated to uncovering the world's hidden truths.",
+      "powerScore": 60,
+      "alignment": 50,
+      "traits": ["scholarly", "secretive"],
+      "legacyBenefit": {
+        "id": "seeker_insight",
+        "name": "Scholarly Insight",
+        "effect": "Permanently reveals one hidden sub-area in each new location discovered in the next era.",
+        "statBonus": { "int": 2, "perception": 2 }
+      }
+    },
+    {
+      "id": "luminara-mercantile",
+      "name": "Luminara Mercantile",
+      "description": "A powerful trade coalition that controls the currency and markets of the Five Powers.",
+      "powerScore": 75,
+      "alignment": 40,
+      "traits": ["wealthy", "ambitious"],
+      "legacyBenefit": {
+        "id": "mercantile_contacts",
+        "name": "Mercantile Influence",
+        "effect": "Increases initial gold by 50 and discounts all market purchases by 10% in the following generation.",
+        "statBonus": { "cha": 3 }
+      }
+    },
+    {
+      "id": "ironsmith-guild",
+      "name": "Ironsmith Guild",
+      "description": "Masters of the forge who provide the world with weapons and industry.",
+      "powerScore": 55,
+      "alignment": 60,
+      "traits": ["industrious", "protective"],
+      "legacyBenefit": {
+        "id": "iron_resolve",
+        "name": "Iron Will",
+        "effect": "Grants +5 Physical Resistance and the ability to repair materials once per tick without a forge.",
+        "statBonus": { "str": 3, "end": 2 }
+      }
+    },
+    {
+      "id": "shadow-stalkers",
+      "name": "Shadow-Stalkers",
+      "description": "An elusive network of spies and assassins operating from the fringes of society.",
+      "powerScore": 45,
+      "alignment": 20,
+      "traits": ["stealthy", "opportunistic"]
+    },
+    {
+      "id": "void-cultists",
+      "name": "Abyssal Remnant",
+      "description": "Those who find beauty and power in the deepening corruption of the world.",
+      "powerScore": 30,
+      "alignment": 10,
+      "traits": ["fanatical", "destructive"]
+    }
+  ],
   "locations": [
+    {
+      "id": "THE_LOOM_ROOM",
+      "name": "The Loom Room (Coordinate 0,0,0)",
+      "x": 0,
+      "y": 0,
+      "biome": "void-hub",
+      "terrainModifier": 0.0,
+      "discovered": false,
+      "spiritDensity": 1.0,
+      "description": "A non-geographic space where the threads of all worlds are woven. The statues of those who reached the 10,000-year mark stand in silent judgment.",
+      "injectedRules": {
+        "fatigueRate": 0.0,
+        "manaRegen": 10.0
+      },
+      "displayRules": {
+        "entityType": "STATUE_ECHO",
+        "sourceTable": "server_canonical_player_history",
+        "maxDisplay": 7
+      }
+    },
     {
       "id": "eldergrove-village",
       "name": "Eldergrove Village",
@@ -69,13 +614,38 @@
       "discovered": false,
       "description": "A pristine frozen expanse, revealed only in the depths of winter",
       "spiritDensity": 0.4
+    },
+    {
+      "id": "iron-bridge",
+      "name": "The Great Iron Bridge",
+      "conditionalSeason": "spring",
+      "x": 550,
+      "y": 550,
+      "biome": "plains",
+      "terrainModifier": 1.0,
+      "discovered": true,
+      "description": "A massive bridge spanning the Aether-Canyon, only passable when the spring floods subside and the mechanisms aren't frozen."
+    },
+    {
+      "id": "ancient-citadel-secret-path",
+      "name": "Ancient Citadel (Sunk Path)",
+      "conditionalSeason": "summer",
+      "x": 300,
+      "y": 300,
+      "biome": "cave",
+      "terrainModifier": 1.8,
+      "discovered": false,
+      "description": "A secret entrance to the citadel exposed only when the summer heat recedes the surrounding swamp waters."
     }
   ],
   "npcs": [
     {
       "id": "brother-theron",
       "name": "Brother Theron",
+      "family": "Theron",
       "locationId": "eldergrove-village",
+      "factionId": "eldritch-seekers",
+      "factionRole": "elder",
       "routine": {
         "6-12": "eldergrove-village",
         "12-18": "moonwell-shrine",
@@ -108,6 +678,22 @@
           "The night is deep. Few venture here at this hour. Are you seeking something?",
           "Moonlight guides the lost. What brings you to the shrine so late?"
         ],
+        "spring": [
+          "The seeds of magic are blooming! Can you feel the aether rising in the air?",
+          "Spring is a time of renewal. The Elder Grove hasn't looked this vibrant in decades."
+        ],
+        "summer": [
+          "The midday sun is harsh. I've been spending more time in the cool depths of the shrine.",
+          "Summer heat can agitate the local spirits. Best to move with caution."
+        ],
+        "autumn": [
+          "The leaves are turning, and the harvest is nearly ready. A time of gratitude.",
+          "Autumn winds bring whispers from the canyon. Listen closely to what they tell."
+        ],
+        "winter": [
+          "Wrap up warm, traveler. The frost is deep this year, and the mana flow is sluggish.",
+          "Even in the dead of winter, the shrine remains a place of warmth and reflection."
+        ],
         "rain": [
           "Stay dry, friend! The rains can be treacherous.",
           "Perfect weather for tending the medicinal herbs."
@@ -135,12 +721,87 @@
         "int": 16,
         "cha": 14,
         "end": 12,
-        "luk": 10
+        "luk": 10,
+        "perception": 14
       },
       "hp": 45,
       "maxHp": 45,
       "factionId": "silver-flame",
-      "factionRole": "leader"
+      "factionRole": "leader",
+      "socialScars": [
+        {
+          "id": "theron-regret",
+          "type": "grief",
+          "description": "Lost a student to a disease he couldn't cure",
+          "severity": 35,
+          "triggerCount": 0,
+          "lastTriggeredTick": null,
+          "discoveryStatus": "dormant"
+        }
+      ],
+      "branchingDialogue": {
+        "greeting": {
+          "id": "theron-greeting",
+          "type": "greeting",
+          "text": "Welcome, traveler. I am Brother Theron, healer and keeper of lore.",
+          "npcState": "neutral",
+          "emotionalWeight": 0.3,
+          "branchingOptions": [
+            {
+              "id": "theron-greet-ask",
+              "text": "Tell me about the village",
+              "nextNodeId": "theron-village-lore"
+            },
+            {
+              "id": "theron-greet-quest",
+              "text": "I'm looking for work",
+              "nextNodeId": "theron-quest-offer"
+            }
+          ]
+        },
+        "village-lore": {
+          "id": "theron-village-lore",
+          "type": "context",
+          "text": "Eldergrove has stood for centuries. We are guardians of this sacred place.",
+          "npcState": "neutral",
+          "emotionalWeight": 0.4,
+          "branchingOptions": [
+            {
+              "id": "theron-lore-ancient",
+              "text": "What makes this grove sacred?",
+              "nextNodeId": "theron-grove-mystery"
+            },
+            {
+              "id": "theron-lore-end",
+              "text": "I see. Thank you for sharing.",
+              "nextNodeId": null
+            }
+          ]
+        },
+        "quest-offer": {
+          "id": "theron-quest-offer",
+          "type": "query",
+          "text": "We need rare herbs from Thornwood Depths for medicines.",
+          "npcState": "neutral",
+          "emotionalWeight": 0.5,
+          "branchingOptions": [
+            {
+              "id": "theron-quest-accept",
+              "text": "I'll gather them for you",
+              "consequenceAction": {
+                "type": "startQuest",
+                "payload": { "questId": "herbs-for-the-healer" }
+              },
+              "nextNodeId": null
+            },
+            {
+              "id": "theron-quest-decline",
+              "text": "Perhaps another time",
+              "nextNodeId": null
+            }
+          ]
+        }
+      }
     },
     {
       "id": "smitty-ironhammer",
@@ -189,7 +850,8 @@
         "int": 10,
         "cha": 11,
         "end": 14,
-        "luk": 9
+        "luk": 9,
+        "perception": 12
       },
       "hp": 55,
       "maxHp": 55,
@@ -228,11 +890,27 @@
         "night": [
           "Night watch - the quiet hours when real trouble brews.",
           "Darkness brings danger. The city sleeps, and we never rest."
+        ],
+        "spring": [
+          "Markets are picking up! Spring's the best time for trade.",
+          "Keep those coins moving! The spring trade routes are finally open."
+        ],
+        "summer": [
+          "It's a hot one on the gate. Keep your tempers in check, people.",
+          "Summer heat brings short tempers. I'm keeping a closer eye on the market."
+        ],
+        "autumn": [
+          "Autumn harvests are coming in. Busy times for the gate guards.",
+          "The market's full of bounty. Let's make sure it doesn't attract the wrong crowd."
+        ],
+        "winter": [
+          "Quiet on the gate today. Most people are staying warm by the fire.",
+          "Winter patrols are slow, but the cold can be just as dangerous as any thief."
         ]
       },
       "availability": {
         "startHour": 0,
-        "endHour": 24
+        "endHour": 23
       },
       "stats": {
         "str": 13,
@@ -240,7 +918,8 @@
         "int": 10,
         "cha": 13,
         "end": 15,
-        "luk": 10
+        "luk": 10,
+        "perception": 13
       },
       "hp": 60,
       "maxHp": 60,
@@ -403,6 +1082,10 @@
   ],
   "metadata": {
     "templateId": "luxfier-alpha-prototype",
+    "authorName": "GitHub Copilot",
+    "version": "1.0.0-BETA",
+    "releaseDate": "March 2, 2026",
+    "tags": ["High Fantasy", "Grimdark", "Techno-Magic", "Temporal Simulation"],
     "audioVolume": 0.8,
     "particleDensity": "medium",
     "initialReputation": {
@@ -410,5 +1093,24 @@
       "smitty-ironhammer": 5,
       "sergeant-brynn": 0
     }
-  }
-}
+  },
+  "legacySeedTraits": [
+    {
+      "endCondition": "ending_golden_harmony",
+      "startMyth": "The Age of Radiant Silence",
+      "globalBonus": "ancient_blessing",
+      "startingStatBonus": { "LUCK": 10, "CHA": 5 }
+    },
+    {
+      "endCondition": "ending_unravelling",
+      "startMyth": "The Memory of the Void",
+      "globalBonus": "void_scarred_resilience",
+      "startingStatBonus": { "STR": 15, "INT": -5 }
+    },
+    {
+      "endCondition": "ending_cycle_continues",
+      "startMyth": "The Eternal Return",
+      "globalBonus": "echo_of_the_past",
+      "startingStatBonus": { "END": 10 }
+    }
+  ]}

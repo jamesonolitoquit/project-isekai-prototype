@@ -3,6 +3,7 @@ import type { Event } from '../events/mutationLog';
 import { canonicalize } from '../events/mutationLog';
 import { random } from './prng';
 import { compactEventLog } from './eventCompactionEngine';
+import * as crypto from 'crypto';
 
 /**
  * Simple SHA-256-like hash using TypeScript (for browser compatibility)
@@ -16,6 +17,62 @@ function simpleHash(input: string): string {
     hash = hash & hash; // Keep as 32-bit integer
   }
   return Math.abs(hash).toString(16).padStart(16, '0');
+}
+
+/**
+ * Phase 10: Compute SHA-256 hash of world state for snapshot integrity verification
+ * Uses cryptographic hashing (via Node.js crypto module if available, falls back to simpleHash)
+ */
+export function computeSnapshotHash(state: WorldState): string {
+  try {
+    // Try using Node.js crypto (available in server-side rendering)
+    const canonical = canonicalize({
+      tick: state.tick,
+      seed: state.seed,
+      playerLocation: state.player?.location,
+      playerLevel: state.player?.level,
+      npcCount: state.npcs?.length,
+      questCount: state.quests?.length,
+      factionCount: state.factions?.length,
+      // Exclude: timestamp, audio state, transient director state
+    });
+    
+    if (crypto && crypto.createHash) {
+      return crypto.createHash('sha256').update(canonical).digest('hex').substring(0, 32);
+    }
+  } catch (e) {
+    // Fall back to simpleHash if crypto unavailable
+  }
+  
+  return simpleHash(canonicalize(state));
+}
+
+/**
+ * Phase 10: Verify snapshot chain integrity
+ * Check that current snapshot links properly to previous snapshot
+ */
+export function verifySnapshotChain(snapshots: Array<{ tick: number; stateHash: string; previousSnapshotHash?: string }>): { valid: boolean; failedAt?: number; reason?: string } {
+  if (!snapshots || snapshots.length === 0) {
+    return { valid: true };
+  }
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const snapshot = snapshots[i];
+    
+    // Check chain linkage (if not first snapshot)
+    if (i > 0) {
+      const prevSnapshot = snapshots[i - 1];
+      if (snapshot.previousSnapshotHash && snapshot.previousSnapshotHash !== prevSnapshot.stateHash) {
+        return {
+          valid: false,
+          failedAt: i,
+          reason: `Snapshot ${i} (tick ${snapshot.tick}) links to wrong previous hash`
+        };
+      }
+    }
+  }
+  
+  return { valid: true };
 }
 
 /**

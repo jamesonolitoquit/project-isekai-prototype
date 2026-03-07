@@ -6,6 +6,9 @@
   "multiEpochEnabled": true,
   "baseEpoch": "epoch_i_fracture",
   "isSeedZero": true,
+  "spawn_location_id": "startingVillage",
+  "starting_tile_coordinate": { "x": 12, "y": 12 },
+  "tutorial_npc_id": "tutorial_matron",
   "seedZeroMetadata": {
     "created": "2026-02-20T00:00:00Z",
     "designation": "Canonical Starting Timeline",

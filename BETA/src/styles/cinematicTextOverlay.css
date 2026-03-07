@@ -1,0 +1,588 @@
+/**
+ * cinematicTextOverlay.css - Phase 30 Task 8 Styling
+ * 
+ * High-fidelity typography and visual effects for The Awakening sequence.
+ * Features diegetic aesthetic with glitch overlays and typewriter animations.
+ */
+
+.cinematic-text-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  font-family: 'Courier New', monospace;
+  color: #e8d7c3;
+  overflow: hidden;
+}
+
+/* Background with void aesthetic */
+.cinematic-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0f0110 100%);
+  animation: cinematic-paradox-pulse 6s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes cinematic-paradox-pulse {
+  0% {
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0f0110 100%);
+    filter: brightness(0.9);
+  }
+  50% {
+    background: linear-gradient(135deg, #0f0a2e 0%, #260a4e 50%, #1a0110 100%);
+    filter: brightness(1);
+  }
+  100% {
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0f0110 100%);
+    filter: brightness(0.9);
+  }
+}
+
+/* Glitch overlay (scales with paradox) */
+.cinematic-glitch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 0, 196, 0.03) 2px,
+    rgba(255, 0, 196, 0.03) 4px
+  );
+  animation: cinematic-glitch-drift 2.5s ease-in-out infinite;
+  z-index: 2;
+  mix-blend-mode: overlay;
+}
+
+@keyframes cinematic-glitch-drift {
+  0% {
+    clip-path: inset(0 0 0 0);
+  }
+  20% {
+    clip-path: inset(10% 0 88% 0);
+    transform: translateX(-2px);
+  }
+  40% {
+    clip-path: inset(61% 0 15% 0);
+    transform: translateX(2px);
+  }
+  60% {
+    clip-path: inset(25% 0 40% 0);
+    transform: translateX(-1px);
+  }
+  75% {
+    clip-path: inset(0 0 0 0);
+    transform: translateX(0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* Main text panel */
+.cinematic-text-panel {
+  position: relative;
+  z-index: 10;
+  background: rgba(15, 1, 16, 0.95);
+  border: 2px solid rgba(255, 192, 203, 0.5);
+  padding: 60px;
+  max-width: 900px;
+  max-height: 80vh;
+  border-radius: 4px;
+  box-shadow:
+    0 0 40px rgba(255, 0, 196, 0.3),
+    inset 0 0 40px rgba(255, 192, 203, 0.1),
+    0 8px 32px rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+  animation: cinematic-panel-shimmer 4s ease-in-out infinite;
+  backdrop-filter: blur(10px);
+  outline: 1px solid rgba(255, 192, 203, 0.2);
+}
+
+@keyframes cinematic-panel-shimmer {
+  0% {
+    box-shadow:
+      0 0 40px rgba(255, 0, 196, 0.2),
+      inset 0 0 40px rgba(255, 192, 203, 0.05),
+      0 8px 32px rgba(0, 0, 0, 0.8);
+  }
+  50% {
+    box-shadow:
+      0 0 60px rgba(255, 0, 196, 0.35),
+      inset 0 0 60px rgba(255, 192, 203, 0.1),
+      0 8px 32px rgba(0, 0, 0, 0.9);
+  }
+  100% {
+    box-shadow:
+      0 0 40px rgba(255, 0, 196, 0.2),
+      inset 0 0 40px rgba(255, 192, 203, 0.05),
+      0 8px 32px rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* Weaver indicator in top-right corner */
+.cinematic-weaver-indicator {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 20;
+  opacity: 0.7;
+}
+
+/* Header section */
+.cinematic-header {
+  margin-bottom: 30px;
+  border-bottom: 1px solid rgba(255, 192, 203, 0.2);
+  padding-bottom: 20px;
+}
+
+.cinematic-title {
+  font-size: 32px;
+  font-weight: bold;
+  margin: 0 0 10px 0;
+  color: #ffc0cb;
+  text-shadow:
+    0 0 10px rgba(255, 0, 196, 0.5),
+    0 0 20px rgba(255, 192, 203, 0.2);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.cinematic-subtitle {
+  font-size: 14px;
+  color: #b0a0a8;
+  margin: 0;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+/* Text container with typewriter effect */
+.cinematic-text-container {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  padding: 20px 0;
+  overflow: hidden;
+}
+
+.cinematic-text {
+  font-size: 18px;
+  line-height: 1.8;
+  color: #f5e6d3;
+  text-shadow:
+    0 0 8px rgba(255, 0, 196, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.5px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  font-weight: 300;
+  min-height: 60px;
+}
+
+/* Typewriter cursor animation */
+.typewriter-cursor {
+  animation: typewriter-blink 1s step-end infinite;
+  color: #ff00c4;
+  text-shadow: 0 0 10px #ff00c4;
+}
+
+@keyframes typewriter-blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Glitch text overlay (secondary layer for effect) */
+.cinematic-glitch-text {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  font-size: 18px;
+  line-height: 1.8;
+  color: #ff00c4;
+  text-shadow: 0 0 15px #ff00c4;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  opacity: 0.3;
+  mix-blend-mode: screen;
+  transform: translateY(-50%);
+  animation: cinematic-glitch-flicker 0.2s infinite;
+  white-space: pre-wrap;
+}
+
+@keyframes cinematic-glitch-flicker {
+  0% {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.1;
+  }
+  50% {
+    clip-path: inset(40% 0 60% 0);
+    opacity: 0.3;
+    transform: translateY(-50%) translateX(2px);
+  }
+  100% {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.1;
+  }
+}
+
+/* Continue prompt */
+.cinematic-continue-prompt {
+  margin-top: 30px;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: #ffc0cb;
+  text-transform: uppercase;
+  pointer-events: none;
+  min-height: 20px;
+}
+
+.cinematic-continue-prompt.visible {
+  animation: cinematic-prompt-pulse 2s ease-in-out infinite;
+}
+
+.cinematic-continue-prompt.hidden {
+  opacity: 0;
+}
+
+@keyframes cinematic-prompt-pulse {
+  0%, 100% {
+    opacity: 0.5;
+    text-shadow: 0 0 5px rgba(255, 192, 203, 0.3);
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 15px rgba(255, 0, 196, 0.6);
+  }
+}
+
+/* Loading animation */
+.cinematic-loading {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font-size: 13px;
+  color: #00ffc8;
+  letter-spacing: 1px;
+}
+
+.cinematic-loading p {
+  margin: 10px 0 0 0;
+}
+
+.loading-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00ffc8;
+  margin: 0 4px;
+  animation: cinematic-dot-bounce 1.4s infinite ease-in-out;
+  box-shadow: 0 0 10px rgba(0, 255, 200, 0.6);
+}
+
+.loading-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.loading-dot:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes cinematic-dot-bounce {
+  0%, 80%, 100% {
+    opacity: 0.5;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-10px);
+  }
+}
+
+/* Continue button (accessible) */
+.cinematic-continue-button {
+  margin-top: 20px;
+  padding: 14px 36px;
+  background: linear-gradient(90deg, rgba(255, 0, 196, 0.5), rgba(255, 192, 203, 0.5)) !important;
+  border: 2px solid rgba(255, 192, 203, 0.8) !important;
+  color: #fff !important;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer !important;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(255, 0, 196, 0.3) !important;
+  align-self: center;
+}
+
+.cinematic-continue-button:hover {
+  background: linear-gradient(90deg, rgba(255, 0, 196, 0.7), rgba(255, 192, 203, 0.7)) !important;
+  box-shadow:
+    0 0 30px rgba(255, 0, 196, 0.6),
+    inset 0 0 10px rgba(255, 192, 203, 0.3) !important;
+  transform: scale(1.05);
+}
+
+.cinematic-continue-button:active {
+  transform: scale(0.98);
+  box-shadow: 0 0 15px rgba(255, 0, 196, 0.4) !important;
+}
+
+.cinematic-continue-button:focus-visible {
+  outline: 2px solid #ffc0cb;
+  outline-offset: 2px;
+}
+
+/* Skip button - always visible emergency exit */
+.cinematic-skip-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 11000;
+  padding: 12px 24px;
+  background: rgba(255, 0, 196, 0.6) !important;
+  border: 2px solid rgba(255, 192, 203, 0.9) !important;
+  color: #fff !important;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer !important;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(255, 0, 196, 0.5) !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+.cinematic-skip-button:hover {
+  background: rgba(255, 0, 196, 0.8) !important;
+  box-shadow: 0 0 30px rgba(255, 0, 196, 0.8) !important;
+  transform: scale(1.1);
+}
+
+.cinematic-skip-button:active {
+  transform: scale(0.95);
+}
+
+/* Vignette fade effect */
+.cinematic-vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(ellipse at center, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Scan lines effect */
+.cinematic-scan-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  z-index: 8;
+  pointer-events: none;
+  animation: cinematic-scan-flicker 0.15s infinite;
+}
+
+@keyframes cinematic-scan-flicker {
+  0% {
+    opacity: 0.03;
+  }
+  50% {
+    opacity: 0.05;
+  }
+  100% {
+    opacity: 0.03;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+  .cinematic-text-panel {
+    max-width: 90vw;
+    padding: 40px;
+  }
+
+  .cinematic-title {
+    font-size: 24px;
+  }
+
+  .cinematic-text {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .cinematic-text-overlay {
+    align-items: flex-end;
+  }
+
+  .cinematic-text-panel {
+    max-width: 100%;
+    max-height: 70vh;
+    padding: 30px;
+    border-radius: 12px 12px 0 0;
+    min-height: 50vh;
+  }
+
+  .cinematic-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+  }
+
+  .cinematic-title {
+    font-size: 20px;
+    letter-spacing: 1px;
+  }
+
+  .cinematic-subtitle {
+    font-size: 12px;
+  }
+
+  .cinematic-text {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .cinematic-continue-prompt {
+    font-size: 11px;
+    margin-top: 20px;
+  }
+
+  .cinematic-weaver-indicator {
+    top: 15px;
+    right: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .cinematic-text-panel {
+    padding: 20px;
+    max-height: 60vh;
+  }
+
+  .cinematic-title {
+    font-size: 18px;
+  }
+
+  .cinematic-text {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .cinematic-continue-button {
+    font-size: 12px;
+    padding: 10px 20px;
+  }
+}
+
+/* Accessibility: Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-bg,
+  .cinematic-glitch-overlay,
+  .cinematic-panel-shimmer,
+  .cinematic-glitch-text,
+  .cinematic-continue-prompt,
+  .cinematic-loading,
+  .typewriter-cursor,
+  .cinematic-scan-lines,
+  .cinematic-continue-button {
+    animation: none !important;
+  }
+
+  .cinematic-text-overlay {
+    animation: none;
+  }
+
+  /* Show full text immediately */
+  .cinematic-text {
+    color: #e8d7c3;
+  }
+
+  .typewriter-cursor {
+    display: none;
+  }
+
+  /* Disable glitch effects */
+  .cinematic-glitch-overlay {
+    display: none;
+  }
+
+  .cinematic-glitch-text {
+    display: none;
+  }
+}
+
+/* Dark mode adjustments (system preference) */
+@media (prefers-color-scheme: dark) {
+  .cinematic-text-panel {
+    background: rgba(10, 1, 16, 0.9);
+    border-color: rgba(255, 192, 203, 0.4);
+  }
+}
+
+/* Light mode fallback */
+@media (prefers-color-scheme: light) {
+  .cinematic-text-overlay {
+    color: #3a2a32;
+  }
+
+  .cinematic-bg {
+    background: linear-gradient(135deg, #f5f5f5 0%, #e8e0e8 50%, #f0e8f0 100%);
+  }
+
+  .cinematic-text-panel {
+    background: rgba(245, 245, 245, 0.95);
+    border-color: rgba(100, 80, 100, 0.3);
+  }
+
+  .cinematic-title {
+    color: #8b4a6b;
+  }
+
+  .cinematic-text {
+    color: #3a2a32;
+  }
+}

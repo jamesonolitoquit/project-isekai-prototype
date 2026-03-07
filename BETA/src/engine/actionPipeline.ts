@@ -1,11 +1,13 @@
 import { WorldState, StackableItem } from './worldEngine';
+import type { NPC, InventoryItem, CraftingRecipe } from './worldEngine';
 import { Event } from '../events/mutationLog';
 import { random } from './prng';
 import { validateStatAllocation } from './characterCreation';
 import { resolveCombat, resolveDefense, resolveParry, resolveHeal, CombatantStats, getEquipmentBonuses, applyEquipmentBonuses } from './ruleEngine';
 import { getLegacyEngine } from './legacyEngine';
-import { isNpcAvailable, resolveDialogue } from './npcEngine';
-import { resolveLootTable, validateRecipe, rollCraftingCheck, type Recipe } from './craftingEngine';
+import { isNpcAvailable, resolveDialogue, type DialogueOption } from './npcEngine';
+import { BranchingDialogueEngine } from './branchingDialogueEngine';
+import { resolveLootTable, validateRecipe, rollCraftingCheck } from './craftingEngine';
 import { resolveSpell, getSpellById } from './magicEngine';
 import { calculateDrift, validateAuthority, checkForSpellBackfire } from './paradoxEngine';
 import { calculateMorphCost, generateRitualChallenge, performRitualCheck, handleMorphSuccess, handleMorphFailure, calculateEssenceDecay, checkMorphCooldown, findNearestAltar } from './morphEngine';
@@ -18,7 +20,12 @@ import { getLocationControllingFaction, calculateFactionTax } from './factionTer
 import { getInvestigationPipeline } from './investigationPipelineEngine';
 import { awardMerit, calculateMeritReward } from './factionCommandEngine';
 import { initiateChronicleTransition, getNextEpoch, EPOCH_DEFINITIONS } from './chronicleEngine';
-import { healWorldScar, restoreScarLocation } from './worldScarsEngine';
+import { healWorldScar, restoreScarLocation, createWorldScar } from './worldScarsEngine';
+import { resolveSpatialInteraction, createSpatialInteractionEvents } from './spatialInteractionEngine';
+import { resolveAbility, canUseAbility, ABILITY_DATABASE } from './abilityResolver';
+import { getSeasonalModifiers, getSeasonalLoot } from './seasonEngine';
+import { multiverseAdapter } from './multiverseAdapter';
+import { grantProficiencyXP, ActionSignificanceContext } from './proficiencyEngine';
 
 // Helper function to check knowledge base (handles Map or Array)
 function hasKnowledge(kb: any, key: string): boolean {
@@ -26,6 +33,49 @@ function hasKnowledge(kb: any, key: string): boolean {
   if (kb instanceof Map) return kb.has(key);
   if (Array.isArray(kb)) return kb.includes(key);
   return (kb as Record<string, any>)[key] !== undefined;
+}
+
+// Helper function to add knowledge to knowledge base (handles Map or Array)
+function addKnowledge(kb: any, key: string, value: any = true): any {
+  if (!kb) {
+    kb = new Map();
+  }
+  if (kb instanceof Map) {
+    (kb as Map<string, any>).set(key, value);
+  } else if (Array.isArray(kb)) {
+    if (!kb.includes(key)) {
+      kb.push(key);
+    }
+  } else {
+    (kb as Record<string, any>)[key] = value;
+  }
+  return kb;
+}
+
+// Helper function to generate relic dialogue (stub implementation)
+function generateRelicDialogue(relic: any, type: string): string {
+  const relicName = relic?.name || 'Unknown Relic';
+  const dialogues: Record<string, string[]> = {
+    greeting: [
+      `Greetings, Bound One. I am ${relicName}.`,
+      `At last... I sense your presence, ${relicName}.`,
+      `Welcome to my eternal service.`,
+      `Your soul and mine are now entwined.`
+    ],
+    farewell: [
+      `Our bond weakens...`,
+      `Until we meet again...`,
+      `The strain fades, but our connection remains.`
+    ],
+    power: [
+      `My power flows through you!`,
+      `Feel the strength of ages!`,
+      `Tap into true power now.`
+    ]
+  };
+  
+  const typeDialogues = dialogues[type] || dialogues['greeting'];
+  return typeDialogues[Math.floor(Math.random() * typeDialogues.length)];
 }
 
 // Dice roll context for action resolution
@@ -71,7 +121,7 @@ interface LootTableEntry {
  */
 interface ItemsDataStructure {
   items: ItemTemplate[];
-  recipes: Recipe[];
+  recipes: CraftingRecipe[];
   loot_tables: Record<string, LootTableEntry[]>;
 }
 
@@ -86,6 +136,66 @@ function hasItem(container: Set<string> | string[] | undefined, item: string): b
   if (!container) return false;
   if (Array.isArray(container)) return container.includes(item);
   return container.has(item);
+}
+
+/**
+ * Phase 23: Apply seasonal modifiers to a base value
+ * @param baseValue The base value to modify
+ * @param modifierKey The key of the modifier (e.g., 'manaRegenMult', 'staminaDecayMult')
+ * @param seasonalModifiers The current seasonal modifiers from the world state
+ * @returns The modified value
+ */
+function applySeasonalModifier(baseValue: number, modifierKey: string, seasonalModifiers: Record<string, number> | undefined): number {
+  if (!seasonalModifiers || !seasonalModifiers[modifierKey]) {
+    return baseValue;
+  }
+  const modifier = seasonalModifiers[modifierKey];
+  if (modifierKey.endsWith('Mult')) {
+    return Math.ceil(baseValue * modifier);
+  } else if (modifierKey.endsWith('Base') || modifierKey === 'luckBonus') {
+    return baseValue + modifier;
+  }
+  return baseValue;
+}
+
+/**
+ * Phase 23: Inject seasonal loot into loot table drops
+ * @param originalLoot The original loot array from resolveLootTable
+ * @param seasonalLoot The seasonal loot entries to inject
+ * @returns The combined loot array
+ */
+function injectSeasonalLoot(originalLoot: InventoryItem[], seasonalLoot: any[]): InventoryItem[] {
+  if (!seasonalLoot || seasonalLoot.length === 0) {
+    return originalLoot;
+  }
+
+  const injectedLoot = [...originalLoot];
+  for (const seasonalEntry of seasonalLoot) {
+    if (random() <= (seasonalEntry.dropRate || 0.1)) {
+      injectedLoot.push({
+        kind: 'stackable',
+        itemId: seasonalEntry.itemId,
+        quantity: 1
+      } as any);
+    }
+  }
+
+  // Phase 29: Inject Multiverse Leaked Loot
+  const leakedItems = multiverseAdapter.getLeakedItems();
+  if (leakedItems.length > 0) {
+    for (const leaked of leakedItems) {
+      // Very rare 1% chance for a multiverse leak item per loot event
+      if (random() <= 0.01) {
+        injectedLoot.push({
+          kind: 'stackable',
+          itemId: leaked.id,
+          quantity: 1
+        } as any);
+      }
+    }
+  }
+
+  return injectedLoot;
 }
 
 /**
@@ -232,30 +342,14 @@ function applyHazardsInCombat(state: WorldState, action: Action): Event[] {
   return hazardEvents;
 }
 
-// Build item templates map from items.json
-const ITEM_TEMPLATES: Record<string, ItemTemplate> = {};
-const typedItemsData = itemsData as ItemsDataStructure;
-if (typedItemsData.items && Array.isArray(typedItemsData.items)) {
-  typedItemsData.items.forEach((item: ItemTemplate) => {
-    ITEM_TEMPLATES[item.id] = item;
-  });
-}
+// Build item templates map from items.json (DEPRECATED: Use state.itemTemplates instead)
+const ITEM_TEMPLATES: Record<string, any> = {};
 
-// Build recipe map from items.json
-const RECIPES: Record<string, Recipe> = {};
-if (typedItemsData.recipes && Array.isArray(typedItemsData.recipes)) {
-  typedItemsData.recipes.forEach((recipe: Recipe) => {
-    RECIPES[recipe.id] = recipe;
-  });
-}
+// Build recipe map from items.json (DEPRECATED: Use state.craftingRecipes instead)
+const RECIPES: Record<string, any> = {};
 
-// Build loot tables map from items.json
-const LOOT_TABLES: Record<string, LootTableEntry[]> = {};
-if (typedItemsData.loot_tables && typeof typedItemsData.loot_tables === 'object') {
-  Object.entries(typedItemsData.loot_tables).forEach(([tableId, entries]: [string, LootTableEntry[]]) => {
-    LOOT_TABLES[tableId] = entries;
-  });
-}
+// Build loot tables map from items.json (DEPRECATED: Use state.lootTables instead)
+const LOOT_TABLES: Record<string, any> = {};
 
 /**
  * MetagameValidator checks for suspicious player actions that suggest metagaming
@@ -619,11 +713,26 @@ export function processAction(state: WorldState, action: Action): Event[] {
       travelTicks = Math.round(travelTicks * targetTerrainMod);
 
       // ALPHA_M15: Apply environmental fatigue (MP cost for movement)
-      const weather = state.weather || 'clear';
+      let weather: 'clear' | 'snow' | 'rain' = 'clear';
+      const baseWeather = state.weather || 'clear';
+      if (baseWeather === 'snow') weather = 'snow';
+      else if (baseWeather === 'rain') weather = 'rain';
+      else if (baseWeather === 'ash_storm') weather = 'rain';
+      else if (baseWeather === 'cinder_fog') weather = 'rain';
+      else if (baseWeather === 'mana_static') weather = 'clear';
+      
       const season = state.season || 'spring';
       const weatherResult = resolveWeather(season, state.hour || 12, weather);
       const fatigueMult = calculateEnvironmentalFatigue(weatherResult.current, weatherResult.intensity);
       
+      // Phase 7: Clear target when moving to a new location
+      if (state.player.activeTargetId) {
+        events.push(createEvent(state, action, 'TARGET_LOCKED', {
+          targetId: null,
+          reason: 'player-moved'
+        }));
+      }
+
       // Base MP cost: 10 + distance/10
       let mpCost = 10 + Math.round(travelDistance / 10);
       mpCost = Math.round(mpCost * fatigueMult);
@@ -818,6 +927,38 @@ export function processAction(state: WorldState, action: Action): Event[] {
       break;
     }
 
+    case 'SET_TARGET': {
+      // Phase 7: Targeting System - Mechanics for combat and interaction
+      const targetId = action.payload?.targetId;
+      
+      // Validation: Target must exist in world (NPC, Object, or Location)
+      const targetNpc = state.npcs.find(n => n.id === targetId);
+      const targetLocation = state.locations.find(l => l.id === targetId);
+      
+      if (!targetId) {
+        // Clearing target
+        events.push(createEvent(state, action, 'TARGET_LOCKED', {
+          targetId: null,
+          reason: 'manual-clear'
+        }));
+        return events;
+      }
+
+      if (!targetNpc && !targetLocation) {
+        // Invalid target
+        return [];
+      }
+
+      events.push(createEvent(state, action, 'TARGET_LOCKED', {
+        targetId,
+        targetType: targetNpc ? 'npc' : 'location',
+        targetName: targetNpc?.name || targetLocation?.name,
+        timestamp: Date.now()
+      }));
+
+      return events;
+    }
+
     case 'INTERACT_NPC': {
       const npcId = action.payload?.npcId;
       const npc = state.npcs.find(n => n.id === npcId);
@@ -844,11 +985,56 @@ export function processAction(state: WorldState, action: Action): Event[] {
         return events;
       }
 
-      // Resolve dialogue using npcEngine with full state context
-      const dialogue = resolveDialogue(npc, state.player, state);
+      // Phase 8: Check if NPC has typed dialogue tree from template
+      let dialogue: { text: string; options: DialogueOption[] };
+      
+      if ((npc as any).branchingDialogue) {
+        // Use typed BranchingDialogueEngine for template-driven dialogue
+        try {
+          const dialogueTree = (npc as any).branchingDialogue;
+          // Start with the greeting node (or first available node)
+          const initialNodeId = 'greeting';
+          const initialNode = dialogueTree[initialNodeId];
+          
+          if (initialNode) {
+            // Resolve dialogue branch with strict type validation
+            const resolution = BranchingDialogueEngine.resolveDialogueBranch(
+              initialNode as any, // Type cast needed for dialogueTree from template
+              state.player,
+              npc,
+              state
+            );
+            
+            // Calculate NPC response tone based on reputation
+            const toneMult = BranchingDialogueEngine.calculateNpcResponseTone(npc, state.player);
+            
+            // Build dialogue from resolved options
+            const optionTexts = resolution.accessibleOptions.map(opt => ({
+              id: opt.id,
+              text: opt.text
+            }));
+            
+            dialogue = {
+              text: `${npc.name}: ${initialNode.text}${toneMult > 0.5 ? ' (warmly)' : toneMult < -0.5 ? ' (coldly)' : ''}`,
+              options: optionTexts
+            };
+          } else {
+            // Fallback if greeting node not found
+            dialogue = resolveDialogue(npc, state.player, state);
+          }
+        } catch (err) {
+          // Fall back to legacy dialogue if typed resolution fails
+          console.warn(`[ActionPipeline] Dialogue engine error for ${npcId}:`, err);
+          dialogue = resolveDialogue(npc, state.player, state);
+        }
+      } else {
+        // Use legacy dialogue resolution for NPCs without typed dialogue trees
+        dialogue = resolveDialogue(npc, state.player, state);
+      }
 
       events.push(createEvent(state, action, 'INTERACT_NPC', {
         npcId,
+        npcName: npc.name,
         text: dialogue.text,
         options: dialogue.options,
       }));
@@ -861,12 +1047,122 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const npc = state.npcs.find(n => n.id === npcId);
       if (!npc) return [];
 
-      // For now, choices just advance the dialogue
-      if (choiceId === 'next') {
-        // Assume they're progressing dialogue
+      // Phase 8: Check if choice involves a skill check (from branching dialogue)
+      let skillCheckResult: any = null;
+      const choice = action.payload?.choice; // Optional full choice object for rich data
+      
+      if (choice && choice.skillCheck) {
+        // Resolve skill check with reputation multiplier
+        const playerFame = state.player.factionReputation?.[npc.factionId] ?? 0;
+        skillCheckResult = BranchingDialogueEngine.resolveSkillCheck(
+          state.player,
+          choice.skillCheck.skill,
+          choice.skillCheck.dc,
+          playerFame
+        );
+        
+        // Emit skill check event
+        events.push(createEvent(state, action, 'SKILL_CHECK_RESOLVED', {
+          npcId: npcId,
+          npcName: npc.name,
+          skill: choice.skillCheck.skill,
+          baseDC: choice.skillCheck.dc,
+          playerRoll: skillCheckResult.roll,
+          skillBonus: skillCheckResult.skillBonus,
+          modifiedDC: skillCheckResult.modifiedDC,
+          success: skillCheckResult.success,
+          margin: skillCheckResult.margin,
+          message: skillCheckResult.success 
+            ? `✓ You succeeded by ${skillCheckResult.margin}!`
+            : `✗ You failed by ${Math.abs(skillCheckResult.margin)}.`
+        }));
+        
+        // If skill check failed, don't apply consequences
+        if (!skillCheckResult.success) {
+          events.push(createEvent(state, action, 'DIALOG_CHOICE', { npcId, choiceId, skillCheckFailed: true }));
+          break;
+        }
       }
 
-      // M53-D1: Handle Soul Echo merit transfer consequence
+      // Phase 8: Apply dialogue consequences from branching dialogue engine
+      if (choice && choice.consequenceAction) {
+        const consequences = BranchingDialogueEngine.applyDialogueConsequence(
+          choice,
+          state.player,
+          npc,
+          state
+        );
+        
+        // Process each consequence
+        for (const consequence of consequences) {
+          switch (consequence.actionType) {
+            case 'START_QUEST':
+              if (consequence.payload.questId && !state.player.quests[consequence.payload.questId]) {
+                events.push(createEvent(state, action, 'QUEST_STARTED', { questId: consequence.payload.questId }));
+              }
+              break;
+              
+            case 'GAIN_REPUTATION':
+              if (consequence.payload.factionId) {
+                state.player.factionReputation = state.player.factionReputation || {};
+                state.player.factionReputation[consequence.payload.factionId] = 
+                  (state.player.factionReputation[consequence.payload.factionId] || 0) + (consequence.payload.delta || 10);
+                
+                events.push(createEvent(state, action, 'REPUTATION_CHANGED', {
+                  factionId: consequence.payload.factionId,
+                  delta: consequence.payload.delta || 10,
+                  newReputation: state.player.factionReputation[consequence.payload.factionId]
+                }));
+              }
+              break;
+              
+            case 'DAMAGE_REPUTATION':
+              if (consequence.payload.factionId) {
+                state.player.factionReputation = state.player.factionReputation || {};
+                state.player.factionReputation[consequence.payload.factionId] = 
+                  (state.player.factionReputation[consequence.payload.factionId] || 0) - (consequence.payload.delta || 10);
+                
+                events.push(createEvent(state, action, 'REPUTATION_CHANGED', {
+                  factionId: consequence.payload.factionId,
+                  delta: -(consequence.payload.delta || 10),
+                  newReputation: state.player.factionReputation[consequence.payload.factionId]
+                }));
+              }
+              break;
+              
+            case 'ADD_KNOWLEDGE':
+              if (consequence.payload.knowledgeTag) {
+                // Ensure player has knowledge base
+                if (!state.player.knowledgeBase) {
+                  state.player.knowledgeBase = [];
+                }
+                // Add to knowledge base if it's an array
+                if (Array.isArray(state.player.knowledgeBase)) {
+                  if (!state.player.knowledgeBase.includes(consequence.payload.knowledgeTag)) {
+                    state.player.knowledgeBase.push(consequence.payload.knowledgeTag);
+                  }
+                }
+                
+                events.push(createEvent(state, action, 'KNOWLEDGE_GAINED', {
+                  knowledgeTag: consequence.payload.knowledgeTag,
+                  description: consequence.payload.description || 'New knowledge discovered'
+                }));
+              }
+              break;
+              
+            case 'COMBAT_START':
+              // Combat initiation handled by separate combat action
+              events.push(createEvent(state, action, 'COMBAT_INITIATED_BY_DIALOGUE', {
+                npcId: npcId,
+                npcName: npc.name,
+                reason: consequence.payload.reason || 'Dialogue escalated to combat'
+              }));
+              break;
+          }
+        }
+      } 
+      
+      // Legacy handling for Soul Echo merit transfer
       if (npc.type === 'SOUL_ECHO' && choiceId === 'inherit_merit' && npc.soulEchoData?.inheritableMerit) {
         const inheritedMerit = npc.soulEchoData.inheritableMerit;
         state.player.merit = (state.player.merit || 0) + inheritedMerit;
@@ -878,16 +1174,12 @@ export function processAction(state: WorldState, action: Action): Event[] {
           totalMerit: state.player.merit,
           message: `✨ You absorbed the ancestral wisdom of ${npc.name}. Gained ${inheritedMerit} Merit!`
         }));
-        
-        events.push(createEvent(state, action, 'DIALOG_CHOICE', { npcId, choiceId }));
-        break;
       }
 
-      // Check if this NPC is associated with a quest and if so, trigger quest start or other effects
+      // Legacy quest triggering
       if (npc.questId) {
         const quest = state.quests.find(q => q.id === npc.questId);
         if (quest && !state.player.quests[npc.questId]) {
-          // Quest not yet started; trigger it
           events.push(createEvent(state, action, 'QUEST_STARTED', { questId: npc.questId }));
         }
       }
@@ -1133,7 +1425,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       // Apply equipment bonuses
       if (state.player && state.player.equipment) {
-        const equipBonuses = getEquipmentBonuses(state.player.equipment, ITEM_TEMPLATES);
+        const equipBonuses = getEquipmentBonuses(state.player.equipment, (state as any).itemTemplates || {});
         playerStats = applyEquipmentBonuses(playerStats, equipBonuses);
       }
 
@@ -1260,6 +1552,29 @@ export function processAction(state: WorldState, action: Action): Event[] {
             }
           }
         }
+
+        // Phase 15: Trigger artifact mood update on combat victory
+        events.push(createEvent(state, action, 'ARTIFACT_MOOD_TRIGGERED', {
+          mood: 'combat_kill',
+          targetId: defenderId,
+          targetName: defender.name,
+          intensity: 1.0,
+          message: 'Your equipped artifact senses the victory and pulses with approval.'
+        }));
+      }
+
+      // Phase 15: Check if player took damage during combat and trigger damage mood
+      const combatDamageEvent = combatEvents.find(e => 
+        e.type === 'COMBAT_DAMAGE' && e.payload?.targetId === state.player.id
+      );
+      if (combatDamageEvent) {
+        const damageAmount = combatDamageEvent.payload?.amount || 0;
+        events.push(createEvent(state, action, 'ARTIFACT_MOOD_TRIGGERED', {
+          mood: 'combat_damage_taken',
+          damageAmount: damageAmount,
+          intensity: Math.min(1, damageAmount / 30), // Normalize to 0-1
+          message: 'Your equipped artifact feels your pain and responds with protective instinct.'
+        }));
       }
 
       // ALPHA_M4: Apply hazard damage during combat
@@ -1281,7 +1596,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       // Apply equipment bonuses
       if (state.player && state.player.equipment) {
-        const equipBonuses = getEquipmentBonuses(state.player.equipment, ITEM_TEMPLATES);
+        const equipBonuses = getEquipmentBonuses(state.player.equipment, (state as any).itemTemplates || {});
         playerStats = applyEquipmentBonuses(playerStats, equipBonuses);
       }
 
@@ -1328,7 +1643,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       // Apply equipment bonuses
       if (state.player && state.player.equipment) {
-        const equipBonuses = getEquipmentBonuses(state.player.equipment, ITEM_TEMPLATES);
+        const equipBonuses = getEquipmentBonuses(state.player.equipment, (state as any).itemTemplates || {});
         playerStats = applyEquipmentBonuses(playerStats, equipBonuses);
       }
 
@@ -1482,10 +1797,13 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const hpRestored = newHp - currentHp;
 
       // Mana restoration during rest (25% per hour)
+      // Phase 23: Apply seasonal mana regen modifier (e.g., 1.3x in spring, 0.8x in winter)
       const currentMp = state.player.mp ?? 0;
       const maxMp = state.player.maxMp ?? 0;
-      const mpPerRest = Math.ceil(maxMp * 0.25); // 25% per hour
-      const newMp = Math.min(maxMp, currentMp + mpPerRest);
+      const mpPerRest = Math.ceil(maxMp * 0.25); // 25% per hour base
+      const seasonalModifiers = state.currentSeasonalModifiers || {};
+      const seasonalMpPerRest = applySeasonalModifier(mpPerRest, 'manaRegenMult', seasonalModifiers);
+      const newMp = Math.min(maxMp, currentMp + seasonalMpPerRest);
       const mpRestored = newMp - currentMp;
 
       events.push(createEvent(state, action, 'PLAYER_REST', {
@@ -1496,7 +1814,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
         newMp,
         maxMp,
         hoursCost: 1,
-        message: `Rested 1 hour. HP restored: ${hpRestored}, MP restored: ${mpRestored}`
+        seasonalModifier: seasonalModifiers.manaRegenMult ? `(${seasonalModifiers.manaRegenMult}x seasonal)` : '',
+        message: `Rested 1 hour. HP restored: ${hpRestored}, MP restored: ${mpRestored}${seasonalModifiers.manaRegenMult ? ` (${seasonalModifiers.manaRegenMult}x seasonal modifier)` : ''}`
       }));
       break;
     }
@@ -1507,6 +1826,44 @@ export function processAction(state: WorldState, action: Action): Event[] {
         return []; // Invalid character creation
       }
       events.push(createEvent(state, action, 'CHARACTER_CREATED', { character }));
+      break;
+    }
+
+    case 'INITIALIZE_PLAYER_ORIGIN': {
+      // Phase 5: Heroic Awakening - Wire narrative data to AI Weaver
+      // This action processes the character's origin story, archetype, and talents
+      // and seeds them into the narrative engine for quest generation
+      const { originStory, archetype, talents, character } = action.payload;
+      
+      if (!state.player) {
+        events.push(createEvent(state, action, 'ORIGIN_INITIALIZATION_FAILED', {
+          reason: 'NO_PLAYER',
+          message: 'Character must be created before initializing origin.'
+        }));
+        break;
+      }
+
+      // Update player with narrative data
+      if (originStory) state.player.originStory = originStory;
+      if (archetype) state.player.archetype = archetype;
+      if (talents && Array.isArray(talents)) {
+        state.player.talents = talents;
+      }
+
+      // Broadcast origin initialization event to AI Weaver
+      events.push(createEvent(state, action, 'PLAYER_ORIGIN_INITIALIZED', {
+        playerId: state.player.id,
+        playerName: state.player.name,
+        originStory: originStory || '',
+        archetype: archetype || 'adventurer',
+        talents: talents || [],
+        stats: state.player.stats,
+        currentRace: state.player.currentRace || 'human',
+        location: state.player.location,
+        message: `${state.player.name} awakens as a ${archetype}! AI Weaver beginning narrative synthesis...`
+      }));
+
+      console.log(`[ActionPipeline] Player origin initialized: ${state.player.name} (${archetype})`);
       break;
     }
 
@@ -1843,6 +2200,302 @@ export function processAction(state: WorldState, action: Action): Event[] {
       break;
     }
 
+    case 'USE_ABILITY': {
+      // Phase 4: AbilityResolver integration
+      // Cast an equipped ability, using stat-driven formulas and cooldown management
+      const { abilityId } = action.payload;
+      if (!abilityId) {
+        events.push(createEvent(state, action, 'ABILITY_ERROR', {
+          reason: 'No ability specified',
+          message: 'Ability ID is required to cast'
+        }));
+        return events;
+      }
+
+      const ability = ABILITY_DATABASE[abilityId];
+      if (!ability) {
+        events.push(createEvent(state, action, 'ABILITY_ERROR', {
+          reason: 'Unknown ability',
+          abilityId,
+          message: `Ability not found: ${abilityId}`
+        }));
+        return events;
+      }
+
+      // Check if ability is equipped
+      const isEquipped = (state.player.equippedAbilities || []).includes(abilityId);
+      if (!isEquipped) {
+        events.push(createEvent(state, action, 'ABILITY_ERROR', {
+          reason: 'Ability not equipped',
+          abilityId,
+          message: `${ability.name} is not equipped. Cannot cast unequipped abilities.`
+        }));
+        return events;
+      }
+
+      // Check if ability can be used
+      const abilityCheck = canUseAbility(ability, state.player);
+      if (!abilityCheck.canUse) {
+        events.push(createEvent(state, action, 'ABILITY_ERROR', {
+          reason: 'Cannot use ability',
+          abilityId,
+          message: abilityCheck.reason || `Cannot cast ${ability.name}`
+        }));
+        return events;
+      }
+
+      // Resolve ability execution
+      const result = resolveAbility(abilityId, state.player, state);
+      if (!result.success) {
+        events.push(createEvent(state, action, 'ABILITY_ERROR', {
+          reason: result.reason || 'Ability failed',
+          abilityId,
+          message: result.reason || `Failed to cast ${ability.name}`
+        }));
+        return events;
+      }
+
+      // Apply effects
+      // Deduct mana
+      state.player.soulResonanceLevel = Math.max(
+        0,
+        (state.player.soulResonanceLevel || 0) - result.manaCost
+      );
+
+      // Apply paradox debt if applicable
+      if (result.paradoxIncurred > 0) {
+        state.player.temporalDebt = Math.min(
+          100,
+          (state.player.temporalDebt || 0) + result.paradoxIncurred
+        );
+      }
+
+      // Apply damage/healing
+      if (result.damage && result.damage > 0) {
+        // For now, log the damage. In full combat context, this would apply to a target
+        events.push(createEvent(state, action, 'ABILITY_DAMAGE', {
+          abilityId,
+          abilityName: ability.name,
+          damage: Math.round(result.damage),
+          targetType: ability.effect.targetType,
+          message: `${ability.name} dealt ${Math.round(result.damage)} damage!`
+        }));
+      }
+
+      if (result.healing && result.healing > 0) {
+        state.player.hp = Math.min(
+          state.player.maxHp || 100,
+          (state.player.hp || 100) + result.healing
+        );
+        events.push(createEvent(state, action, 'ABILITY_HEALING', {
+          abilityId,
+          abilityName: ability.name,
+          healing: Math.round(result.healing),
+          newHp: Math.round(state.player.hp),
+          message: `${ability.name} healed for ${Math.round(result.healing)} HP!`
+        }));
+      }
+
+      // Apply cooldown
+      state.player.abilityCooldowns = {
+        ...(state.player.abilityCooldowns || {}),
+        [abilityId]: result.cooldownApplied
+      };
+
+      // Main ability cast event
+      events.push(createEvent(state, action, 'ABILITY_CAST_SUCCESS', {
+        abilityId,
+        abilityName: ability.name,
+        manaCost: result.manaCost,
+        cooldownTicks: result.cooldownApplied,
+        paradoxIncurred: result.paradoxIncurred,
+        effectLog: result.effectLog,
+        message: `✨ ${ability.name} cast successfully! ${result.effectLog.join(' ')}`
+      }));
+
+      break;
+    }
+
+    case 'SET_TARGET': {
+      // Phase 7: Set current combat target for hostile/friendly actions
+      const { targetNpcId, targetingMode = 'hostile' } = action.payload;
+      
+      if (targetNpcId) {
+        const targetNpc = state.npcs.find((npc: NPC) => npc.id === targetNpcId);
+        if (!targetNpc) {
+          events.push(createEvent(state, action, 'TARGET_NOT_FOUND', {
+            targetId: targetNpcId,
+            message: 'Target NPC not found.'
+          }));
+          return events;
+        }
+        
+        // Update player's active target
+        if (state.player) {
+          state.player.activeTargetId = targetNpcId;
+          state.player.targetingMode = targetingMode;
+        }
+        
+        events.push(createEvent(state, action, 'TARGET_ACQUIRED', {
+          targetId: targetNpcId,
+          targetName: targetNpc.name,
+          targetHp: targetNpc.hp || targetNpc.maxHp || 100,
+          targetMaxHp: targetNpc.maxHp || 100,
+          targetingMode,
+          message: `Selected ${targetNpc.name} as target.`
+        }));
+      } else {
+        // Clear target
+        if (state.player) {
+          state.player.activeTargetId = undefined;
+          state.player.targetingMode = 'none';
+        }
+        
+        events.push(createEvent(state, action, 'TARGET_CLEARED', {
+          message: 'Target cleared.'
+        }));
+      }
+      break;
+    }
+
+    case 'START_ENCOUNTER': {
+      // Phase 8: Initiate combat encounter with targeted NPC
+      const { targetNpcId } = action.payload;
+      
+      if (!targetNpcId || !state.player.activeTargetId) {
+        events.push(createEvent(state, action, 'ENCOUNTER_FAILED', {
+          reason: 'No valid target selected',
+          message: 'You must target an NPC to start combat.'
+        }));
+        return events;
+      }
+      
+      const targetNpc = state.npcs.find((npc: NPC) => npc.id === targetNpcId);
+      if (!targetNpc) {
+        events.push(createEvent(state, action, 'ENCOUNTER_FAILED', {
+          reason: 'Target not found',
+          message: 'Target NPC has left the area.'
+        }));
+        return events;
+      }
+      
+      // Transition to combat state
+      state.player.inCombat = true;
+      state.player.combatStartedAt = state.tick || 0;
+      state.player.combatRound = 1;
+      state.player.combatLog = [];
+      
+      // Log initial encounter
+      state.player.combatLog!.push({
+        tick: state.tick || 0,
+        actor: state.player.name,
+        action: 'ENCOUNTER_START',
+        target: targetNpc.name,
+        result: `Combat with ${targetNpc.name} initiated!`
+      });
+      
+      events.push(createEvent(state, action, 'ENCOUNTER_STARTED', {
+        playerId: state.player.id,
+        targetId: targetNpcId,
+        targetName: targetNpc.name,
+        targetHp: targetNpc.hp || targetNpc.maxHp || 100,
+        combatRound: 1,
+        message: `⚔️ COMBAT INITIATED: You face ${targetNpc.name}!`
+      }));
+      break;
+    }
+
+    case 'END_ENCOUNTER': {
+      // Phase 8: Exit combat encounter (victory or retreat)
+      const { reason = 'victory', defeatedNpcId } = action.payload;
+      
+      if (!state.player.inCombat) {
+        events.push(createEvent(state, action, 'ENCOUNTER_NOT_ACTIVE', {
+          message: 'No active encounter to end.'
+        }));
+        return events;
+      }
+      
+      state.player.inCombat = false;
+      
+      let resultMessage = '';
+      switch (reason) {
+        case 'victory':
+          resultMessage = `✓ VICTORY! Defeated ${state.npcs.find((n: NPC) => n.id === state.player.activeTargetId)?.name || 'enemy'}!`;
+          break;
+        case 'retreat':
+          resultMessage = '⏻ You retreated from combat.';
+          break;
+        case 'fled':
+          resultMessage = '⚡ You fled from combat!';
+          break;
+        default:
+          resultMessage = 'Combat ended.';
+      }
+      
+      // Log end of encounter
+      state.player.combatLog?.push({
+        tick: state.tick || 0,
+        actor: state.player.name,
+        action: 'ENCOUNTER_END',
+        result: reason.toUpperCase()
+      });
+      
+      // Clear target on encounter end
+      state.player.activeTargetId = undefined;
+      state.player.targetingMode = 'none';
+      state.player.combatRound = undefined;
+      
+      events.push(createEvent(state, action, 'ENCOUNTER_ENDED', {
+        reason,
+        duration: (state.tick || 0) - (state.player.combatStartedAt || 0),
+        message: resultMessage
+      }));
+      break;
+    }
+
+    case 'AUTO_LOOT': {
+      // Phase 7: Automatically loot items from defeated NPC
+      const { defeatedNpcId } = action.payload;
+      
+      if (!defeatedNpcId) return [];
+      
+      const defeatedNpc = state.npcs.find((npc: NPC) => npc.id === defeatedNpcId);
+      if (!defeatedNpc || !defeatedNpc.inventory) {
+        return [];
+      }
+      
+      const lootedItems: any[] = [];
+      const goldBonus = Math.floor(10 + (defeatedNpc.stats?.luk ?? 10) * 2); // Gold varies by NPC luck stat
+      
+      // Add all NPC inventory items to player
+      if (defeatedNpc.inventory && defeatedNpc.inventory.length > 0) {
+        defeatedNpc.inventory.forEach((item: InventoryItem) => {
+          if (!state.player.inventory) {
+            state.player.inventory = [];
+          }
+          state.player.inventory.push(item);
+          lootedItems.push(item);
+        });
+        // Clear NPC inventory
+        defeatedNpc.inventory = [];
+      }
+      
+      // Add gold reward
+      if (!state.player.gold) state.player.gold = 0;
+      state.player.gold += goldBonus;
+      
+      events.push(createEvent(state, action, 'AUTO_LOOT', {
+        npcId: defeatedNpcId,
+        npcName: defeatedNpc.name,
+        itemsLooted: lootedItems.length,
+        goldRewarded: goldBonus,
+        totalGold: state.player.gold,
+        message: `Looted ${lootedItems.length} items and ${goldBonus} gold from ${defeatedNpc.name}!`
+      }));
+      break;
+    }
+
     case 'PICKUP_ITEM': {
       const { itemId, quantity = 1 } = action.payload;
       if (!itemId) return [];
@@ -1877,12 +2530,72 @@ export function processAction(state: WorldState, action: Action): Event[] {
     }
 
     case 'USE_ITEM': {
-      const { itemId } = action.payload;
-      if (!itemId) return [];
+      const { itemId, instanceId, targetId } = action.payload;
+      if (!itemId && !instanceId) return [];
 
+      const inventory = state.player.inventory || [];
+      const item = instanceId 
+        ? inventory.find((i: any) => i.instanceId === instanceId)
+        : inventory.find(i => i.itemId === itemId);
+
+      if (!item) {
+        events.push(createEvent(state, action, 'ITEM_USE_FAILED', {
+          itemId,
+          reason: 'not-in-inventory'
+        }));
+        return events;
+      }
+
+      const template = (state as any).itemTemplates?.find((t: any) => t.id === item.itemId);
+      
+      // Generic item use event
       events.push(createEvent(state, action, 'ITEM_USED', {
-        itemId
+        itemId: item.itemId,
+        instanceId: (item as any).instanceId,
+        template: template
       }));
+
+      // 1. Apply healing/stat effects if template has them
+      if (template?.effect) {
+        const effect = template.effect;
+        if (effect.type === 'heal_hp') {
+          events.push(createEvent(state, action, 'PLAYER_HEALED', {
+            amount: effect.amount || 10,
+            source: 'item',
+            sourceId: item.itemId,
+            message: `You consumed ${template.name} and recovered ${effect.amount} HP.`
+          }));
+        } else if (effect.type === 'stat_buff') {
+          events.push(createEvent(state, action, 'PLAYER_BUFFED', {
+            stat: effect.stat,
+            amount: effect.amount,
+            duration: effect.duration,
+            source: item.itemId,
+            message: `You feel a surge of ${effect.stat} from the ${template.name}!`
+          }));
+        }
+      }
+
+      // 2. Special Case: Aegis Restoration Kit
+      if (item.itemId === 'aegis-restoration-kit') {
+        const targetRelicId = targetId || (state as any).player.boundRelicId;
+        if (targetRelicId) {
+          events.push(createEvent(state, action, 'ARTIFACT_RESTORED', {
+            relicId: targetRelicId,
+            kitId: item.itemId,
+            stabilityBonus: 25,
+            message: `Using the ${template.name}, you carefully maintain the ancient lattice of the Solar Aegis artifact.`
+          }));
+        } else {
+          events.push(createEvent(state, action, 'ITEM_USE_FAILED', {
+            itemId: item.itemId,
+            reason: 'no-relic-target',
+            message: `You have no artifact to restore with this kit.`
+          }));
+          return events;
+        }
+      }
+
       break;
     }
 
@@ -1946,7 +2659,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       // Check initiator has all offered items
       for (const offer of offeredItemsArray) {
         const item = initiatorInventory.find((i: any) => i.itemId === offer.itemId);
-        const available = item?.quantity || 0;
+        const available = (item as any)?.quantity || 0;
         if (available < offer.quantity) {
           initiatorCanTrade = false;
           validationIssues.push(`${initiator.name} lacks ${offer.quantity}x ${offer.itemId} (has ${available})`);
@@ -1956,7 +2669,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       // Check target has all requested items
       for (const request of requestedItemsArray) {
         const item = targetInventory.find((i: any) => i.itemId === request.itemId);
-        const available = item?.quantity || 0;
+        const available = (item as any)?.quantity || 0;
         if (available < request.quantity) {
           targetCanTrade = false;
           validationIssues.push(`${target.name} lacks ${request.quantity}x ${request.itemId} (has ${available})`);
@@ -1976,8 +2689,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
       for (const offer of offeredItemsArray) {
         const idx = initiatorInventory.findIndex((i: any) => i.itemId === offer.itemId);
         if (idx >= 0) {
-          initiatorInventory[idx].quantity -= offer.quantity;
-          if (initiatorInventory[idx].quantity <= 0) {
+          (initiatorInventory[idx] as any).quantity -= offer.quantity;
+          if ((initiatorInventory[idx] as any).quantity <= 0) {
             initiatorInventory.splice(idx, 1);
           }
         }
@@ -1987,13 +2700,13 @@ export function processAction(state: WorldState, action: Action): Event[] {
       for (const offer of offeredItemsArray) {
         const existingItem = targetInventory.find((i: any) => i.itemId === offer.itemId);
         if (existingItem) {
-          existingItem.quantity += offer.quantity;
+          (existingItem as any).quantity += offer.quantity;
         } else {
           targetInventory.push({
             itemId: offer.itemId,
             quantity: offer.quantity,
             kind: 'stackable'
-          });
+          } as any);
         }
       }
 
@@ -2001,8 +2714,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
       for (const request of requestedItemsArray) {
         const idx = targetInventory.findIndex((i: any) => i.itemId === request.itemId);
         if (idx >= 0) {
-          targetInventory[idx].quantity -= request.quantity;
-          if (targetInventory[idx].quantity <= 0) {
+          (targetInventory[idx] as any).quantity -= request.quantity;
+          if ((targetInventory[idx] as any).quantity <= 0) {
             targetInventory.splice(idx, 1);
           }
         }
@@ -2012,13 +2725,13 @@ export function processAction(state: WorldState, action: Action): Event[] {
       for (const request of requestedItemsArray) {
         const existingItem = initiatorInventory.find((i: any) => i.itemId === request.itemId);
         if (existingItem) {
-          existingItem.quantity += request.quantity;
+          (existingItem as any).quantity += request.quantity;
         } else {
           initiatorInventory.push({
             itemId: request.itemId,
             quantity: request.quantity,
             kind: 'stackable'
-          });
+          } as any);
         }
       }
 
@@ -2041,9 +2754,9 @@ export function processAction(state: WorldState, action: Action): Event[] {
     case 'GATHER_RESOURCE': {
       const playerLocation = state.player.location;
       
-      // Find resource nodes at this location
+      // Find resource nodes at this location with remaining resources
       const availableNodes = (state.resourceNodes || []).filter(node => 
-        node.locationId === playerLocation && (!node.depletedAt || (state.tick || 0) >= node.depletedAt + (node.regeneratesInHours * 60) * 60) // hours * 60 min * 60 sec = ticks
+        node.locationId === playerLocation && (node.remainingResources || 0) > 0
       );
 
       if (availableNodes.length === 0) {
@@ -2056,18 +2769,17 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       // Use first available node
       const node = availableNodes[0];
-      const lootTable = LOOT_TABLES[node.lootTableId];
-
-      if (!lootTable) {
-        events.push(createEvent(state, action, 'GATHER_FAILED', {
-          reason: 'invalid-loot-table',
-          location: playerLocation
-        }));
-        return events;
-      }
-
-      // Resolve loot from table (weighted random selection)
-      const gathered = resolveLootTable(lootTable);
+      
+      // Build loot based on node type and resourcefulness
+      const gathered: InventoryItem[] = [];
+      const baseItemId = node.type === 'ore' ? 'ore' : node.type === 'herb' ? 'herb' : 'raw-material';
+      const quantity = Math.max(1, Math.floor((node.remainingResources || 1) * 0.1)); // Gather ~10% of remaining
+      
+      gathered.push({
+        itemId: baseItemId,
+        quantity: quantity,
+        kind: 'stackable'
+      });
 
       if (gathered.length === 0) {
         events.push(createEvent(state, action, 'GATHER_FAILED', {
@@ -2168,7 +2880,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       const { recipeId } = action.payload;
       if (!recipeId) return [];
 
-      const recipe = RECIPES[recipeId];
+      const recipe = (state as any).craftingRecipes?.find((r: any) => r.id === recipeId);
       if (!recipe) {
         events.push(createEvent(state, action, 'ITEM_CRAFTED', {
           recipeId,
@@ -2194,7 +2906,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       // Roll crafting check (INT-based)
       const playerInt = state.player.stats?.int || 10;
-      const craftingCheck = rollCraftingCheck(playerInt, recipe.difficulty);
+      const craftingCheck = rollCraftingCheck(playerInt, recipe.difficulty || 10);
 
       if (!craftingCheck.success) {
         // Failed craft - consume materials but don't create item
@@ -2207,7 +2919,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
         }));
         
         // Still consume materials on failure
-        recipe.materials.forEach(mat => {
+        recipe.ingredients.forEach((mat: any) => {
           events.push(createEvent(state, action, 'ITEM_USED', {
             itemId: mat.itemId,
             quantity: mat.quantity,
@@ -2218,7 +2930,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       }
 
       // Success - consume materials and create result
-      recipe.materials.forEach(mat => {
+      recipe.ingredients.forEach((mat: any) => {
         events.push(createEvent(state, action, 'ITEM_USED', {
           itemId: mat.itemId,
           quantity: mat.quantity,
@@ -2262,7 +2974,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       }
 
       // ALPHA_M15: Apply seasonal bonus to item quality (autumn boost)
-      const seasonalMods = calculateSeasonalModifiers((state as any).season || 'spring');
+      const seasonalMods = calculateSeasonalModifiers(state.season || 'spring');
       const seasonalQualityBonus = (seasonalMods.itemQualityMult - 1) * 0.5; // 50% of seasonal effect applies to items
       qualityMultiplier = qualityMultiplier * (1 + seasonalQualityBonus);
 
@@ -2277,7 +2989,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
 
       // Build crafted item with quality modifier
       const craftedResult = {
-        ...recipe.result,
+        itemId: recipe.resultItemId,
+        quantity: recipe.resultQuantity,
         quality: qualityTier,
         bonusMultiplier: qualityMultiplier
       };
@@ -2295,8 +3008,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
       }));
 
       events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
-        itemId: recipe.result.itemId,
-        quantity: recipe.result.quantity,
+        itemId: recipe.resultItemId,
+        quantity: recipe.resultQuantity,
         source: 'craft',
         recipeId,
         quality: qualityTier,
@@ -2724,7 +3437,11 @@ export function processAction(state: WorldState, action: Action): Event[] {
       if (!state.player.knowledgeBase) {
         state.player.knowledgeBase = new Map();
       }
-      state.player.knowledgeBase.set(`${entityType}:${entityId}`, true);
+      if (state.player.knowledgeBase instanceof Map) {
+        (state.player.knowledgeBase as Map<string, any>).set(`${entityType}:${entityId}`, true);
+      } else {
+        (state.player.knowledgeBase as string[]).push(`${entityType}:${entityId}`);
+      }
 
       events.push(createEvent(state, action, 'TRUTH_REVEALED', {
         entityType,
@@ -2753,7 +3470,7 @@ export function processAction(state: WorldState, action: Action): Event[] {
       if (!state.player.knowledgeBase) {
         state.player.knowledgeBase = new Map();
       }
-      state.player.knowledgeBase.set(`npc:${targetId}`, true);
+      state.player.knowledgeBase = addKnowledge(state.player.knowledgeBase, `npc:${targetId}`, true);
 
       events.push(createEvent(state, action, 'NPC_IDENTIFIED', {
         npcId: targetId,
@@ -2801,8 +3518,8 @@ export function processAction(state: WorldState, action: Action): Event[] {
         state.player.knowledgeBase = new Map();
       }
       const knowledgeKey = `${knowledgeType}:${knowledgeId}`;
-      const alreadyKnown = state.player.knowledgeBase.has(knowledgeKey);
-      state.player.knowledgeBase.set(knowledgeKey, true);
+      const alreadyKnown = hasKnowledge(state.player.knowledgeBase, knowledgeKey);
+      state.player.knowledgeBase = addKnowledge(state.player.knowledgeBase, knowledgeKey, true);
 
 const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
       const learnMessage = `You learned: ${knowledgeTypeLabel} - ${knowledgeId}!`;
@@ -2876,7 +3593,7 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
 
       // Add to beliefLayer as temporary revelation
       if (!state.player.beliefLayer) {
-        (state.player as any).beliefLayer = {
+        state.player.beliefLayer = {
           npcLocations: {},
           npcStats: {},
           facts: {},
@@ -2970,8 +3687,8 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
         state.player.knowledgeBase = new Map();
       }
       const recipeKey = `recipe:${recipeId}`;
-      const alreadyKnown = state.player.knowledgeBase.has(recipeKey);
-      state.player.knowledgeBase.set(recipeKey, true);
+      const alreadyKnown = hasKnowledge(state.player.knowledgeBase, recipeKey);
+      state.player.knowledgeBase = addKnowledge(state.player.knowledgeBase, recipeKey, true);
 
       events.push(createEvent(state, action, 'KNOWLEDGE_GAINED', {
         npcId,
@@ -3185,7 +3902,7 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
     }
 
     case 'SEARCH_AREA': {
-      // M9 Phase 3 + Phase 14: Search current location for hidden areas and sub-areas
+      // M9 Phase 3 + Phase 14: Search current location for hidden areas, sub-areas, and material loot
       const currentLocation = state.player.location;
       const locationObj = state.locations.find(loc => loc.id === currentLocation);
 
@@ -3197,84 +3914,90 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
         break;
       }
 
-      // M9 Phase 3: Check for undiscovered sub-areas first
+      // 1. Check for undiscovered sub-areas first
       const undiscoveredSubAreas = (locationObj.subAreas || []).filter(sa => !sa.discovered);
+      const difficulty = locationObj.subAreas?.[0]?.difficulty || calculateSearchDifficulty(currentLocation);
+      const playerInt = state.player.stats?.int || 10;
+      const playerLuk = state.player.stats?.luk || 10;
+      const searchResult = performSearchCheck(playerInt, playerLuk, difficulty);
 
-      if (undiscoveredSubAreas.length > 0) {
-        // Calculate search difficulty (use sub-area difficulty if available)
+      if (undiscoveredSubAreas.length > 0 && searchResult.success) {
+        // Success! Discover a random sub-area
         const targetSubArea = undiscoveredSubAreas[Math.floor(random() * undiscoveredSubAreas.length)];
-        const difficulty = targetSubArea.difficulty || calculateSearchDifficulty(currentLocation);
-        const playerInt = state.player.stats?.int || 10;
-        const playerLuk = state.player.stats?.luk || 10;
+        targetSubArea.discovered = true;
 
-        // Perform search check
-        const searchResult = performSearchCheck(playerInt, playerLuk, difficulty);
+        events.push(createEvent(state, action, 'SUB_AREA_DISCOVERED', {
+          subAreaId: targetSubArea.id,
+          subAreaName: targetSubArea.name,
+          subAreaDescription: targetSubArea.description,
+          parentLocation: currentLocation,
+          environmentalEffects: targetSubArea.environmentalEffects || [],
+          roll: searchResult.roll,
+          dc: searchResult.dc,
+          margin: searchResult.margin,
+          message: `Hidden depths revealed: ${targetSubArea.name}! ${targetSubArea.description}`
+        }));
 
-        if (searchResult.success) {
-          // Success! Discover the sub-area
-          targetSubArea.discovered = true;
-
-          events.push(createEvent(state, action, 'SUB_AREA_DISCOVERED', {
-            subAreaId: targetSubArea.id,
-            subAreaName: targetSubArea.name,
-            subAreaDescription: targetSubArea.description,
-            parentLocation: currentLocation,
-            environmentalEffects: targetSubArea.environmentalEffects || [],
-            roll: searchResult.roll,
-            dc: searchResult.dc,
-            margin: searchResult.margin,
-            message: `Hidden depths revealed: ${targetSubArea.name}! ${targetSubArea.description}`
-          }));
-        } else {
-          // Failed search
-          events.push(createEvent(state, action, 'SEARCH_FAILED', {
-            location: currentLocation,
-            searchType: 'subarea',
-            roll: searchResult.roll,
-            dc: searchResult.dc,
-            margin: searchResult.margin,
-            message: `Your search of the area yields nothing. (Failed by ${Math.abs(searchResult.margin)})`
-          }));
-        }
-        break;
-      }
-
-      // Fallback to legacy hidden areas
-      if (!hasHiddenAreas(currentLocation)) {
-        events.push(createEvent(state, action, 'SEARCH_NO_SECRETS', {
-          location: currentLocation,
-          message: 'You search thoroughly but find nothing hidden here.'
+        // Phase 15: Trigger artifact mood update on exploration discovery
+        events.push(createEvent(state, action, 'ARTIFACT_MOOD_TRIGGERED', {
+          mood: 'exploration_discovery',
+          discoveryType: 'sub_area',
+          discoveryId: targetSubArea.id,
+          discoveryName: targetSubArea.name,
+          intensity: 1.0,
+          message: 'Your equipped artifact trembles with excitement at the hidden discovery.'
         }));
         break;
       }
 
-      // Calculate search difficulty
-      const difficulty = calculateSearchDifficulty(currentLocation);
-      const playerInt = state.player.stats?.int || 10;
-      const playerLuk = state.player.stats?.luk || 10;
+      // 2. Phase 14: Fallback to searching for materials/loot in the environment
+      const regionalTables = (state as any).lootTables?.filter((t: any) => 
+        t.locationId === currentLocation || t.biome === locationObj.biome
+      ) || [];
 
-      // Perform search check
-      const searchResult = performSearchCheck(playerInt, playerLuk, difficulty);
+      if (regionalTables.length > 0 && searchResult.success) {
+        const selectedTable = regionalTables[Math.floor(random() * regionalTables.length)];
+        let foundLoot = resolveLootTable(selectedTable.drops);
 
-      if (searchResult.success) {
-        // Success! Discover a random hidden area
-        const hiddenAreas = (encountersData as any).hiddenAreas[currentLocation] || [];
-        if (hiddenAreas.length > 0) {
-          const discoveredArea = hiddenAreas[Math.floor(random() * hiddenAreas.length)];
+        // Phase 23: Inject seasonal loot into the found loot
+        const tpl = state.metadata?.template || {};
+        const seasonalRules = tpl.seasonalRules;
+        const currentSeason = state.season as any;
+        const seasonalLoot = getSeasonalLoot(currentSeason, seasonalRules);
+        foundLoot = injectSeasonalLoot(foundLoot, seasonalLoot);
 
-          events.push(createEvent(state, action, 'LOCATION_DISCOVERED', {
-            areaId: discoveredArea.id,
-            areaName: discoveredArea.name,
-            areaDescription: discoveredArea.description,
-            location: currentLocation,
-            roll: searchResult.roll,
-            dc: searchResult.dc,
-            margin: searchResult.margin,
-            message: `You discover: ${discoveredArea.name}! ${discoveredArea.description}`
+        if (foundLoot.length > 0) {
+          foundLoot.forEach(item => {
+            events.push(createEvent(state, action, 'ITEM_PICKED_UP', {
+              itemId: item.itemId,
+              quantity: (item as any).quantity || 1,
+              source: 'search_area',
+              location: currentLocation,
+              isSeasonal: seasonalLoot.some(sl => sl.itemId === item.itemId),
+              message: `You found: ${item.itemId} (x${(item as any).quantity || 1}) while searching the area.${seasonalLoot.some(sl => sl.itemId === item.itemId) ? ' [Seasonal]' : ''}`
+            }));
+          });
+
+          // Phase 15: Trigger artifact mood update on loot discovery
+          events.push(createEvent(state, action, 'ARTIFACT_MOOD_TRIGGERED', {
+            mood: 'exploration_discovery',
+            discoveryType: 'loot',
+            discoveryCount: foundLoot.length,
+            firstLootId: foundLoot[0].itemId,
+            intensity: 0.7,
+            message: 'Your equipped artifact stirs as treasure is uncovered.'
           }));
+          break;
         }
+      }
+
+      // 3. Fallback to generic message if nothing discovered or found
+      if (searchResult.success) {
+        events.push(createEvent(state, action, 'SEARCH_NO_SECRETS', {
+          location: currentLocation,
+          message: 'You search thoroughly but find nothing of immediate interest.'
+        }));
       } else {
-        // Failed search
         events.push(createEvent(state, action, 'SEARCH_FAILED', {
           location: currentLocation,
           roll: searchResult.roll,
@@ -3360,9 +4083,7 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
           }
           nearestNodes.forEach((node: any) => {
             const knowledgeKey = `wilderness:${node.id}`;
-            if (state.player.knowledgeBase && state.player.knowledgeBase instanceof Map) {
-              state.player.knowledgeBase.set(knowledgeKey, true);
-            }
+            state.player.knowledgeBase = addKnowledge(state.player.knowledgeBase, knowledgeKey, true);
           });
         }
       } else {
@@ -3948,7 +4669,7 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
         // Check ascension requirements
         const playerMerit = state.player.merit ?? 0;
         const playerResonance = (state.player as any).soulResonanceLevel ?? 0;
-        const completedQuests = state.player.questsCompleted?.length ?? 0;
+        const completedQuests = ((state.player as any).questsCompleted?.length) ?? 0;
         const mythStatus = (state.player as any).mythStatus ?? 0;
         
         // Requirement: Resonance >= 50 OR completed major quest OR myth status >= 50
@@ -3978,15 +4699,15 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
         const legacy: any = {
           id: `ascend_${state.player.id}_${state.tick}`,
           canonicalName: state.player.name,
-          bloodlineOrigin: state.bloodlineOrigin || 'unknown',
+          bloodlineOrigin: (state as any).bloodlineOrigin || 'unknown',
           mythStatus: mythStatus,
           deeds: selectedDeeds.length > 0 ? selectedDeeds : ['core_existence'],
           factionInfluence: state.player.factionReputation || {},
-          inheritedPerks: state.player.abilities || [],
-          epochsLived: state.epochCount ?? 1,
+          inheritedPerks: (state.player as any).abilities || [],
+          epochsLived: (state as any).epochCount ?? 1,
           totalGenerations: (state.metadata as any)?.totalGenerations ?? 1,
           soulEchoCount: (state.player as any).soulEchoCount ?? 0,
-          finalWorldState: state.spiritDensity && state.spiritDensity > 50 ? 'improved' : 'neutral',
+          finalWorldState: (state as any).spiritDensity && (state as any).spiritDensity > 50 ? 'improved' : 'neutral',
           paradoxDebt: generationalParadox,
           timestamp: Date.now(),
           
@@ -4082,8 +4803,8 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
           },
           generationNumber: state.epochGenerationIndex ?? 1,
           worldState: {
-            spiritDensity: state.spiritDensity ?? 50,
-            generationalParadox: state.generationalParadox ?? 0,
+            spiritDensity: (state as any).spiritDensity ?? 50,
+            generationalParadox: (state as any).generationalParadox ?? 0,
             primaryFaction: (state.metadata as any)?.dominateFaction || 'none'
           },
           transcendenceTimestamp: Date.now()
@@ -4105,7 +4826,7 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
           precedingCharacterName: currentPlayer.name,
           legacyId: ascensionLegacy.id,
           newGeneration: (state.epochGenerationIndex ?? 1) + 1,
-          soulEchoesTransmitted: soulEchoes.length,
+          soulEchoesTransmitted: soulEchoes.soulEchoCount,
           epochTransitionData: epochTransitionData,
           inheritancePayload: {
             startingMerit: Math.floor(ascensionLegacy.mythStatus * 0.1),
@@ -4120,9 +4841,9 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
         }));
 
         // Step 6: Emit soul echo manifestation for atmosphere
-        if (soulEchoes.length > 0) {
+        if (soulEchoes.soulEchoCount > 0) {
           events.push(createEvent(state, action, 'SOUL_ECHOES_TRANSMITTED', {
-            count: soulEchoes.length,
+            count: soulEchoes.soulEchoCount,
             transcendedCharacter: currentPlayer.name,
             message: `The echoes of ${currentPlayer.name} ripple through the generations...`
           }));
@@ -4139,6 +4860,485 @@ const knowledgeTypeLabel = knowledgeType === 'recipe' ? 'Recipe' : 'Lore';
           message: 'An error occurred while finalizing transcendence.'
         }));
       }
+      break;
+    }
+
+    case 'PLAY_CARD': {
+      // Phase 38/39: Play a narrative card from hand
+      // Phase 40: Apply codec mechanical modifiers (cost multiplier, power bonus)
+      // Integrates with turn-based heartbeat (Phase 37), ability system, and AP economy (Phase 39)
+      
+      const { abilityId } = action.payload || {};
+      if (!abilityId) {
+        events.push(createEvent(state, action, 'CARD_PLAY_FAILED', {
+          reason: 'No ability specified',
+          message: 'Cannot play card without an ability ID.'
+        }));
+        break;
+      }
+
+      // Phase 39: Check if ability is valid and can be used
+      const ability = ABILITY_DATABASE[abilityId];
+      if (!ability) {
+        events.push(createEvent(state, action, 'CARD_PLAY_FAILED', {
+          reason: 'Unknown ability',
+          abilityId,
+          message: `Ability "${abilityId}" not found in registry.`
+        }));
+        break;
+      }
+
+      // Phase 40: Get codec mechanical modifiers
+      // Default multipliers for each codec (matched with themeManager definitions)
+      const CODEC_MULTIPLIERS: Record<string, { costMultiplier: number; powerBonus: number }> = {
+        'CODENAME_MEDIEVAL': { costMultiplier: 1.0, powerBonus: 1.0 },
+        'CODENAME_GLITCH': { costMultiplier: 1.25, powerBonus: 1.2 },
+        'CODENAME_MINIMAL': { costMultiplier: 0.9, powerBonus: 0.95 },
+        'CODENAME_CYBERPUNK': { costMultiplier: 1.1, powerBonus: 1.15 },
+        'CODENAME_SOLARPUNK': { costMultiplier: 0.95, powerBonus: 1.05 },
+        'CODENAME_VOIDSYNC': { costMultiplier: 1.0, powerBonus: 1.1 },
+        'CODENAME_NOIR': { costMultiplier: 0.95, powerBonus: 1.0 },
+        'CODENAME_OVERLAND': { costMultiplier: 1.05, powerBonus: 1.05 },
+        'CODENAME_VINTAGE': { costMultiplier: 0.95, powerBonus: 1.0 },
+        'CODENAME_STORYBOOK': { costMultiplier: 1.0, powerBonus: 1.2 },
+        'CODENAME_DREAMSCAPE': { costMultiplier: 1.15, powerBonus: 1.25 }
+      };
+
+      let costMultiplier = 1.0;
+      let powerBonus = 1.0;
+      const currentCodec = state.player.currentCodec || 'CODENAME_MEDIEVAL';
+      const codecMults = CODEC_MULTIPLIERS[currentCodec];
+      if (codecMults) {
+        costMultiplier = codecMults.costMultiplier;
+        powerBonus = codecMults.powerBonus;
+      }
+
+      // Phase 39/40: Check AP cost first (primary resource)
+      // Phase 40: Apply codec cost multiplier
+      const playerAp = state.player.ap ?? 3;
+      const baseApCost = ability.apCost ?? 1; // Default 1 AP per card
+      const finalApCost = Math.ceil(baseApCost * costMultiplier); // Round up after multiplier
+      if (playerAp < finalApCost) {
+        events.push(createEvent(state, action, 'INSUFFICIENT_RESOURCES', {
+          resourceType: 'ap',
+          required: finalApCost,
+          available: playerAp,
+          baseApCost,
+          codecMultiplier: costMultiplier,
+          currentCodec,
+          message: `Not enough Action Points to play ${ability.name}. Required: ${finalApCost} AP (${baseApCost} × ${costMultiplier.toFixed(2)}), Have: ${playerAp} AP`
+        }));
+        break;
+      }
+
+      // Phase 38/40: Check mana cost (secondary resource, also affected by codec multiplier)
+      const playerMp = state.player.mp ?? 100;
+      const baseManaCost = ability.manaCost ?? 0;
+      const finalManaCost = Math.ceil(baseManaCost * costMultiplier);
+      if (playerMp < finalManaCost) {
+        events.push(createEvent(state, action, 'CARD_PLAY_FAILED', {
+          reason: 'Insufficient mana',
+          required: finalManaCost,
+          available: playerMp,
+          baseManaCost,
+          codecMultiplier: costMultiplier,
+          currentCodec,
+          message: `Not enough mana to play ${ability.name}. Required: ${finalManaCost}, Have: ${playerMp}`
+        }));
+        break;
+      }
+
+      // Phase 39: Resolve the ability using the abilityResolver
+      // Phase 40: Apply powerBonus to resolve result
+      try {
+        const abilityResult = resolveAbility(abilityId, state.player, state);
+
+        if (abilityResult.success) {
+          // Phase 39: Deduct AP first
+          state.player.ap = Math.max(0, (state.player.ap ?? 3) - finalApCost);
+          
+          // Phase 38: Deduct mana (using final cost after codec multiplier)
+          state.player.mp = (state.player.mp ?? 100) - finalManaCost;
+
+          // Move card from hand to discard (Phase 39 authoritative hand tracking)
+          if (state.player.hand && state.player.hand.length > 0) {
+            const cardIndex = state.player.hand.indexOf(abilityId);
+            if (cardIndex >= 0) {
+              state.player.hand.splice(cardIndex, 1);
+              state.player.discard = state.player.discard || [];
+              state.player.discard.push(abilityId);
+            }
+          }
+
+          // Phase 41: Calculate stance modifiers
+          let stanceDamageModifier = 1.0;
+          let stanceDefenseModifier = 1.0;
+          const currentStance = state.player.combatStance || 'balanced';
+          
+          if (currentStance === 'aggressive') {
+            stanceDamageModifier = 1.2;  // +20% damage
+            stanceDefenseModifier = 0.9; // -10% defense
+          } else if (currentStance === 'defensive') {
+            stanceDamageModifier = 0.9;  // -10% damage
+            stanceDefenseModifier = 1.2; // +20% defense
+          }
+          // 'balanced' keeps both at 1.0
+
+          // Apply effect
+          if (ability.effect.type === 'damage' && action.payload?.targetId) {
+            // Apply damage to target NPC
+            // Phase 40: Apply codec powerBonus to damage
+            // Phase 41: Apply stance modifier to damage
+            const targetNpc = state.npcs.find(n => n.id === action.payload.targetId);
+            if (targetNpc) {
+              const boostedDamage = Math.round(abilityResult.damage * powerBonus * stanceDamageModifier);
+              targetNpc.hp = (targetNpc.hp || 100) - boostedDamage;
+              events.push(createEvent(state, action, 'ABILITY_HIT', {
+                abilityId,
+                abilityName: ability.name,
+                targetId: action.payload.targetId,
+                targetName: targetNpc.name,
+                damageDealt: boostedDamage,
+                baseDamage: abilityResult.damage,
+                codecPowerBonus: powerBonus,
+                stanceDamageModifier,
+                currentStance,
+                currentCodec,
+                message: `${ability.name} hits ${targetNpc.name} for ${boostedDamage} damage!`
+              }));
+            }
+          } else if (ability.effect.type === 'healing') {
+            // Heal the player
+            // Phase 40: Apply codec powerBonus to healing
+            // Phase 41: Apply stance modifier (aggressive stance reduces healing slightly)
+            const maxHp = state.player.maxHp || 100;
+            const boostedHealing = Math.round(abilityResult.healing * powerBonus * (currentStance === 'aggressive' ? 0.95 : 1.0));
+            state.player.hp = Math.min(maxHp, (state.player.hp || 50) + boostedHealing);
+            events.push(createEvent(state, action, 'ABILITY_HEAL', {
+              abilityId,
+              abilityName: ability.name,
+              healingAmount: boostedHealing,
+              baseHealing: abilityResult.healing,
+              codecPowerBonus: powerBonus,
+              currentStance,
+              currentCodec,
+              newHp: state.player.hp,
+              message: `${ability.name} restores ${boostedHealing} HP!`
+            }));
+          }
+
+          // Register card played event for turn tracking
+          events.push(createEvent(state, action, 'CARD_PLAYED', {
+            abilityId,
+            abilityName: ability.name,
+            cardType: ability.type,
+            apCost: finalApCost,
+            baseApCost,
+            manaCost: finalManaCost,
+            baseManaCost,
+            codecMultiplier: costMultiplier,
+            codecPowerBonus: powerBonus,
+            currentCodec,
+            cooldownApplied: ability.cooldownTicks,
+            newAp: state.player.ap,
+            newMana: state.player.mp,
+            message: `You played ${ability.name}! (${finalApCost} AP, ${finalManaCost} MP)`
+          }));
+
+          // Phase 42: Grant proficiency XP based on ability type
+          // Map ability types to proficiency categories
+          let profCategory: string = '';
+          let baseXpAmount = 25; // Base XP for ability usage
+          let actionContext: ActionSignificanceContext = {
+            actionType: 'casting',
+            damageDealt: 0,
+            targetMaxHp: 0
+          };
+
+          if (ability.type.includes('damage') || ability.type.includes('attack')) {
+            profCategory = 'Blades'; // Default to Blades for physical attacks
+            actionContext.actionType = 'combat';
+            if (abilityResult.damage) {
+              actionContext.damageDealt = Math.round(abilityResult.damage * powerBonus * (currentStance === 'aggressive' ? 1.2 : 0.9));
+            }
+            baseXpAmount = 30 + (abilityResult.damage ? Math.min(20, Math.floor(abilityResult.damage / 5)) : 0);
+            // Find target to get max HP for significance check
+            const targetNpc = state.npcs.find(n => n.id === action.payload?.targetId);
+            if (targetNpc) {
+              actionContext.targetMaxHp = targetNpc.hp || 100;
+              actionContext.proficiencyLevel = state.player.proficiencies?.['Blades']?.level || 0;
+            }
+          } else if (ability.type.includes('magic') || ability.type.includes('spell') || ability.type.includes('arcane')) {
+            profCategory = 'Arcane';
+            actionContext.actionType = 'casting';
+            baseXpAmount = 35 + (abilityResult.damage ? Math.min(25, Math.floor(abilityResult.damage / 4)) : 0);
+            actionContext.proficiencyLevel = state.player.proficiencies?.['Arcane']?.level || 0;
+          } else if (ability.type.includes('heal')) {
+            profCategory = 'Arcane'; // Healing is also arcane (restoration magic)
+            actionContext.actionType = 'casting';
+            baseXpAmount = 20 + (abilityResult.healing ? Math.min(20, Math.floor(abilityResult.healing / 5)) : 0);
+            actionContext.proficiencyLevel = state.player.proficiencies?.['Arcane']?.level || 0;
+          } else if (ability.type.includes('buff') || ability.type.includes('support')) {
+            profCategory = 'Performance';
+            actionContext.actionType = 'casting';
+            baseXpAmount = 15;
+            actionContext.proficiencyLevel = state.player.proficiencies?.['Performance']?.level || 0;
+          }
+
+          if (profCategory && state.player.proficiencies) {
+            // Get tempo multiplier from codec (default 1.0 if not specified)
+            let tempoMultiplier = 1.0;
+            // TODO: Get this from themeManager when step 6 is complete
+            
+            const xpGranted = grantProficiencyXP(
+              profCategory as any,
+              baseXpAmount,
+              state.player,
+              actionContext,
+              state,
+              tempoMultiplier
+            );
+
+            if (xpGranted) {
+              const profData = state.player.proficiencies[profCategory];
+              events.push(createEvent(state, action, 'PROFICIENCY_XP_GAINED', {
+                proficiency: profCategory,
+                xpGained: baseXpAmount,
+                newLevel: profData?.level || 0,
+                newXp: profData?.xp || 0,
+                message: `Your ${profCategory} proficiency increased!`
+              }));
+            }
+          }
+
+        } else {
+          events.push(createEvent(state, action, 'CARD_PLAY_FAILED', {
+            reason: abilityResult.reason || 'Ability resolution failed',
+            abilityId,
+            abilityName: ability.name,
+            message: `Failed to play ${ability.name}: ${abilityResult.reason || 'unknown error'}`
+          }));
+        }
+      } catch (err) {
+        console.error('[actionPipeline] PLAY_CARD error:', err);
+        events.push(createEvent(state, action, 'CARD_PLAY_FAILED', {
+          reason: 'Internal error',
+          abilityId,
+          message: `Error playing ${ability.name}: ${(err as any).message}`
+        }));
+      }
+      break;
+    }
+
+    case 'SWITCH_CODEC': {
+      // Phase 40: Switch the active narrative codec
+      // Codecs provide mechanical modifiers (cost multiplier, power bonus) and visual style shifts
+      
+      const { codecName } = action.payload || {};
+      if (!codecName) {
+        events.push(createEvent(state, action, 'CODEC_SWITCH_FAILED', {
+          reason: 'No codec specified',
+          message: 'Cannot switch codec without a codec name.'
+        }));
+        break;
+      }
+
+      // Codec multiplier definitions (Phase 40)
+      const VALID_CODECS: Record<string, { costMultiplier: number; powerBonus: number }> = {
+        'CODENAME_MEDIEVAL': { costMultiplier: 1.0, powerBonus: 1.0 },
+        'CODENAME_GLITCH': { costMultiplier: 1.25, powerBonus: 1.2 },
+        'CODENAME_MINIMAL': { costMultiplier: 0.9, powerBonus: 0.95 },
+        'CODENAME_CYBERPUNK': { costMultiplier: 1.1, powerBonus: 1.15 },
+        'CODENAME_SOLARPUNK': { costMultiplier: 0.95, powerBonus: 1.05 },
+        'CODENAME_VOIDSYNC': { costMultiplier: 1.0, powerBonus: 1.1 },
+        'CODENAME_NOIR': { costMultiplier: 0.95, powerBonus: 1.0 },
+        'CODENAME_OVERLAND': { costMultiplier: 1.05, powerBonus: 1.05 },
+        'CODENAME_VINTAGE': { costMultiplier: 0.95, powerBonus: 1.0 },
+        'CODENAME_STORYBOOK': { costMultiplier: 1.0, powerBonus: 1.2 },
+        'CODENAME_DREAMSCAPE': { costMultiplier: 1.15, powerBonus: 1.25 }
+      };
+
+      // Validate codec exists
+      const codecDef = VALID_CODECS[codecName];
+      if (!codecDef) {
+        events.push(createEvent(state, action, 'CODEC_SWITCH_FAILED', {
+          reason: 'Unknown codec',
+          codecName,
+          message: `Codec "${codecName}" not found in registry. Valid codecs: ${Object.keys(VALID_CODECS).join(', ')}`
+        }));
+        break;
+      }
+
+      // Update player's current codec
+      const oldCodec = state.player.currentCodec || 'CODENAME_MEDIEVAL';
+      state.player.currentCodec = codecName;
+
+      // Emit event for UI updates (display transition overlay)
+      events.push(createEvent(state, action, 'CODEC_SHIFTED', {
+        oldCodec,
+        newCodec: codecName,
+        costMultiplier: codecDef.costMultiplier,
+        powerBonus: codecDef.powerBonus,
+        message: `Codec shifted from ${oldCodec} to ${codecName}`
+      }));
+
+      // Log codec switch for narrative tracking
+      events.push(createEvent(state, action, 'NARRATIVE_CODEC_CHANGED', {
+        codec: codecName,
+        tick: state.tick,
+        location: state.player.location
+      }));
+
+      break;
+    }
+
+    case 'SET_COMBAT_STANCE': {
+      // Phase 41: Set player's combat stance (aggressive, defensive, balanced)
+      // Stances modify damage and defense stats
+      const { stance } = action.payload || {};
+      
+      const validStances: Array<'aggressive' | 'defensive' | 'balanced'> = ['aggressive', 'defensive', 'balanced'];
+      if (!stance || !validStances.includes(stance)) {
+        events.push(createEvent(state, action, 'STANCE_CHANGE_FAILED', {
+          reason: 'Invalid stance',
+          stance,
+          validStances,
+          message: `Invalid stance "${stance}". Valid stances: ${validStances.join(', ')}`
+        }));
+        break;
+      }
+
+      const oldStance = state.player.combatStance || 'balanced';
+      state.player.combatStance = stance;
+
+      // Describe stance effect
+      let stanceDescription = '';
+      if (stance === 'aggressive') {
+        stanceDescription = 'Aggressive: +20% Damage, -10% Defense';
+      } else if (stance === 'defensive') {
+        stanceDescription = 'Defensive: -10% Damage, +20% Defense';
+      } else {
+        stanceDescription = 'Balanced: Standard damage and defense';
+      }
+
+      events.push(createEvent(state, action, 'STANCE_CHANGED', {
+        oldStance,
+        newStance: stance,
+        stanceEffect: stanceDescription,
+        message: `Combat stance changed to ${stance}. ${stanceDescription}`
+      }));
+
+      break;
+    }
+
+    // Phase 45: Spatial Interaction - Tactical World Interaction (SEARCH, HARVEST, INTERACT)
+    case 'SPATIAL_SEARCH':
+    case 'SPATIAL_HARVEST':
+    case 'SPATIAL_INTERACT': {
+      const actionType = action.type.replace('SPATIAL_', '') as 'SEARCH' | 'HARVEST' | 'INTERACT';
+      const locationId = action.payload?.locationId;
+      const tileX = action.payload?.tileX ?? 0;
+      const tileY = action.payload?.tileY ?? 0;
+
+      // Find location by ID
+      const location = state.locations.find(l => l.id === locationId);
+      if (!location) {
+        events.push(createEvent(state, action, 'SPATIAL_ACTION_FAILED', {
+          reason: 'Location not found',
+          locationId,
+          action: actionType
+        }));
+        break;
+      }
+
+      // Resolve spatial interaction
+      const result = resolveSpatialInteraction(state, actionType, location, tileX, tileY);
+      
+      // Create events from result
+      const spatialEvents = createSpatialInteractionEvents(state, result);
+      events.push(...spatialEvents);
+
+      // Add items to inventory if successful
+      if (result.success && result.loof.length > 0) {
+        result.loof.forEach(loot => {
+          const newItem: StackableItem = {
+            kind: 'stackable',
+            itemId: loot.name.toLowerCase().replace(/\s+/g, '-'),
+            quantity: loot.quantity
+          };
+          
+          // Add to inventory or increment existing
+          const existing = state.player.inventory?.find(i => 
+            i.kind === 'stackable' && i.itemId === newItem.itemId
+          ) as StackableItem | undefined;
+          
+          if (existing) {
+            existing.quantity = (existing.quantity || 0) + newItem.quantity;
+          } else {
+            state.player.inventory = state.player.inventory || [];
+            state.player.inventory.push(newItem);
+          }
+        });
+      }
+
+      // Grant proficiency XP if available
+      if (result.proficiencyUsed && result.proficiencyXpGained) {
+        // Map spatial action types to significance context types
+        const contextTypeMap: Record<'SEARCH' | 'HARVEST' | 'INTERACT', 'gathering' | 'social'> = {
+          'SEARCH': 'gathering',
+          'HARVEST': 'gathering',
+          'INTERACT': 'social'
+        };
+        
+        const context: ActionSignificanceContext = {
+          actionType: contextTypeMap[actionType]
+        };
+        grantProficiencyXP(
+          result.proficiencyUsed as any,
+          result.proficiencyXpGained,
+          state.player,
+          context,
+          state,
+          1.0
+        );
+      }
+
+      // Phase 46: Handle workstation interaction
+      if (result.workstationData) {
+        state.player.activeWorkstationId = `ws-${tileX}-${tileY}`;
+        state.player.blindFusingItems = [];
+        
+        events.push(createEvent(state, action, 'OPEN_WORKSTATION_UI', {
+          stationType: result.workstationData.stationType,
+          quality: result.workstationData.quality,
+          bonusToRoll: result.workstationData.bonusToRoll,
+          discoveryChance: result.workstationData.discoveryChance,
+          message: result.narrativeResult
+        }));
+      }
+
+      // World Erosion: High-impact actions (HARVEST) can create scars
+      const shouldCreateScar = actionType === 'HARVEST' && result.success && result.loof.some(l => 
+        l.name.includes('Ore') || l.name.includes('Crystal')
+      );
+
+      if (shouldCreateScar && typeof locationId === 'string') {
+        // Mark tile as scarred/harvested
+        const epochNum = state.epochId ? parseInt(state.epochId) : 0;
+        const scarResult = createWorldScar(state, 'RESOURCE_EXTRACTION', locationId, epochNum);
+        if (scarResult.events) {
+          events.push(...scarResult.events);
+        }
+
+        // Add scar to location's active scars
+        if (!location.activeScars) {
+          location.activeScars = [];
+        }
+        location.activeScars.push({
+          description: `Harvested resource site - the land shows signs of extraction`
+        });
+      }
+
       break;
     }
 

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNarrativeCodec } from '../hooks/useNarrativeCodec';
+import type { NarrativeCodec } from '../services/themeManager';
 
 /**
  * M55-D1: WeaverSettings Component
@@ -25,6 +27,9 @@ export interface WeaverSettingsProps {
 }
 
 export const WeaverSettings: React.FC<WeaverSettingsProps> = ({ isOpen, onClose, onApply }) => {
+  const [activeTab, setActiveTab] = useState<'ai' | 'theme'>('ai');
+  const { currentCodec, setCodec, getAllCodecs, codecDefinition } = useNarrativeCodec();
+  
   const [geminiKey, setGeminiKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
@@ -228,21 +233,73 @@ export const WeaverSettings: React.FC<WeaverSettingsProps> = ({ isOpen, onClose,
       zIndex: 1000
     }}>
       <div style={{
-        backgroundColor: '#1a1a2e',
-        border: '2px solid #16213e',
+        backgroundColor: 'var(--bg-primary, #1a1a2e)',
+        border: '2px solid var(--border-accent, #16213e)',
         borderRadius: '8px',
         padding: '24px',
-        maxWidth: '500px',
+        maxWidth: '550px',
         maxHeight: '90vh',
         overflowY: 'auto',
-        color: '#eaeaea',
-        fontFamily: 'monospace'
+        color: 'var(--text-primary, #eaeaea)',
+        fontFamily: 'var(--font-family-body, monospace)',
+        boxShadow: 'var(--shadow-lg)'
       }}>
-        <h2 style={{ marginTop: 0, color: '#00d4ff' }}>⚙️ WEAVER SETTINGS</h2>
-        <p style={{ fontSize: '0.9em', color: '#aaa', marginBottom: '20px' }}>
-          M55-D1: Configure your API keys for multi-provider LLM support. Keys are stored locally in your browser and never sent to the server.
-        </p>
+        <h2 style={{ marginTop: 0, color: 'var(--accent-main, #00d4ff)' }}>⚙️ WEAVER SETTINGS</h2>
+        
+        {/* Tab Navigation */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: `2px solid var(--border-secondary, #16213e)` }}>
+          <button
+            onClick={() => setActiveTab('ai')}
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              backgroundColor: activeTab === 'ai' ? 'var(--accent-main, #00d4ff)' : 'transparent',
+              color: activeTab === 'ai' ? '#000' : 'var(--text-secondary, #aaa)',
+              border: 'none',
+              borderBottom: activeTab === 'ai' ? '3px solid var(--accent-main, #00d4ff)' : 'none',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'ai' ? 'bold' : 'normal',
+              fontSize: '0.9em',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            🤖 AI PROVIDERS
+          </button>
+          <button
+            onClick={() => setActiveTab('theme')}
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              backgroundColor: activeTab === 'theme' ? 'var(--accent-main, #00d4ff)' : 'transparent',
+              color: activeTab === 'theme' ? '#000' : 'var(--text-secondary, #aaa)',
+              border: 'none',
+              borderBottom: activeTab === 'theme' ? '3px solid var(--accent-main, #00d4ff)' : 'none',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'theme' ? 'bold' : 'normal',
+              fontSize: '0.9em',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            🎨 NARRATIVE CODEC
+          </button>
+        </div>
+        
+        {activeTab === 'ai' && (
+          <p style={{ fontSize: '0.9em', color: 'var(--text-secondary, #aaa)', marginBottom: '20px' }}>
+            M55-D1: Configure your API keys for multi-provider LLM support. Keys are stored locally in your browser and never sent to the server.
+          </p>
+        )}
+        
+        {activeTab === 'theme' && (
+          <p style={{ fontSize: '0.9em', color: 'var(--text-secondary, #aaa)', marginBottom: '20px' }}>
+            Select your preferred visual lens. The world will render through your chosen narrative codec.
+          </p>
+        )}
 
+        {/* AI PROVIDERS TAB */}
+        {activeTab === 'ai' && (
+          <div>
+        
         {/* Gemini API Key */}
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '6px', color: '#00d4ff', fontSize: '0.9em' }}>
@@ -383,8 +440,76 @@ export const WeaverSettings: React.FC<WeaverSettingsProps> = ({ isOpen, onClose,
             {statusMessages.clear}
           </p>
         )}
+          </div>
+        )}
+        
+        {/* NARRATIVE CODEC TAB */}
+        {activeTab === 'theme' && (
+          <div>
+            <p style={{ fontSize: '0.85em', color: 'var(--text-secondary, #aaa)', marginBottom: '12px', fontStyle: 'italic' }}>
+              Current Codec: <span style={{ color: 'var(--accent-main)', fontWeight: 'bold' }}>{currentCodec}</span>
+            </p>
+            
+            <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
+              {getAllCodecs().map((codec: NarrativeCodec) => {
+                const isSelected = codec === currentCodec;
+                const codecColors = {
+                  'CODENAME_MEDIEVAL': { bg: '#2a2416', accent: '#d4af37', main: '#b8341d' },
+                  'CODENAME_GLITCH': { bg: '#0a0a1a', accent: '#ff00c4', main: '#00ffc8' },
+                  'CODENAME_MINIMAL': { bg: '#f5f5f5', accent: '#3498db', main: '#2ecc71' }
+                };
+                const colors = codecColors[codec] || { bg: '#1a1a2e', accent: '#00d4ff', main: '#ff00c4' };
+                
+                return (
+                  <div
+                    key={codec}
+                    onClick={() => setCodec(codec)}
+                    style={{
+                      padding: '14px',
+                      backgroundColor: isSelected ? 'rgba(255, 0, 196, 0.1)' : 'var(--bg-secondary, #0f3460)',
+                      border: `2px solid ${isSelected ? 'var(--accent-main, #ff00c4)' : 'var(--border-secondary, #16213e)'}`,
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      transform: isSelected ? 'translateX(4px)' : 'translateX(0)',
+                      boxShadow: isSelected ? 'var(--shadow-md)' : 'none'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontWeight: 'bold', color: 'var(--accent-main, #00d4ff)', marginBottom: '4px' }}>
+                          {codec === 'CODENAME_MEDIEVAL' && '📜 Medieval'}
+                          {codec === 'CODENAME_GLITCH' && '⚡ Glitch'}
+                          {codec === 'CODENAME_MINIMAL' && '📋 Minimal'}
+                        </div>
+                        <div style={{ fontSize: '0.8em', color: 'var(--text-secondary, #aaa)' }}>
+                          {codec === 'CODENAME_MEDIEVAL' && 'Parchment scrolls and mystical runes'}
+                          {codec === 'CODENAME_GLITCH' && 'Void-violet synthwave, living paradox'}
+                          {codec === 'CODENAME_MINIMAL' && 'Observer administrative interface'}
+                        </div>
+                      </div>
+                      {isSelected && <span style={{ fontSize: '1.2em' }}>✓</span>}
+                    </div>
+                    
+                    {/* Color preview */}
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ width: '20px', height: '20px', backgroundColor: colors.bg, border: '1px solid #999', borderRadius: '2px' }} title="Primary"></div>
+                      <div style={{ width: '20px', height: '20px', backgroundColor: colors.accent, border: '1px solid #999', borderRadius: '2px' }} title="Accent"></div>
+                      <div style={{ width: '20px', height: '20px', backgroundColor: colors.main, border: '1px solid #999', borderRadius: '2px' }} title="Main"></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
+        {statusMessages.clear && (
+          <p style={{ fontSize: '0.8em', color: '#ffff66', margin: '12px 0' }}>
+            {statusMessages.clear}
+          </p>
+        )}
         <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
           <button
             onClick={saveKeysToLocalStorage}

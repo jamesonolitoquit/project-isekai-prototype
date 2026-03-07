@@ -12,21 +12,26 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { WorldState } from '../../engine/worldEngine';
+import type { WorldController } from '../../types/engines';
 import type { TradeState } from '../../engine/multiplayerEngine';
 import type { AtomicTrade } from '../../engine/atomicTradeEngine';
 import BetaGlobalHeader from './BetaGlobalHeader';
-import ErrorBoundary from './ErrorBoundary'; // [M48-A4: Stub for build unblocking]
+import GlobalErrorBoundary from './GlobalErrorBoundary'; // Phase 30 Task 6: Diegetic Error Boundary
+import ErrorBoundary from './ErrorBoundary'; // M40 Task 3: Tab panel error boundaries
 import CoDmDashboard from './CoDmDashboard';
+import DiegeticLoadingOverlay from './DiegeticLoadingOverlay'; // Phase 48-UI: Loading screen
 import { useAtmosphericFilter, AtmosphericFilterProvider } from '../hooks/useAtmosphericFilter'; // BETA Phase 1: Pressure Sink
-import '../styles/atmosphericFilters.css'; // BETA Phase 1: Glitch animations
-// import {
-//   initializeTutorialState,
-//   detectMilestones,
-//   updateTutorialState,
-//   getNextTutorialOverlay,
-//   dismissTutorialOverlay,
-//   type TutorialState
-// } from '../../engine/tutorialEngine'; // [M48-A4: Temporarily disabled - using tutorialEngine directly]
+// Phase 10.5: UI Layer - Oracle View (Extraction Remediations)
+import { useUIWorldMapper, useApplyAtmosphericCSS } from '../hooks/useUIWorldMapper';
+import type { UIWorldModel } from '../types/uiModel';
+import {
+  initializeTutorialState,
+  detectMilestones,
+  updateTutorialState,
+  getNextTutorialOverlay,
+  dismissTutorialOverlay,
+  type TutorialState
+} from '../../engine/tutorialEngine';
 // import { themeManager } from '../../devTools/epochThemeManager'; // [M48-A4: Temporarily disabled - missing module]
 import { getEpochSyncEngine } from '../../engine/epochSyncEngine';
 // M42 Phase 2 Imports
@@ -35,7 +40,7 @@ import { TradeManager } from '../../engine/tradeManager';
 // import WorldStateTransitionOverlay from './WorldStateTransitionOverlay'; // [M48-A4: Temporarily disabled - missing component]
 import { transitionEngine, type TransitionMetadata } from '../../engine/transitionEngine';
 import { createPhantomEngine, startPhantomEngine, stopPhantomEngine, type PhantomEngineState } from '../../engine/phantomEngine';
-// import { triggerDiplomatMilestone, triggerWeaverMilestone } from '../../engine/tutorialEngine'; // [M48-A4: Temporarily disabled]
+import { triggerDiplomatMilestone, triggerWeaverMilestone } from '../../engine/tutorialEngine';
 import { getDiagnosticsSnapshot, type DiagnosticsSnapshot } from '../../engine/diagnosticsEngine';
 // M42 Phase 4 Imports
 // import DirectorConsole from './DirectorConsole'; // [M48-A4: Temporarily disabled - missing component]
@@ -52,8 +57,20 @@ import RewindPanel from './RewindPanel';
 // Phase 3 Task 5: Director Command Input
 import DirectorCommandInput from './DirectorCommandInput';
 
+// Phase 10: Hero's Reliquary HUD System (Gameplay UI Convergence)
+import PlayerHUDContainer from './PlayerHUDContainer';
+
 // Phase 9 Task 2: Director Console & Pressure Sink Panel
 import PressureSinkPanel from './PressureSinkPanel';
+
+// Beta Phase 5 Task 1: Atmospheric Pressure Indicator (Diegetic Pressure Sink)
+import AtmosphericPressureIndicator from './AtmosphericPressureIndicator';
+
+// Beta Phase 5 Task 1: Paradox Bleed Visualizer (Background distortion effects)
+import ParadoxBleedVisualizer from './ParadoxBleedVisualizer';
+
+// Phase 30 Task 4: Weaver Processing Indicator (AI Synthesis Latency)
+import WeaverProcessingIndicator, { type WeaverProcessingState } from './WeaverProcessingIndicator';
 
 // Phase 4 Task 1: Director Telemetry HUD
 import DirectorTelemetryHUD from './DirectorTelemetryHUD';
@@ -67,6 +84,32 @@ import { WeaverSettings } from './WeaverSettings';
 // Phase 4 Task 5: Architect's Forge (Live Mutation)
 import ArchitectForge from './ArchitectForge';
 
+// Character Creation System
+import CharacterCreationOverlay from './CharacterCreationOverlay';
+
+// Phase 19: Tutorial System
+import TutorialOverlay from './TutorialOverlay';
+
+// Phase 30 Task 8: The Awakening Sequence (Cinematic Origin Story)
+import CinematicTextOverlay from './CinematicTextOverlay';
+import { getAIService } from '../services/AIService';
+
+// Phase 30 Task 9: Diegetic Theme Manager (Narrative Codecs)
+import { themeManager } from '../services/themeManager';
+
+// Phase 30 UI: Tabletop Container (Digital Board Game aesthetic)
+import TabletopContainer from './TabletopContainer';
+
+// Phase 32: Physical HUD Panels
+import InventoryPanel from './InventoryPanel';
+import QuestPanel from './QuestPanel';
+
+// Phase 34: Gameplay Center Stage
+import { GameStage } from './GameStage';
+
+// Phase 34: Footer bar (toasts, autosave, shortcuts)
+import { GameFooter } from './GameFooter';
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -75,7 +118,7 @@ type MainTab = 'world' | 'social' | 'arcane' | 'records';
 
 export interface BetaApplicationProps {
   initialState: WorldState;
-  controller: any;
+  controller: WorldController;
   isMultiplayer?: boolean;
   clientId?: string;
   showDevTools?: boolean;
@@ -96,12 +139,24 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   // STATE MANAGEMENT
   // =========================================================================
 
-  const [state, setState] = useState<WorldState>(initialState);
+  const [state, setState] = useState<WorldState | null>(initialState || null);
   const [activeMainTab, setActiveMainTab] = useState<MainTab>('world');
   const [isDirector, setIsDirector] = useState(false);
   const [isDirectorConsoleOpen, setIsDirectorConsoleOpen] = useState(false);
-  // const [tutorialState, setTutorialState] = useState<TutorialState>(initializeTutorialState()); // [M48-A4: Disabled]
-  // const [currentTutorialOverlay, setCurrentTutorialOverlay] = useState(getNextTutorialOverlay(tutorialState)); // [M48-A4: Disabled]
+  // Phase 4: Troubleshooter's Seal - debug mode toggle with Ctrl+Shift+D hotkey
+  const [debugModeActive, setDebugModeActive] = useState(() => {
+    if (typeof window !== 'undefined' && process.env.REACT_APP_DEBUG_HUD === 'true') {
+      return true;
+    }
+    return false;
+  });
+
+  // Log state after initialization
+  if (state?.needsCharacterCreation) {
+    console.log('BetaApplication - Character creation needed for:', state?.player?.name);
+  }
+  const [tutorialState, setTutorialState] = useState<TutorialState>(initializeTutorialState());
+  const [currentTutorialOverlay, setCurrentTutorialOverlay] = useState(getNextTutorialOverlay(initializeTutorialState()));
 
   // M42 Phase 2: Trade System
   const [showInventory, setShowInventory] = useState(false);
@@ -115,8 +170,8 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
       return true;
     },
     sendMessage: (msg: any) => {
-      if (controller?.sendTradeMessage) {
-        controller.sendTradeMessage(msg);
+      if ((controller as any)?.sendTradeMessage) {
+        (controller as any).sendTradeMessage(msg);
       }
     }
   }));
@@ -124,6 +179,15 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
 
   // Phase 3 Task 4: Temporal Rewind Panel
   const [showRewindPanel, setShowRewindPanel] = useState(false);
+
+  // Phase 30 Task 4: Weaver AI Processing Status
+  const [weaverProcessing, setWeaverProcessing] = useState<WeaverProcessingState | null>(null);
+
+  // Phase 30 Task 8: The Awakening Sequence
+  const [showAwakening, setShowAwakening] = useState(false);
+  const [originStory, setOriginStory] = useState<string>('');
+  const [isAwakeningComplete, setIsAwakeningComplete] = useState(false);
+  const [awakeSynthesisFailed, setAwakeSynthesisFailed] = useState(false);
 
   // Phase 3 Task 5: Director Command Input
   const [commandStatus, setCommandStatus] = useState('');
@@ -179,11 +243,19 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   // Multiplayer info (M36)
   const [consensusDiagnostics, setConsensusDiagnostics] = useState<any>(null);
 
+  // Phase 7: Socket.IO connection for real-time updates
+  const [socket, setSocket] = useState<any>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+
   // BETA Phase 1: Pressure Sink - Atmospheric Filter for Paradox Visualization
   const atmosphericFilters = useAtmosphericFilter({
-    paradoxLevel: state.paradoxLevel,
-    ageRotSeverity: state.ageRotSeverity
+    paradoxLevel: state?.paradoxLevel ?? 0,
+    ageRotSeverity: state?.ageRotSeverity ?? 'mild'
   });
+
+  // Phase 10.5: UI World Model - Derived view for type-safe UI rendering
+  const uiModel = useUIWorldMapper(state, state?.player?.id || null);
+  useApplyAtmosphericCSS(uiModel.atmosphere);
 
   // Phase 3 Task 3: Narrative Intervention Overlay - Whisper tracking
   const { activeWhisper, addWhisper, dismissWhisper, whisperHistory } = useNarrativeWhispers();
@@ -193,21 +265,38 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   // EFFECTS
   // =========================================================================
 
+  // Phase 30 Task 9: Initialize Theme Manager on component mount
   useEffect(() => {
+    // Theme manager is a singleton and initializes itself on first getInstance() call
+    // This effect ensures the theme is loaded from localStorage when component mounts
+    const currentCodec = themeManager.getCodec();
+    console.log('[BetaApp] Theme initialized:', currentCodec);
+  }, []);
+
+  useEffect(() => {
+    console.log('BetaApplication useEffect - controller:', !!controller, 'initialState:', initialState);
     if (!controller) return;
 
     // Subscribe to state updates
     let unsubscribe: (() => void) | null = null;
+    const ctrl = controller as any; // Phase 7: Runtime method checking
 
-    if (controller.subscribe) {
-      unsubscribe = controller.subscribe((newState: WorldState) => {
+    if (ctrl.subscribe) {
+      unsubscribe = ctrl.subscribe((newState: WorldState) => {
+        console.log('[BetaApp] SUBSCRIBE UPDATE RECEIVED:', {
+          needsCharacterCreation: newState.needsCharacterCreation,
+          playerName: newState.player?.name,
+          playerId: newState.player?.id,
+          ancestryTree: newState.player?.ancestryTree,
+          tick: newState.tick
+        });
         setState(newState);
       });
     } else {
       // Fallback: poll for state
       const pollId = setInterval(() => {
         try {
-          const latest = controller.getState?.();
+          const latest = ctrl.getState?.();
           if (latest) setState(latest);
         } catch (error: unknown) {
           // Silently fail on poll - prevent console spam from unavailable controller
@@ -220,22 +309,31 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
       return () => clearInterval(pollId);
     }
 
-    if (controller.start) {
-      controller.start();
+    if (ctrl.start) {
+      ctrl.start();
     }
 
     return () => {
       if (unsubscribe) unsubscribe();
-      if (controller.stop) controller.stop();
+      if (ctrl.stop) ctrl.stop();
     };
   }, [controller]);
+
+  // Phase 7: Initialize Socket.IO connection
+  // TEMPORARILY DISABLED - Force Local Offline Mode for Phase 47 testing
+  useEffect(() => {
+    console.log('🎮 Running in LOCAL OFFLINE MODE (Socket.IO disabled)');
+    setSocketConnected(false);
+    return () => {};
+  }, []);
 
   // M40 Task 4: Keyboard navigation (1-4 for tab switching, Shift+D for Director Mode)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // M42 Phase 4: Director Console toggle (Ctrl+Shift+D)
+      // Phase 4: Troubleshooter's Seal - Debug mode toggle (Ctrl+Shift+D)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
         e.preventDefault();
+        setDebugModeActive(prev => !prev);
         setIsDirectorConsoleOpen(prev => !prev);
         return;
       }
@@ -266,18 +364,39 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
     return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // M41 Task 2: Tutorial milestone detection [M48-A4: Disabled - references disabled functions]
-  // useEffect(() => {
-  //   if (!state) return;
-  //
-  //   // Detect newly achieved milestones
-  //   const detected = detectMilestones(state, tutorialState);
-  //   if (detected.length > 0) {
-  //     const updated = updateTutorialState(tutorialState, detected, state.tick || 0);
-  //     setTutorialState(updated);
-  //     setCurrentTutorialOverlay(getNextTutorialOverlay(updated));
-  // } // [M48-A4: Disabled - references disabled functions]
-  // }, [state, tutorialState]);
+  // M41 Task 2: Tutorial milestone detection
+  useEffect(() => {
+    if (!state) return;
+
+    // Detect newly achieved milestones
+    const detected = detectMilestones(state, tutorialState);
+    if (detected.length > 0) {
+      const updated = updateTutorialState(tutorialState, detected, state.tick || 0);
+      setTutorialState(updated);
+      
+      // Phase 30 Task 4: Use async synthesis for enhanced tutorial overlays
+      // Get synchronous overlay first for immediate display
+      const syncOverlay = getNextTutorialOverlay(updated);
+      setCurrentTutorialOverlay(syncOverlay);
+      
+      // Then attempt async AI enhancement if available
+      (async () => {
+        try {
+          const { getNextTutorialOverlayAsync } = await import('../../engine/tutorialEngine');
+          const knowledgeLevel = 0; // TODO: Calculate based on player progress
+          const asyncOverlay = await getNextTutorialOverlayAsync(updated, state, knowledgeLevel);
+          if (asyncOverlay) {
+            setCurrentTutorialOverlay(asyncOverlay);
+          }
+        } catch (error) {
+          console.debug('[BetaApp] Async tutorial synthesis skipped:', error);
+          // Fall back to sync overlay, which is already displayed
+        }
+      })();
+      
+      console.log('[BetaApp] Tutorial milestones detected:', detected);
+    }
+  }, [state?.tick, state?.player?.inventory?.length, state?.quests?.length]);
 
   // Phase 3 Task 3: Track whisper events from event log
   useEffect(() => {
@@ -311,7 +430,169 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   // } // [M48-A4: Disabled - references disabled functions]
   // }, [state, tutorialState]);
   //   }
+
+  // Phase 30 Task 5: Quest Synthesis AI Enhancement
+  useEffect(() => {
+    if (!state?.quests || state.quests.length === 0) return;
+
+    // Track which quests we've already enhanced
+    const enhancedQuests = new Set<string>();
+    
+    const enhanceNewQuests = async () => {
+      try {
+        // Import questSynthesisAI instance
+        const { getQuestSynthesisAI } = await import('../../engine/questSynthesisAI');
+        const questSynthesis = getQuestSynthesisAI?.();
+        
+        if (!questSynthesis) return;
+
+        // Find quests that haven't been enhanced yet
+        const newQuests = state.quests.filter((q: any) => !enhancedQuests.has(q.id));
+        
+        if (newQuests.length > 0) {
+          // Fire off async enhancement without blocking
+          questSynthesis.batchEnhanceQuestsWithAI(newQuests as any, state)
+            .then(() => {
+              // Mark as enhanced
+              newQuests.forEach((q: any) => enhancedQuests.add(q.id));
+              console.log('[BetaApp] Enhanced', newQuests.length, 'quests with AI');
+            })
+            .catch((error) => {
+              console.warn('[BetaApp] Quest enhancement failed:', error);
+            });
+        }
+      } catch (error) {
+        console.debug('[BetaApp] Quest synthesis unavailable:', error);
+        // Quests continue without enhancement if synthesis not available
+      }
+    };
+
+    enhanceNewQuests();
+  }, [state?.quests?.length, state?.id]);
   // }, [state?.tick]); // Re-run when tick changes (new event occurred)
+
+  // Phase 30 Task 8: The Awakening Sequence - Trigger AI Origin Story Synthesis
+  useEffect(() => {
+    if (!state?.player || state.needsCharacterCreation !== false || isAwakeningComplete || showAwakening) {
+      return;
+    }
+
+    // Setup AbortController and mount tracker for cleanup
+    const abortController = new AbortController();
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // Character was just created, now synthesize the awakening sequence
+    const triggerAwakening = async () => {
+      try {
+        // Guard: check mount status before first state update
+        if (!isMounted) return;
+
+        setWeaverProcessing({
+          isProcessing: true,
+          latencyMs: 0,
+          synthesisType: 'tutorial',
+          progress: 0
+        });
+
+        const aiService = getAIService();
+        
+        // Set a 5-second timeout for AI synthesis - if no response, use fallback
+        timeoutId = setTimeout(() => {
+          if (!isMounted) return;
+          console.warn('[BetaApp] Awaiting synthesis timeout (5s) - using fallback story');
+          abortController.abort();
+        }, 5000);
+        
+        // Synthesize origin story with character details, passing abort signal
+        const result = await aiService.synthesize({
+          type: 'story_origin',
+          factors: {
+            characterName: state.player?.name || 'The Traveler',
+            race: (state.player as any)?.race || 'Human',
+            archetype: (state.player as any)?.archetype || 'Wanderer',
+            additionalContext: `You are awakening in ${state.metadata?.name || 'Luxfier'}, a world of paradox and wonder.`
+          },
+          paradoxLevel: state.paradoxLevel ?? 0,
+          signal: abortController.signal
+        });
+
+        // Guard: verify component still mounted before state updates
+        if (!isMounted) return;
+        
+        // Clear timeout if synthesis completed
+        if (timeoutId) clearTimeout(timeoutId);
+
+        setOriginStory(result.content);
+        setShowAwakening(true);
+        setWeaverProcessing(null);
+        console.log('[BetaApp] Awakening sequence triggered, origin story synthesized:', result.latency, 'ms');
+      } catch (error) {
+        // Silent cancellation if aborted (includes timeout abort)
+        if ((error as any).name === 'AbortError') {
+          console.log('[BetaApp] Awakening synthesis aborted - using fallback story');
+          // Proceed with fallback story on abort/timeout
+          if (isMounted) {
+            setOriginStory(
+              `You awaken to the vast expanse of ${state.metadata?.name || 'Luxfier'}, a world caught between symmetry and paradox. `
+              + `Your name is ${state.player?.name || 'The Traveler'}, and your story is about to unfold.`
+            );
+            setShowAwakening(true);
+            setWeaverProcessing(null);
+          }
+          return;
+        }
+
+        // Guard: verify component still mounted before error handling
+        if (!isMounted) return;
+
+        console.error('[BetaApp] Awakening synthesis failed:', error);
+        setAwakeSynthesisFailed(true);
+        setWeaverProcessing(null);
+        
+        // Fall back to a default message on any error
+        setOriginStory(
+          `You awaken to the vast expanse of ${state.metadata?.name || 'Luxfier'}, a world caught between symmetry and paradox. `
+          + `Your name is ${state.player?.name || 'The Traveler'}, and your story is about to unfold.`
+        );
+        setShowAwakening(true);
+      }
+    };
+
+    triggerAwakening();
+
+    // Cleanup: mark unmount and abort pending synthesis
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [state?.player?.name, state?.needsCharacterCreation, isAwakeningComplete, showAwakening, state?.metadata?.name, state?.paradoxLevel]);
+
+  // SAFETY VALVE: Auto-clear overlays if they persist beyond expected time
+  // This prevents deadlock if awakening or character creation UI gets stuck
+  useEffect(() => {
+    // Track how long needsCharacterCreation has been true
+    const checkOverlayTimeout = setTimeout(() => {
+      if (state?.needsCharacterCreation && !state?.player) {
+        console.warn('[BetaApp] SAFETY: Character creation UI persisted >15s, forcing clear');
+        setState(prev => ({
+          ...prev,
+          needsCharacterCreation: false
+        }));
+      }
+
+      // Track how long showAwakening has been true without being complete
+      if (showAwakening && !isAwakeningComplete) {
+        console.warn('[BetaApp] SAFETY: Awakening UI persisted >15s, forcing clear');
+        setShowAwakening(false);
+        setIsAwakeningComplete(true);
+      }
+    }, 15000); // 15 second safety threshold
+
+    return () => clearTimeout(checkOverlayTimeout);
+  }, [state?.needsCharacterCreation, showAwakening, isAwakeningComplete, state?.player]);
+
 
   // M41 Task 5: Epoch-based theme morphing [M48-A4: Disabled - epochId not in WorldState]
   // useEffect(() => {
@@ -457,34 +738,41 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   // }, [state?.tick]);
 
   // M42 Task 5: Tier 2 Milestone Detection (Diplomat & Weaver) [M48-A4: Disabled - references disabled functions]
-  // useEffect(() => {
-  //   if (!state) return;
-  //
-  //   // Check for Diplomat milestone (faction influence)
-  //   const hasRecentFactionInfluence = state.factions?.some((f: any) =>
-  //     f.recentInfluencers?.includes(state.player?.id) && 
-  //     (f.consensusShiftedAt ?? 0) > Date.now() - 5000 // Within last 5 seconds
-  //   );
-  //
-  //   if (hasRecentFactionInfluence && !tutorialState.milestones.diplomat.achieved) {
-  //     console.log('[BetaApp] Diplomat milestone detected');
-  //     setTutorialState(triggerDiplomatMilestone(tutorialState));
-  //     setCurrentTutorialOverlay(getNextTutorialOverlay(triggerDiplomatMilestone(tutorialState)));
-  //   }
-  //
-  //   // Check for Weaver milestone (3+ participant grand ritual)
-  //   const hasGrandRitual = state.activeEvents?.some((e: any) =>
-  //     e.type === 'grand_ritual' &&
-  //     e.participants?.length >= 3 &&
-  //     e.participants?.includes(state.player?.id)
-  //   );
-  //
-  //   if (hasGrandRitual && !tutorialState.milestones.weaver.achieved) {
-  //     console.log('[BetaApp] Weaver milestone detected');
-  //     setTutorialState(triggerWeaverMilestone(tutorialState));
-  //     setCurrentTutorialOverlay(getNextTutorialOverlay(triggerWeaverMilestone(tutorialState)));
-  //   }
-  // }, [state?.factions, state?.activeEvents, state?.player?.id, tutorialState]);
+  // Tier 2 Milestone Detection (Diplomat & Weaver)
+  useEffect(() => {
+    if (!state) return;
+
+    // Check for Diplomat milestone (faction influence)
+    const hasRecentFactionInfluence = state.factions?.some((f: any) =>
+      f.recentInfluencers?.includes(state.player?.id) && 
+      (f.consensusShiftedAt ?? 0) > Date.now() - 5000 // Within last 5 seconds
+    );
+
+    if (hasRecentFactionInfluence && !tutorialState.milestones.diplomat.achieved) {
+      console.log('[BetaApp] Diplomat milestone detected');
+      const updated = triggerDiplomatMilestone(tutorialState, 'faction_0', state.tick || 0);
+      setTutorialState(updated);
+      setCurrentTutorialOverlay(getNextTutorialOverlay(updated));
+    }
+
+    // Check for Weaver milestone (3+ participant grand ritual)
+    const hasGrandRitual = state.activeEvents?.some((e: any) =>
+      e.type === 'grand_ritual' &&
+      e.participants &&
+      Array.isArray(e.participants) &&
+      e.participants.length >= 3 &&
+      e.participants.includes(state.player?.id)
+    );
+
+    if (hasGrandRitual && !tutorialState.milestones.weaver.achieved) {
+      console.log('[BetaApp] Weaver milestone detected');
+      const grandRitual = state.activeEvents?.find((e: any) => e.type === 'grand_ritual' && e.participants?.length >= 3 && e.participants?.includes(state.player?.id)) as any;
+      const participantCount = grandRitual?.participants?.length || 0;
+      const updated = triggerWeaverMilestone(tutorialState, participantCount, state.tick || 0);
+      setTutorialState(updated);
+      setCurrentTutorialOverlay(getNextTutorialOverlay(updated));
+    }
+  }, [state?.factions, state?.activeEvents, state?.player?.id, tutorialState]);
 
   // M42 Task 4: Real-time Diagnostic Panel Wiring
   useEffect(() => {
@@ -524,6 +812,65 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
       healthStatus: snapshot.consensusHealth.healthStatus
     });
   }, [state?.tick, state?.factions, state?.activeEvents]);
+
+  // Phase 30 Task 4: Subscribe to AIService Processing Events
+  // TODO: Re-enable when AIService supports event emission
+  /*
+  useEffect(() => {
+    const subscribeToAIService = async () => {
+      try {
+        const aiService = (await import('../services/AIService')).getAIService?.();
+        if (!aiService) return;
+
+        // Listen for synthesis start event
+        if (aiService.on) {
+          aiService.on('synthesisStart', (synthesisType: string) => {
+            setWeaverProcessing({
+              isProcessing: true,
+              latencyMs: 0,
+              synthesisType,
+              progress: 0
+            });
+          });
+
+          // Listen for progress updates
+          aiService.on('synthesisProgress', (progress: number, latencyMs: number) => {
+            setWeaverProcessing((prev) =>
+              prev
+                ? { ...prev, progress, latencyMs }
+                : null
+            );
+          });
+
+          // Listen for synthesis complete
+          aiService.on('synthesisComplete', (result: any) => {
+            setWeaverProcessing((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    latencyMs: result.latency,
+                    isProcessing: false
+                  }
+                : null
+            );
+            // Clear after 1 second for visual feedback
+            setTimeout(() => setWeaverProcessing(null), 1000);
+          });
+
+          // Listen for synthesis error
+          aiService.on('synthesisError', (error: string) => {
+            console.warn('[BetaApp] AI Synthesis error:', error);
+            setWeaverProcessing(null);
+          });
+        }
+      } catch (error) {
+        console.warn('[BetaApp] Failed to subscribe to AIService:', error);
+      }
+    };
+
+    subscribeToAIService();
+  }, []);
+  */
 
   // =========================================================================
   // ACTION HANDLERS
@@ -576,16 +923,42 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   }, [state]); // [M48-A4: Removed tutorialState from deps]
 
   const performAction = useCallback((actionRequest: any) => {
-    if (!controller) return;
+    if (!controller) {
+      console.error('[BetaApp] performAction called but controller is null!');
+      return;
+    }
 
     const action = {
       ...actionRequest,
       worldId: state.id,
+      worldInstanceId: state.id,
       playerId: state.player?.id || 'player_0',
       clientId
     };
 
-    controller.performAction(action);
+    console.log('[BetaApp] performAction dispatching:', {
+      type: action.type,
+      hasCharacter: !!action.payload?.character?.name,
+      characterName: action.payload?.character?.name,
+      controllerExists: !!controller
+    });
+    
+    try {
+      controller.performAction(action);
+      console.log('[BetaApp] performAction completed successfully');
+    } catch (error) {
+      console.error('[BetaApp] performAction failed:', error);
+    }
+    
+    // Check controller state immediately after action
+    setTimeout(() => {
+      const controllerState = controller.getState?.();
+      console.log('[BetaApp] Controller state after performAction:', {
+        needsCharacterCreation: controllerState?.needsCharacterCreation,
+        playerName: controllerState?.player?.name,
+        hasPlayer: !!controllerState?.player
+      });
+    }, 100);
   }, [controller, state.id, state.player?.id, clientId]);
 
   const handleTradeInitiate = useCallback((responderId: string, initiatorItems: any[], responderItems: any[]) => {
@@ -660,45 +1033,122 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
   }, [activeTrade, tradeManager]);
 
   // =========================================================================
-  // RENDER: MAIN LAYOUT
+  // RENDER: MAIN LAYOUT  
   // =========================================================================
 
-  return (
-    <div
-      className={atmosphericFilters.glitchClass}
-      style={{
-        width: '100%',
-        minHeight: '100vh',
-        backgroundColor: '#0d0d1a',
-        backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(79, 39, 131, 0.2), transparent)',
-        color: '#e0e0e0',
-        fontFamily: 'monospace',
-        display: 'flex',
-        flexDirection: 'column',
-        filter: atmosphericFilters.combinedFilter
-      }}
-    >
-      {/* ===== M39 TASK 2: BETA GLOBAL HEADER (Real-time Telemetry) ===== */}
-      <BetaGlobalHeader 
-        state={state} 
-        consensusDiagnostics={consensusDiagnostics}
-        macroEventDiagnostics={macroEventDiagnostics}
-        onExportDebug={exportFullDebugState}
-        onOpenWeaverSettings={() => setIsWeaverSettingsOpen(true)}
-        onOpenArchitectForge={() => setIsArchitectForgeOpen(true)}
-      />
+  if (!state || !controller) {
+    return <DiegeticLoadingOverlay visible={true} />;
+  }
 
-      {/* ===== CHARACTER CREATION OVERLAY ===== */}
+  // Phase 48-UI: Fixed viewport, no-scroll wrapper
+  const GameViewportStyle: React.CSSProperties = {
+    height: '100vh',
+    width: '100vw',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    background: '#050510',
+    zIndex: 1,
+  };
+
+  return (
+    <div style={GameViewportStyle}>
+      {/* Phase 48-UI: Diegetic Loading Overlay */}
+      <DiegeticLoadingOverlay visible={!state || !controller} />
+
+      {/* Character Creation Modal */}
       {state?.needsCharacterCreation && (
         <CharacterCreationOverlay
-          onCharacterCreated={() => {
-            // Character creation handled by controller
+          worldTemplate={buildCharacterCreationWorldTemplate(state?.metadata, state?.locations)}
+          onCharacterCreated={(character) => {
+            console.log('[BetaApp] onCharacterCreated called with:', character.name);
+            if (controller) {
+              console.log('[BetaApp] Calling performAction with SUBMIT_CHARACTER for:', character.name);
+              performAction({
+                type: 'SUBMIT_CHARACTER',
+                payload: { character }
+              });
+              console.log('[BetaApp] performAction call completed');
+
+              // Fallback: Force local state update immediately since socket is disabled
+              console.warn('[BetaApp] Socket disabled - forcing immediate local character entry');
+              setTimeout(() => {
+                console.log('[BetaApp] Applying local fallback for character creation');
+                setState(prevState => {
+                  // Compute HP from character stats if available (Phase 7 fix)
+                  const stats = character.baseStats || character.stats;
+                  const con = stats?.CON ?? stats?.end ?? 10;
+                  const wis = stats?.WIS ?? stats?.int ?? 10;
+                  const computedMaxHp = 20 + (con * 2) + Math.floor(wis / 3);
+                  const existingHp = prevState?.player?.hp;
+                  const existingMaxHp = prevState?.player?.maxHp;
+
+                  const newState = {
+                    ...prevState,
+                    player: {
+                      ...prevState?.player,   // Preserve existing player fields (hp, maxHp, gold, etc.)
+                      ...character,            // Overlay character creation data
+                      id: character.id || 'player_0',
+                      ancestryTree: character.ancestryTree || [],
+                      // Ensure HP is never lost — use computed, then existing, then default
+                      hp: character.hp ?? existingHp ?? computedMaxHp,
+                      maxHp: character.maxHp ?? existingMaxHp ?? computedMaxHp,
+                      // Phase 8: Ensure MP and Grit are also hydrated
+                      mp: character.mp ?? prevState?.player?.mp ?? (character.maxMp || (50 + ((stats?.INT ?? 10) * 5) + ((stats?.CHA ?? 10) * 2))),
+                      maxMp: character.maxMp ?? prevState?.player?.maxMp ?? (50 + ((stats?.INT ?? 10) * 5) + ((stats?.CHA ?? 10) * 2)),
+                      grit: character.grit ?? prevState?.player?.grit ?? (character.maxGrit || (30 + (con * 2) + Math.floor(wis * 1.5))),
+                      maxGrit: character.maxGrit ?? prevState?.player?.maxGrit ?? (30 + (con * 2) + Math.floor(wis * 1.5)),
+                    },
+                    needsCharacterCreation: false
+                  };
+                  console.log('[BetaApp] Local state update applied:', {
+                    needsCharacterCreation: newState.needsCharacterCreation,
+                    playerName: newState.player?.name
+                  });
+                  return newState;
+                });
+              }, 500);
+            } else {
+              console.log('[BetaApp] Controller not available!');
+            }
           }}
-          initialLocation={state?.player?.location}
         />
       )}
 
-      {/* Phase 3 Task 3: Narrative Intervention Overlay with Seer's Vision Effect */}
+      {/* Awakening Cinematic */}
+      {showAwakening && originStory && (
+        <CinematicTextOverlay
+          text={originStory}
+          characterName={state?.player?.name || 'The Traveler'}
+          weaverProcessing={weaverProcessing}
+          paradoxLevel={state?.paradoxLevel ?? 0}
+          title="The Awakening"
+          textSpeed={30}
+          onContinue={() => {
+            setShowAwakening(false);
+            setIsAwakeningComplete(true);
+            console.log('[BetaApp] Awakening sequence complete, proceeding to active game');
+          }}
+        />
+      )}
+
+      {/* Tutorial Overlay */}
+      {currentTutorialOverlay && (
+        <TutorialOverlay
+          appState={{ player: { tutorialState }, paradoxLevel: state?.paradoxLevel ?? 0 }}
+          onDismiss={(milestoneId) => {
+            const updated = dismissTutorialOverlay(tutorialState, milestoneId as any);
+            setTutorialState(updated);
+            setCurrentTutorialOverlay(getNextTutorialOverlay(updated));
+            console.log('[BetaApp] Tutorial milestone dismissed:', milestoneId);
+          }}
+        />
+      )}
+
+      {/* Narrative Intervention Overlay */}
       {activeWhisper && (
         <div
           style={{
@@ -707,9 +1157,10 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
             left: 0,
             right: 0,
             bottom: 0,
-            filter: atmosphericFilters.getWhisperFilter(activeWhisper.intensity),
+            filter: `brightness(${1 - (activeWhisper.intensity / 100) * 0.2}) blur(${(activeWhisper.intensity / 100) * 2}px)`,
             zIndex: 9996,
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            transition: 'filter 0.4s ease-in-out'
           }}
           aria-hidden="true"
         />
@@ -730,145 +1181,18 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
         enableAudio={true}
       />
 
-      {/* ===== MAIN CONTENT AREA ===== */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* LEFT SIDEBAR: Quick Access Panels */}
-        <BetaSidebar
-          state={state}
-          onShowInventory={() => setShowInventory(true)}
-          onShowTrade={() => setShowTradeUI(true)}
-          onShowCrafting={() => setShowCraftingModal(true)}
-          onShowRewind={() => setShowRewindPanel(true)}
-          isDirector={isDirector}
-          onToggleDirector={() => setIsDirector(prev => !prev)}
-          onExportDebug={exportFullDebugState}
-        />
-
-        {/* CENTER: Main Tab Interface */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Tab Navigation */}
-          <BetaTabNavigation
-            activeTab={activeMainTab}
-            onTabChange={setActiveMainTab}
-          />
-
-          {/* M44-E3: Tab Content - Phase 9: AtmosphericFilterProvider enabled for Pressure Sink visuals */}
-          <AtmosphericFilterProvider 
-            state={state} 
-          >
-            <div style={{ flex: 1, overflow: 'auto', padding: '16px', borderTop: '1px solid #333' }} role="tabpanel">
-              {/* M40 Task 3: Wrap each tab panel in ErrorBoundary */}
-              {activeMainTab === 'world' && (
-              <div aria-labelledby="world-tab">
-                <ErrorBoundary>
-                  <BetaWorldPanel
-                    state={state}
-                    onPerformAction={performAction}
-                    factionDiagnostics={factionDiagnostics}
-                    macroEventDiagnostics={macroEventDiagnostics}
-                  />
-                </ErrorBoundary>
-              </div>
-            )}
-
-            {activeMainTab === 'social' && (
-              <div aria-labelledby="social-tab">
-                <ErrorBoundary>
-                  <BetaSocialPanel
-                    state={state}
-                    onInitiateTrade={handleTradeInitiate}
-                    factionDiagnostics={factionDiagnostics}
-                  />
-                </ErrorBoundary>
-              </div>
-            )}
-
-            {activeMainTab === 'arcane' && (
-              <div aria-labelledby="arcane-tab">
-                <ErrorBoundary>
-                  <BetaArcanePanel
-                    state={state}
-                    onPerformAction={performAction}
-                  />
-                </ErrorBoundary>
-              </div>
-            )}
-
-            {activeMainTab === 'records' && (
-              <div aria-labelledby="records-tab">
-                <ErrorBoundary>
-                  <BetaRecordsPanel
-                    state={state}
-                  />
-                </ErrorBoundary>
-              </div>
-            )}
-            </div>
+      {/* Phase 48-UI: Main game layout using TabletopContainer grid */}
+      <TabletopContainer worldState={state} hideParticleSurface={true} controller={controller}>
+        {/* The TabletopContainer now handles the 3-column grid layout */}
+        <GlobalErrorBoundary>
+          <AtmosphericFilterProvider state={state}>
+            {/* Game board content - rendered in center of 3-column grid */}
+            <GameStage worldState={state} controller={controller} />
           </AtmosphericFilterProvider>
-        </div>
+        </GlobalErrorBoundary>
+      </TabletopContainer>
 
-        {/* RIGHT SIDEBAR: Real-time Diagnostics (Dev Mode) */}
-        {showDevTools && (
-          <BetaDiagnosticsPanel
-            factionDiagnostics={factionDiagnostics}
-            macroEventDiagnostics={macroEventDiagnostics}
-            consensusDiagnostics={consensusDiagnostics}
-          />
-        )}
-      </div>
-
-      {/* ===== MODAL DIALOGS ===== */}
-      {showInventory && (
-        <BetaInventoryModal state={state} onClose={() => setShowInventory(false)} />
-      )}
-
-      {/* M42 Phase 2: High-Integrity Trade Overlay [M48-A4: Disabled] */}
-      {/* {showTradeUI && activeTrade && (
-        <TradeOverlay
-          trade={activeTrade}
-          clientId={clientId}
-          clientInventory={state?.player?.inventory ? new Map(state.player.inventory.map((i: any) => [i.itemId, i.quantity])) : new Map()}
-          partnerInventory={new Map()} // TODO: Fetch from state or P2P
-          onTradeUpdate={(updatedTrade) => {
-            setActiveTrade(updatedTrade);
-            tradeManager.subscribe(updatedTrade.tradeId, (t) => setActiveTrade(t));
-          }}
-          onTradeComplete={(completedTrade) => {
-            console.log('[BetaApp] Trade completed:', completedTrade.tradeId);
-            setTimeout(() => {
-              setShowTradeUI(false);
-              setActiveTrade(null);
-            }, 1500);
-          }}
-          onCancel={() => {
-            handleTradeCancel();
-          }}
-          allowBarterCheck={true}
-          barterSkillBonus={state.player?.stats?.cha || 0}
-        />
-      )} */}
-
-      {/* {showCraftingModal && ( // [M48-A4: Disabled]
-        <BetaCraftingModal
-          state={state}
-          onCraft={(recipeId) => {
-            performAction({ type: 'CRAFT_ITEM', payload: { recipeId } });
-            setShowCraftingModal(false);
-          }}
-          onClose={() => setShowCraftingModal(false)}
-        />
-      )} */}
-
-      {/* {currentTransition && (
-        <WorldStateTransitionOverlay
-          transitionType={currentTransition.reason as 'epoch_shift' | 'world_reset' | 'macro_event'}
-          duration={currentTransition.estimatedDuration}
-          message={`Rebuilding ${currentTransition.reason.replace('_', ' ')}...`}
-          onComplete={() => setCurrentTransition(null)}
-        />
-      )} */}
-
-      {/* M41 Task 1: Director Mode - CoDmDashboard Overlay */}
+      {/* Director Mode Modal */}
       {isDirector && (
         <dialog
           style={{
@@ -884,1039 +1208,117 @@ export const BetaApplication: React.FC<BetaApplicationProps> = ({
             zIndex: 9999,
             padding: '20px',
             border: 'none',
-            margin: 0
           }}
-          open={isDirector}
+          open
         >
           <div
             style={{
-              backgroundColor: 'rgba(13, 13, 26, 0.95)',
+              backgroundColor: '#1a1a2e',
               border: '2px solid #c084fc',
-              borderRadius: '8px',
-              width: '90%',
-              height: '90%',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '800px',
+              maxHeight: '80vh',
               overflow: 'auto',
-              boxShadow: '0 0 20px rgba(192, 132, 252, 0.3)',
-              position: 'relative'
-            }}
-          >
-            <button
-              onClick={() => setIsDirector(false)}
-              style={{
-                position: 'absolute',
-                top: '10px',
-                right: '10px',
-                background: '#c084fc',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '4px 8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                zIndex: 10000,
-                color: '#000'
-              }}
-              aria-label="Close Director Mode"
-            >
-              Close (Shift+D)
-            </button>
-            <div style={{ paddingTop: '40px' }}>
-              <CoDmDashboard />
-              
-              {/* Phase 3 Task 5: Director Command Input */}
-              <div style={{ marginTop: '20px' }}>
-                <h3 style={{ color: '#a78bfa', marginBottom: '12px' }}>Narrative Commands</h3>
-                <DirectorCommandInput
-                  worldInstanceId={state.id}
-                  actorId="director_primary"
-                  currentTick={state.tick || 0}
-                  onCommandExecute={(cmd, event) => {
-                    setLastCommandEvent(event);
-                    setCommandStatus(`✓ Executed: ${cmd}`);
-                  }}
-                  onStatusMessage={(msg) => {
-                    setCommandStatus(msg);
-                  }}
-                />
-                {commandStatus && (
-                  <div style={{ marginTop: '8px', padding: '8px', backgroundColor: 'rgba(0, 0, 0, 0.3)', borderRadius: '4px', color: '#e0e0e0', fontSize: '11px' }}>
-                    {commandStatus}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </dialog>
-      )}
-
-      {/* Phase 3 Task 4: Temporal Rewind Panel Modal */}
-      {showRewindPanel && (
-        <dialog
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 9998,
-            padding: '20px',
-            border: 'none',
-            margin: 0
-          }}
-          open={showRewindPanel}
-        >
-          <div
-            style={{
-              backgroundColor: 'rgba(13, 13, 26, 0.95)',
-              border: '2px solid #6366f1',
-              borderRadius: '8px',
-              width: '90%',
-              maxWidth: '500px',
-              padding: '20px',
-              boxShadow: '0 0 20px rgba(99, 102, 241, 0.3)',
-              overflow: 'auto',
-              maxHeight: '90vh'
+              color: '#e0e0e0'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ margin: 0, color: '#a78bfa' }}>⏱️ Temporal Chronicles</h2>
+              <h2 style={{ color: '#c084fc', margin: 0 }}>Director Mode</h2>
               <button
-                onClick={() => setShowRewindPanel(false)}
+                onClick={() => setIsDirector(false)}
                 style={{
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  color: '#6b7280',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  padding: '0'
+                  background: 'transparent',
+                  border: '1px solid #c084fc',
+                  color: '#c084fc',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
                 }}
               >
-                ✕
+                Close
               </button>
             </div>
-            
-            <RewindPanel
-              state={state}
-              snapshotEvents={getEventsForWorld(state.id).filter(e => e.type === 'SNAPSHOT' || e.mutationClass === 'SNAPSHOT')}
-              onRewind={(checkpoint, newState) => {
-                console.log('[RewindPanel] Rewind to checkpoint:', checkpoint.tick);
-                // TODO: Apply the new state through controller
-                setShowRewindPanel(false);
-              }}
-              onStatusChange={(msg) => {
-                console.log('[RewindPanel]', msg);
+            <p style={{ color: '#999', fontSize: '12px' }}>Director Dashboard - Manage world events and narrative flow.</p>
+            <CoDmDashboard
+              currentDirectorState={{
+                chaos: 50,
+                paradox: state?.paradoxLevel ?? 50,
+                prophecyHealth: 75
               }}
             />
           </div>
         </dialog>
       )}
 
-      {/* Phase 4 Task 1: Director Telemetry HUD - Visible only to Directors */}
-      {isDirector && (
-        <DirectorTelemetryHUD
-          state={state}
-          registry={controller?.registry}
-          recentLatencies={recentLatencies}
-          throughputEpt={(getEventsForWorld(state.id).length / Math.max(state.tick || 1, 1))}
-          divergenceProbability={state.player?.temporalDebt ? (state.player.temporalDebt / 100) * 0.3 : 0.03}
-          isMinimized={telemetryMinimized}
-          onToggleMinimize={() => setTelemetryMinimized(prev => !prev)}
-        />
-      )}
-
-      {/* Phase 4 Task 2: Ritual Consensus UI - Grand Ritual Voting Modal */}
-      {activeRitual && (
-        <RitualConsensusUI
-          ritual={activeRitual}
-          clientId={state?.id || 'unknown'}
-          totalPeers={controller?.registry?.peers?.length || 1}
-          onVoteSubmit={(vote) => {
-            // Update ritual vote in state
-            const updatedVotes = activeRitual.votes.map(v =>
-              v.peerId === (state?.id || 'unknown')
-                ? { ...v, vote }
-                : v
-            );
-            setActiveRitual({
-              ...activeRitual,
-              votes: updatedVotes
-            });
-            console.log('[RitualConsensus] Vote submitted:', vote);
-          }}
-          onStatusChange={(message) => {
-            setCommandStatus(message);
-            console.log('[RitualConsensus]', message);
-          }}
-        />
-      )}
-
-      {/* Phase 4 Task 3: AI Weaver Settings Modal */}
-      <WeaverSettings
-        isOpen={isWeaverSettingsOpen}
-        onClose={() => setIsWeaverSettingsOpen(false)}
-        onApply={() => {
-          console.log('[WeaverSettings] API keys applied from localStorage');
-          setCommandStatus('✓ AI Weaver settings saved');
-        }}
-      />
-
-      {/* Phase 4 Task 5: Architect's Forge Live Mutation Modal */}
-      <ArchitectForge
-        isOpen={isArchitectForgeOpen}
-        onClose={() => setIsArchitectForgeOpen(false)}
-        onLiveApply={(blueprint) => {
-          performAction({
-            type: 'APPLY_ARCHITECT_CHANGES',
-            payload: {
-              locations: blueprint.locations || [],
-              factions: blueprint.factions || [],
-              climate: blueprint.climate || undefined
-            },
-            isDirector: true
-          });
-          setCommandStatus('✓ Architectural mutations applied live');
-        }}
-      />
-
-      {/* Phase 9 Task 2: Pressure Sink Panel - for testing paradoxLevel & ageRotSeverity */}
-      {showDevTools && <PressureSinkPanel state={state} />}
-
-      {/* M42 Phase 4 Task 1: Director Console [M48-A4: Disabled - missing component] */}
+      {/* Phase 34: Footer — toasts, autosave indicator, shortcut legend */}
+      <GameFooter worldState={state} />
     </div>
   );
 };
 
-// ============================================================================
-// BETA SIDEBAR
-// ============================================================================
+const FALLBACK_GLOBAL_CONSTANTS: any = {
+  tickDuration: 1.5,
+  ticksPerDay: 57600,
+  ticksPerEpoch: 1440000,
+  maxConcurrentPlayers: 32,
+  initialParadoxDebt: 0,
+  initialStability: 0.65,
+  snapshotIntervalTicks: 600,
+  maxArtifactsPerWorld: 500,
+  tileSize: 2,
+  gravityScale: 1.0,
+  manaSaturation: 0.5,
+  resourceGenerationMultiplier: 1.0,
+  factionActionBudgetPerDay: 100,
+  securityPatches: []
+};
 
-interface BetaSidebarProps {
-  state: WorldState;
-  onShowInventory: () => void;
-  onShowTrade: () => void;
-  onShowCrafting: () => void;
-  onShowRewind: () => void;
-  isDirector: boolean;
-  onToggleDirector: () => void;
-  onExportDebug: () => void;
+function buildCharacterCreationWorldTemplate(metadata?: any, worldLocations?: any[]): any {
+  const tags: string[] = Array.isArray(metadata?.tags) ? metadata.tags : [];
+  const loreHighlights: string[] = Array.isArray(metadata?.loreHighlights)
+    ? metadata.loreHighlights
+    : [
+        'Paradox currents twist through Luxfier Alpha.',
+        'Matriarchal echoes guide the awakening travelers.',
+        'Ancient spires hold the secrets of the lineage.'
+      ];
+
+  const baseMetadata = {
+    name: metadata?.name || 'Luxfier Alpha',
+    description: metadata?.description || 'A prototype reality seeded from the Luxfier registry.',
+    worldEpoch: metadata?.worldEpoch || 'epoch_i_awakening',
+    createdAt: metadata?.createdAt || new Date().toISOString(),
+    version: metadata?.version ?? 1,
+    author: metadata?.author ?? 'Luxfier Labs',
+    tags,
+    loreHighlights
+  };
+
+  return {
+    templateId: metadata?.templateId || 'luxfier-alpha-fallback',
+    metadata: baseMetadata,
+    globalConstants: metadata?.globalConstants ? { ...metadata.globalConstants } : { ...FALLBACK_GLOBAL_CONSTANTS },
+    factionalSeed: metadata?.factionalSeed || { factions: [], relationships: [] },
+    ancestryTrees: metadata?.ancestryTrees || [],
+    ancestryAvailability: metadata?.ancestryAvailability || [],
+    talentPool: metadata?.talentPool || [],
+    divinePresence: metadata?.divinePresence || [],
+    economicModel: metadata?.economicModel || 'prototype',
+    securityPatches: metadata?.securityPatches || [],
+    startingLocations: (worldLocations && worldLocations.length > 0)
+      ? worldLocations
+      : (metadata?.startingLocations || metadata?.locations || [
+        {
+          id: 'fallback-outpost',
+          name: 'Fallback Outpost',
+          description: 'A transit point the Beta shell creates when the template is missing.',
+          loreContext: 'Neutral ground that safely anchors new travelers in the summit of Luxfier.'
+        }
+      ]),
+    startingGearChoices: metadata?.startingGearChoices || [],
+    curiosityPool: metadata?.curiosityPool || []
+  };
 }
-
-const BetaSidebar: React.FC<BetaSidebarProps> = ({
-  state,
-  onShowInventory,
-  onShowTrade,
-  onShowCrafting,
-  onShowRewind,
-  isDirector,
-  onToggleDirector,
-  onExportDebug
-}) => {
-  return (
-    <div
-      style={{
-        width: '200px',
-        borderRight: '1px solid #333',
-        backgroundColor: 'rgba(13, 13, 26, 0.8)',
-        padding: '16px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px'
-      }}
-    >
-      <button
-        onClick={onShowInventory}
-        style={{
-          padding: '8px 12px',
-          backgroundColor: '#493d4a',
-          border: '1px solid #666',
-          color: '#c084fc',
-          cursor: 'pointer',
-          fontSize: '11px',
-          borderRadius: '4px'
-        }}
-      >
-        🎒 Inventory ({state.player?.inventory?.length || 0})
-      </button>
-
-      <button
-        onClick={onShowTrade}
-        style={{
-          padding: '8px 12px',
-          backgroundColor: '#493d4a',
-          border: '1px solid #666',
-          color: '#c084fc',
-          cursor: 'pointer',
-          fontSize: '11px',
-          borderRadius: '4px'
-        }}
-      >
-        💱 Trade
-      </button>
-
-      <button
-        onClick={onShowCrafting}
-        style={{
-          padding: '8px 12px',
-          backgroundColor: '#493d4a',
-          border: '1px solid #666',
-          color: '#c084fc',
-          cursor: 'pointer',
-          fontSize: '11px',
-          borderRadius: '4px'
-        }}
-      >
-        🔨 Craft
-      </button>
-
-      {/* Phase 3 Task 4: Temporal Rewind Button */}
-      <button
-        onClick={onShowRewind}
-        style={{
-          padding: '8px 12px',
-          backgroundColor: '#3d4a49',
-          border: '1px solid #6366f1',
-          color: '#a78bfa',
-          cursor: 'pointer',
-          fontSize: '11px',
-          borderRadius: '4px'
-        }}
-      >
-        ⏮️ Rewind
-      </button>
-
-      <div
-        style={{
-          marginTop: '20px',
-          paddingTop: '12px',
-          borderTop: '1px solid #333',
-          fontSize: '10px',
-          color: '#666'
-        }}
-      >
-        <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#999' }}>Status</div>
-        <div>
-          <strong style={{ color: '#a78bfa' }}>Level:</strong> {state.player?.level || 1}
-        </div>
-        <div>
-          <strong style={{ color: '#a78bfa' }}>XP:</strong> {state.player?.xp || 0}
-        </div>
-        <div>
-          <strong style={{ color: '#a78bfa' }}>Location:</strong> {state.player?.location || 'Unknown'}
-        </div>
-      </div>
-
-      {/* M41 Task 3: Director Mode Toggle */}
-      <button
-        onClick={onToggleDirector}
-        style={{
-          marginTop: 'auto',
-          padding: '10px 12px',
-          backgroundColor: isDirector ? '#6b21a8' : '#493d4a',
-          border: isDirector ? '2px solid #c084fc' : '1px solid #666',
-          color: isDirector ? '#e9d5ff' : '#c084fc',
-          cursor: 'pointer',
-          fontSize: '12px',
-          fontWeight: 600,
-          borderRadius: '4px',
-          transition: 'all 0.2s ease'
-        }}
-        title="Toggle Director Mode (Shift+D)"
-      >
-        {isDirector ? '👁️ Director: ON' : '👁️ Director: OFF'}
-      </button>
-
-      {/* M41 Task 3: Debug Export Button */}
-      <button
-        onClick={onExportDebug}
-        style={{
-          padding: '8px 12px',
-          backgroundColor: '#4a3e2a',
-          border: '1px solid #666',
-          color: '#f59e0b',
-          cursor: 'pointer',
-          fontSize: '11px',
-          borderRadius: '4px',
-          transition: 'all 0.2s ease'
-        }}
-        title="Export debug state as JSON"
-      >
-        🐜 Export Debug
-      </button>
-    </div>
-  );
-};
-
-// ============================================================================
-// BETA TAB NAVIGATION
-// ============================================================================
-
-interface BetaTabNavigationProps {
-  activeTab: MainTab;
-  onTabChange: (tab: MainTab) => void;
-}
-
-const BetaTabNavigation: React.FC<BetaTabNavigationProps> = ({ activeTab, onTabChange }) => {
-  const tabs = [
-    { id: 'world', label: '🌍 World (1)', ariaLabel: 'World tab - Press 1 to activate' },
-    { id: 'social', label: '👥 Social (2)', ariaLabel: 'Social tab - Press 2 to activate' },
-    { id: 'arcane', label: '✨ Arcane (3)', ariaLabel: 'Arcane tab - Press 3 to activate' },
-    { id: 'records', label: '📖 Records (4)', ariaLabel: 'Records tab - Press 4 to activate' }
-  ] as const;
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        gap: '8px',
-        padding: '12px 16px',
-        backgroundColor: 'rgba(13, 13, 26, 0.9)',
-        borderBottom: '1px solid #333'
-      }}
-      role="tablist"
-      aria-label="Main navigation tabs"
-    >
-      {tabs.map(tab => (
-        <button
-          key={tab.id}
-          id={`${tab.id}-tab`}
-          onClick={() => onTabChange(tab.id as MainTab)}
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          aria-label={tab.ariaLabel}
-          tabIndex={activeTab === tab.id ? 0 : -1}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: activeTab === tab.id ? '#4f2783' : 'transparent',
-            border: `1px solid ${activeTab === tab.id ? '#c084fc' : '#333'}`,
-            color: activeTab === tab.id ? '#c084fc' : '#999',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontFamily: 'monospace',
-            borderRadius: '4px',
-            transition: 'all 0.2s'
-          }}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
-};
-
-// ============================================================================
-// BETA PANEL COMPONENTS
-// ============================================================================
-
-interface BetaWorldPanelProps {
-  state: WorldState;
-  onPerformAction: (action: any) => void;
-  factionDiagnostics: any;
-  macroEventDiagnostics: any;
-}
-
-const BetaWorldPanel: React.FC<BetaWorldPanelProps> = ({
-  state,
-  onPerformAction,
-  factionDiagnostics,
-  macroEventDiagnostics
-}) => {
-  return (
-    <div>
-      <h2 style={{ color: '#c084fc', marginBottom: '16px' }}>🌍 World Overview</h2>
-
-      {/* Macro Events Panel */}
-      {macroEventDiagnostics && (
-        <div
-          style={{
-            backgroundColor: 'rgba(79, 39, 131, 0.2)',
-            padding: '12px',
-            borderRadius: '4px',
-            marginBottom: '16px',
-            border: '1px solid #4f2783'
-          }}
-        >
-          <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-            ⚠️ Active Macro Events
-          </h3>
-          <div style={{ fontSize: '11px', color: '#e0e0e0' }}>
-            <div>Active Events: {macroEventDiagnostics.activeCount || 0}</div>
-            <div>Avg Severity: {(macroEventDiagnostics.avgSeverity || 0).toFixed(0)}%</div>
-          </div>
-        </div>
-      )}
-
-      {/* Location Info */}
-      <div
-        style={{
-          backgroundColor: 'rgba(79, 39, 131, 0.1)',
-          padding: '12px',
-          borderRadius: '4px',
-          border: '1px solid #333'
-        }}
-      >
-        <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-          📍 Current Location
-        </h3>
-        <div style={{ fontSize: '12px' }}>
-          <div>Location: <span style={{ color: '#c084fc' }}>{state.player?.location}</span></div>
-          <div>NPCs: <span style={{ color: '#c084fc' }}>{(state.npcs || []).length}</span></div>
-          <div>Time: <span style={{ color: '#c084fc' }}>
-            {state.hour.toString().padStart(2, '0')}:{(state.time?.minute ?? 0).toString().padStart(2, '0')}
-          </span></div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-interface BetaSocialPanelProps {
-  state: WorldState;
-  onInitiateTrade: (responderId: string, initiatorItems: any[], responderItems: any[]) => void;
-  factionDiagnostics: any;
-}
-
-const BetaSocialPanel: React.FC<BetaSocialPanelProps> = ({
-  state,
-  onInitiateTrade,
-  factionDiagnostics
-}) => {
-  return (
-    <div>
-      <h2 style={{ color: '#c084fc', marginBottom: '16px' }}>👥 Social Network</h2>
-
-      {/* Faction Overview */}
-      {factionDiagnostics && (
-        <div
-          style={{
-            backgroundColor: 'rgba(79, 39, 131, 0.2)',
-            padding: '12px',
-            borderRadius: '4px',
-            marginBottom: '16px',
-            border: '1px solid #4f2783'
-          }}
-        >
-          <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-            👑 Faction Dynamics
-          </h3>
-          <div style={{ fontSize: '11px', color: '#e0e0e0', lineHeight: '1.6' }}>
-            <div>Active Factions: {factionDiagnostics.factionCount || 0}</div>
-            <div>Avg Power: {(factionDiagnostics.avgPower || 0).toFixed(0)}</div>
-            <div>Active Conflicts: {factionDiagnostics.conflictCount || 0}</div>
-          </div>
-        </div>
-      )}
-
-      {/* P2P Trading Section */}
-      <div
-        style={{
-          backgroundColor: 'rgba(79, 39, 131, 0.1)',
-          padding: '12px',
-          borderRadius: '4px',
-          border: '1px solid #333'
-        }}
-      >
-        <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-          💱 Peer-to-Peer Trading
-        </h3>
-        <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>
-          Initiate trades with other players. Complete trades are committed atomically to prevent item duplication.
-        </p>
-      </div>
-    </div>
-  );
-};
-
-interface BetaArcanePanelProps {
-  state: WorldState;
-  onPerformAction: (action: any) => void;
-}
-
-const BetaArcanePanel: React.FC<BetaArcanePanelProps> = ({ state, onPerformAction }) => {
-  return (
-    <div>
-      <h2 style={{ color: '#c084fc', marginBottom: '16px' }}>✨ Arcane Knowledge</h2>
-      <div
-        style={{
-          backgroundColor: 'rgba(79, 39, 131, 0.1)',
-          padding: '12px',
-          borderRadius: '4px',
-          border: '1px solid #333'
-        }}
-      >
-        <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-          🔮 Prophecy & Paradox
-        </h3>
-        <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>
-          Paradox Level: {state.paradoxLevel || 0}%
-        </p>
-        <p style={{ fontSize: '11px', color: '#999', margin: '4px 0 0 0' }}>
-          Temporal Paradoxes: {state.temporalParadoxes?.length || 0}
-        </p>
-      </div>
-    </div>
-  );
-};
-
-interface BetaRecordsPanelProps {
-  state: WorldState;
-}
-
-const BetaRecordsPanel: React.FC<BetaRecordsPanelProps> = ({ state }) => {
-  const [recordsTab, setRecordsTab] = React.useState<'chronicles' | 'deeds' | 'whispers'>('chronicles');
-
-  return (
-    <div>
-      <h2 style={{ color: '#c084fc', marginBottom: '16px' }}>📖 Chronicles & Records</h2>
-
-      {/* Records Tab Navigation - M40 Task 4: Add ARIA labels */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }} role="tablist" aria-label="Records tabs">
-        {(['chronicles', 'deeds', 'whispers'] as const).map(tab => {
-          const getAriaLabel = (tab: 'chronicles' | 'deeds' | 'whispers') => {
-            if (tab === 'chronicles')
-              return 'Chronicles tab - Timeline showing world history';
-            if (tab === 'deeds')
-              return 'Deeds tab - Your legendary actions';
-            return 'Whispers tab - Narrative interventions from the Director';
-          };
-          
-          return (
-            <button
-              key={tab}
-              id={`${tab}-tab`}
-              onClick={() => setRecordsTab(tab)}
-              role="tab"
-              aria-selected={recordsTab === tab}
-              aria-label={getAriaLabel(tab)}
-              tabIndex={recordsTab === tab ? 0 : -1}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: recordsTab === tab ? '#4f2783' : 'transparent',
-                border: `1px solid ${recordsTab === tab ? '#c084fc' : '#333'}`,
-                color: recordsTab === tab ? '#c084fc' : '#999',
-                cursor: 'pointer',
-                fontSize: '11px',
-                fontFamily: 'monospace',
-                borderRadius: '4px',
-                transition: 'all 0.2s'
-              }}
-            >
-              {tab === 'chronicles' && '🗺️ Chronicles'}
-              {tab === 'deeds' && '⚔️ Deeds'}
-              {tab === 'whispers' && '🔮 Whispers'}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Chronicles Tab - M40 Task 4: Add role="tabpanel" for accessibility */}
-      {recordsTab === 'chronicles' && (
-        <div
-          role="tabpanel"
-          aria-labelledby="chronicles-tab"
-          style={{
-            backgroundColor: 'rgba(79, 39, 131, 0.2)',
-            padding: '12px',
-            borderRadius: '4px',
-            border: '1px solid #4f2783'
-          }}
-        >
-          <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-            🗺️ Chronicle Gallery
-          </h3>
-          <p style={{ fontSize: '11px', color: '#e0e0e0', margin: 0 }}>
-            Interactive timeline showing world history, major deeds, mutations, and epoch-defining events.
-          </p>
-        </div>
-      )}
-
-      {/* Deeds Tab - M40 Task 4: Add role="tabpanel" for accessibility */}
-      {recordsTab === 'deeds' && (
-        <div
-          role="tabpanel"
-          aria-labelledby="deeds-tab"
-          style={{
-            backgroundColor: 'rgba(79, 39, 131, 0.1)',
-            padding: '12px',
-            borderRadius: '4px',
-            border: '1px solid #333'
-          }}
-        >
-          <h3 style={{ color: '#a78bfa', fontSize: '13px', margin: '0 0 8px 0' }}>
-            ⚔️ Recent Deeds
-          </h3>
-          <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>
-            Your legendary actions recorded across the epochs.
-          </p>
-        </div>
-      )}
-
-      {/* M39 Task 4: Whispers Sub-Pane - M40 Task 4: Add role="tabpanel" for accessibility */}
-      {recordsTab === 'whispers' && (
-        <div
-          role="tabpanel"
-          aria-labelledby="whispers-tab"
-          style={{
-            backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            padding: '12px',
-            borderRadius: '4px',
-            border: '1px solid #8b5cf6'
-          }}
-        >
-          <h3 style={{ color: '#c084fc', fontSize: '13px', margin: '0 0 12px 0' }}>
-            🔮 Seer's Whispers
-          </h3>
-          <p style={{ fontSize: '10px', color: '#a78bfa', marginBottom: '12px', fontStyle: 'italic' }}>
-            Narrative interventions from the realm's Director
-          </p>
-
-          {/* Whispers Log */}
-          <div
-            style={{
-              maxHeight: '300px',
-              overflowY: 'auto',
-              backgroundColor: 'rgba(13, 13, 26, 0.5)',
-              padding: '8px',
-              borderRadius: '3px',
-              border: '1px solid #4f2783'
-            }}
-          >
-            {state?.narrativeInterventions && state.narrativeInterventions.length > 0 ? (
-              state.narrativeInterventions.map((whisper: any, idx: number) => (
-                <div
-                  key={whisper.id || idx}
-                  style={{
-                    marginBottom: '8px',
-                    paddingBottom: '8px',
-                    borderBottom: '1px solid #333',
-                    fontSize: '10px'
-                  }}
-                >
-                  <div style={{ color: '#c084fc', fontWeight: 'bold', marginBottom: '4px' }}>
-                    {whisper.timestamp ? new Date(whisper.timestamp).toLocaleTimeString() : 'Timeless'}
-                  </div>
-                  <div style={{ color: '#a78bfa' }}>
-                    "{whisper.narrative || whisper.message || 'A mysterious whisper...'}"
-                  </div>
-                  {whisper.type && (
-                    <div style={{ color: '#888', fontSize: '9px', marginTop: '4px' }}>
-                      Type: {whisper.type}
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p style={{ color: '#666', fontSize: '11px', margin: 0 }}>
-                No whispers yet. The Director remains silent...
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ============================================================================
-// DIAGNOSTIC PANELS
-// ============================================================================
-
-interface BetaDiagnosticsPanelProps {
-  factionDiagnostics: any;
-  macroEventDiagnostics: any;
-  consensusDiagnostics: any;
-}
-
-const BetaDiagnosticsPanel: React.FC<BetaDiagnosticsPanelProps> = ({
-  factionDiagnostics,
-  macroEventDiagnostics,
-  consensusDiagnostics
-}) => {
-  return (
-    <div
-      style={{
-        width: '250px',
-        borderLeft: '1px solid #333',
-        backgroundColor: 'rgba(13, 13, 26, 0.8)',
-        padding: '12px',
-        overflow: 'auto',
-        fontSize: '10px'
-      }}
-    >
-      <h4 style={{ color: '#c084fc', margin: '0 0 8px 0' }}>⚙️ Diagnostics</h4>
-
-      {/* Faction Diagnostics */}
-      {factionDiagnostics && (
-        <div style={{ marginBottom: '12px', padding: '8px', backgroundColor: 'rgba(79, 39, 131, 0.2)', borderRadius: '3px' }}>
-          <div style={{ color: '#a78bfa', fontWeight: 'bold' }}>👑 Factions</div>
-          <div style={{ color: '#999' }}>Active: {factionDiagnostics.factionCount || 0}</div>
-          <div style={{ color: '#999' }}>Power: {(factionDiagnostics.avgPower || 0).toFixed(0)}</div>
-        </div>
-      )}
-
-      {/* Macro Event Diagnostics */}
-      {macroEventDiagnostics && (
-        <div style={{ marginBottom: '12px', padding: '8px', backgroundColor: 'rgba(79, 39, 131, 0.2)', borderRadius: '3px' }}>
-          <div style={{ color: '#a78bfa', fontWeight: 'bold' }}>⚠️ Macro Events</div>
-          <div style={{ color: '#999' }}>Active: {macroEventDiagnostics.activeCount || 0}</div>
-          <div style={{ color: '#999' }}>Severity: {(macroEventDiagnostics.avgSeverity || 0).toFixed(0)}%</div>
-        </div>
-      )}
-
-      {/* Consensus Diagnostics */}
-      {consensusDiagnostics && (
-        <div style={{ padding: '8px', backgroundColor: 'rgba(79, 39, 131, 0.2)', borderRadius: '3px' }}>
-          <div style={{ color: '#a78bfa', fontWeight: 'bold' }}>🔗 Consensus</div>
-          <div style={{ color: '#999' }}>Proposals: {consensusDiagnostics.activeProposals || 0}</div>
-          <div style={{ color: '#999' }}>Latency: {(consensusDiagnostics.averageLatency || 0).toFixed(0)}ms</div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ============================================================================
-// MODAL COMPONENTS
-// ============================================================================
-
-interface BetaInventoryModalProps {
-  state: WorldState;
-  onClose: () => void;
-}
-
-const BetaInventoryModal: React.FC<BetaInventoryModalProps> = ({ state, onClose }) => {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 500
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: '#1a1a2e',
-          border: '2px solid #4f2783',
-          borderRadius: '8px',
-          padding: '24px',
-          maxWidth: '500px',
-          maxHeight: '600px',
-          overflow: 'auto'
-        }}
-      >
-        <h2 style={{ color: '#c084fc', marginTop: 0 }}>🎒 Inventory</h2>
-        <div style={{ fontSize: '12px', color: '#e0e0e0', lineHeight: '1.8' }}>
-          {!state.player?.inventory || state.player.inventory.length === 0 ? (
-            <p>Your inventory is empty.</p>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: '20px' }}>
-              {state.player.inventory.map((item: any) => (
-                <li key={`${item.itemId}_${item.location || 'inv'}`}>
-                  {item.itemId} x{item.quantity || 1}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: '16px',
-            padding: '8px 16px',
-            backgroundColor: '#4f2783',
-            border: '1px solid #c084fc',
-            color: '#c084fc',
-            cursor: 'pointer',
-            borderRadius: '4px'
-          }}
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
-};
-
-interface BetaTradeModalProps {
-  trade: TradeState;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-const BetaTradeModal: React.FC<BetaTradeModalProps> = ({ trade, onConfirm, onCancel }) => {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 500
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: '#1a1a2e',
-          border: '2px solid #4f2783',
-          borderRadius: '8px',
-          padding: '24px',
-          maxWidth: '600px'
-        }}
-      >
-        <h2 style={{ color: '#c084fc', marginTop: 0 }}>💱 Trade Proposal</h2>
-        <div style={{ fontSize: '12px', color: '#e0e0e0', marginBottom: '16px' }}>
-          <div>Status: <span style={{ color: '#a78bfa' }}>{trade.stage}</span></div>
-          <div>Your Offer: {trade.initiatorItems.map((i: any) => `${i.itemId} x${i.quantity}`).join(', ')}</div>
-          <div>Their Offer: {trade.responderItems.map((i: any) => `${i.itemId} x${i.quantity}`).join(', ')}</div>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={onConfirm}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#00ff00',
-              border: 'none',
-              color: '#000',
-              cursor: 'pointer',
-              borderRadius: '4px',
-              fontWeight: 'bold'
-            }}
-          >
-            Confirm Trade
-          </button>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#ff6b6b',
-              border: 'none',
-              color: '#fff',
-              cursor: 'pointer',
-              borderRadius: '4px'
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-interface BetaCraftingModalProps {
-  state: WorldState;
-  onCraft: (recipeId: string) => void;
-  onClose: () => void;
-}
-
-const BetaCraftingModal: React.FC<BetaCraftingModalProps> = ({ state, onCraft, onClose }) => {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 500
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: '#1a1a2e',
-          border: '2px solid #4f2783',
-          borderRadius: '8px',
-          padding: '24px',
-          maxWidth: '500px'
-        }}
-      >
-        <h2 style={{ color: '#c084fc', marginTop: 0 }}>🔨 Crafting</h2>
-        <p style={{ color: '#e0e0e0', fontSize: '12px' }}>Select a recipe to craft...</p>
-        <button
-          onClick={onClose}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#4f2783',
-            border: '1px solid #c084fc',
-            color: '#c084fc',
-            cursor: 'pointer',
-            borderRadius: '4px'
-          }}
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
-};
-
-interface CharacterCreationOverlayProps {
-  onCharacterCreated: () => void;
-  initialLocation: string;
-}
-
-const CharacterCreationOverlay: React.FC<CharacterCreationOverlayProps> = ({
-  onCharacterCreated,
-  initialLocation
-}) => {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.9)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 999
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: '#1a1a2e',
-          border: '2px solid #4f2783',
-          borderRadius: '8px',
-          padding: '24px'
-        }}
-      >
-        <h2 style={{ color: '#c084fc' }}>👤 Create Your Character</h2>
-        <button
-          onClick={onCharacterCreated}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#4f2783',
-            border: '1px solid #c084fc',
-            color: '#c084fc',
-            cursor: 'pointer',
-            borderRadius: '4px'
-          }}
-        >
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-};
 
 export default BetaApplication;

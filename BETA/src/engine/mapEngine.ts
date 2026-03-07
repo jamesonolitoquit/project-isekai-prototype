@@ -184,6 +184,36 @@ export function getDiscoveredLocations(state: WorldState): Location[] {
 }
 
 /**
+ * [Phase 12] Attempts to discover a hidden sub-area within the current location.
+ * Success depends on player perception vs sub-area difficulty.
+ */
+export function discoverSubArea(
+  state: WorldState,
+  locationId: string,
+  subAreaId: string,
+  playerPerception: number = 10
+): { success: boolean; margin: number; subArea?: any } {
+  const loc = state.locations.find(l => l.id === locationId);
+  if (!loc || !loc.subAreas) return { success: false, margin: 0 };
+
+  const subArea = loc.subAreas.find(sa => sa.id === subAreaId);
+  if (!subArea || subArea.discovered) return { success: false, margin: 0 };
+
+  const dc = subArea.difficulty || 15;
+  // Simple check: perception + 1d20 >= DC
+  const roll = Math.floor(Math.random() * 20) + 1;
+  const total = playerPerception + roll;
+  const margin = total - dc;
+
+  if (total >= dc) {
+    subArea.discovered = true;
+    return { success: true, margin, subArea };
+  }
+
+  return { success: false, margin };
+}
+
+/**
  * Get map viewport bounds based on player location
  * Returns: { minX, maxX, minY, maxY } for SVG rendering
  */

@@ -445,6 +445,14 @@ export class CJ {
       title = `Quest Complete: ${questEvent.payload.questTitle || 'Unknown'}`;
       description = `The Hero completed an important task. ${questEvent.payload.questTitle || 'A quest of significance'} has been fulfilled, bringing the player one step closer to their destiny.`;
       tags.push('quest-complete');
+    } else if (events.some((e) => e.type === 'ARTIFACT_REBELLION')) {
+      // Phase 18: Log relic rebellion events
+      const rebellionEvent = events.find((e) => e.type === 'ARTIFACT_REBELLION');
+      const relicName = rebellionEvent.payload?.relicName || 'Unknown Relic';
+      const consequence = rebellionEvent.payload?.consequence || 'unknown';
+      title = `Relic Rebellion: ${relicName}`;
+      description = `The Hero's artifact turned against them in a moment of defiance. ${relicName} refused to answer their call with consequence: ${consequence}. The contradictions within the relic's nature manifested as outright rebellion.`;
+      tags.push('artifact-rebellion', `rebellion-${consequence}`, 'paradox', 'danger');
     } else if (events.some((e) => e.type === 'LEVEL_UP')) {
       const levelEvent = events.find((e) => e.type === 'LEVEL_UP');
       title = `Level Up! Reached Level ${levelEvent.payload.newLevel}`;

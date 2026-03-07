@@ -1,0 +1,266 @@
+/**
+ * Tabletop Container Styles - Phase 48-UI
+ * 
+ * Implements the Digital Board Game aesthetic using CSS 3D transforms
+ * and a fixed 3-column grid layout (no scrolling).
+ * 
+ * Layout:
+ * - .tabletopOuter: Fixed viewport container (100vh x 100vw, no overflow)
+ * - .tabletopGrid: 3-column grid (300px | 1fr | 320px)
+ *   - .leftWing: Character Sheet (300px, scrollable content)
+ *   - .centerWing: Game Board (fluid, contains stage)
+ *   - .rightWing: Dice Altar + Action Tray (320px, scrollable content)
+ */
+
+/* ============ VIEWPORT CONTAINER ============ */
+.tabletopOuter {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  font-family: monospace;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+}
+
+/* ============ 3-COLUMN GRID LAYOUT ============ */
+.tabletopGrid {
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+  grid-template-rows: 1fr 32px;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  background: #050510;
+}
+
+/* ============ LEFT WING: CHARACTER SHEET ============ */
+.leftWing {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(79, 39, 131, 0.3);
+  background: rgba(10, 10, 20, 0.8);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.panelContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(79, 39, 131, 0.1) 0%,
+    rgba(15, 10, 25, 0.8) 100%
+  );
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  margin: 4px;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+}
+
+.panelScroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+/* ============ CENTER WING: GAME BOARD ============ */
+.centerWing {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  background: 
+    repeating-linear-gradient(
+      90deg,
+      #1a1a1a 0px,
+      #1a1a1a 2px,
+      #1f1f1f 2px,
+      #1f1f1f 4px
+    ),
+    radial-gradient(
+      ellipse at center,
+      #2a2a2a 0%,
+      #0d0d0d 100%
+    );
+  background-blend-mode: overlay;
+}
+
+/* Physical table surface background */
+.tabletopSurface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  
+  /* Subtle inner shadow to simulate depth */
+  box-shadow: 
+    inset 0 0 100px rgba(0, 0, 0, 0.8),
+    inset 0 0 200px rgba(255, 200, 100, 0.02);
+  
+  /* Enable 3D perspective */
+  perspective: 1200px;
+  perspective-origin: center center;
+  overflow: hidden;
+}
+
+/* Game board with isometric perspective */
+.gameBoardPerspective {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  transform-style: flat;
+  transition: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The actual game content */
+.gameBoardContent {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  
+  /* Global Light Source: 120° angle drop-shadow (unified lighting across sidebar and board) */
+  filter: 
+    drop-shadow(24px 48px 60px rgba(0, 0, 0, 0.7))
+    drop-shadow(12px 24px 30px rgba(0, 0, 0, 0.5))
+    drop-shadow(-4px -8px 5px rgba(255, 200, 100, 0.05));
+  
+  border-radius: 2px;
+  overflow: hidden;
+  transform-style: preserve-3d;
+}
+
+/* Vignette overlay - simulates lighting */
+.vignetteOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(
+      ellipse at center,
+      transparent 20%,
+      rgba(0, 0, 0, 0.3) 60%,
+      rgba(0, 0, 0, 0.5) 100%
+    );
+  pointer-events: none;
+  z-index: 500;
+}
+
+/* ============ RIGHT WING: TACTICAL REPOSITORY ============ */
+.rightWing {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(79, 39, 131, 0.3);
+  background: rgba(10, 10, 20, 0.8);
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ============ FOOTER BAR ============ */
+.footerBar {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.altarSlot {
+  padding: 12px;
+  background: rgba(10, 10, 20, 0.6);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  margin: 4px;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+}
+
+.actionSlot {
+  flex: 1;
+  padding: 12px;
+  background: rgba(10, 10, 20, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 8px;
+  margin: 4px;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ============ DIEGETIC SCROLLBAR STYLING ============ */
+.panelScroll::-webkit-scrollbar,
+.actionSlot::-webkit-scrollbar,
+.altarSlot::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.panelScroll::-webkit-scrollbar-track,
+.actionSlot::-webkit-scrollbar-track,
+.altarSlot::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panelScroll::-webkit-scrollbar-thumb,
+.actionSlot::-webkit-scrollbar-thumb,
+.altarSlot::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.6);
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.8), 0 0 2px rgba(216, 180, 254, 0.4);
+}
+
+.panelScroll::-webkit-scrollbar-thumb:hover,
+.actionSlot::-webkit-scrollbar-thumb:hover,
+.altarSlot::-webkit-scrollbar-thumb:hover {
+  background: rgba(192, 132, 252, 0.85);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.9), 0 0 4px rgba(251, 191, 36, 0.3);
+}
+
+/* ============ RESPONSIVE ADJUSTMENTS ============ */
+@media (max-width: 1200px) {
+  .tabletopGrid {
+    grid-template-columns: 240px 1fr 260px;
+  }
+
+  .leftWing, .rightWing {
+    padding: 8px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .tabletopGrid {
+    grid-template-columns: 200px 1fr 220px;
+  }
+}
+
+@media (max-width: 768px) {
+  .tabletopGrid {
+    grid-template-columns: 160px 1fr 180px;
+  }
+
+  .panelContainer {
+    padding: 8px;
+  }
+}

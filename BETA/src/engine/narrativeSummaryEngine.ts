@@ -381,8 +381,12 @@ export function generateTaleUntrue(
     stats: {
       questsCompleted,
       npcAlliances: currentState.npcs?.length || 0,
-      locationsDiscovered: currentState.player.visitedLocations?.size || 0,
-      loreUnlocked: currentState.player.knowledgeBase?.size || 0,
+      locationsDiscovered: Array.isArray(currentState.player.visitedLocations) 
+        ? currentState.player.visitedLocations.length 
+        : currentState.player.visitedLocations?.size || 0,
+      loreUnlocked: Array.isArray(currentState.player.knowledgeBase) 
+        ? currentState.player.knowledgeBase.length 
+        : currentState.player.knowledgeBase?.size || 0,
       consequencesTriggered: ledger.paradoxEchoes.length,
       temporalInterventions: ledger.turningPoints.filter(tp =>
         tp.affectedSystems.includes('temporal')

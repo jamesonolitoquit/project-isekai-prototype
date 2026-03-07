@@ -3,6 +3,7 @@ import type { Action } from './actionPipeline';
 import type { CombatantStats } from './ruleEngine';
 import { random } from './prng';
 import { getSpellsByDiscipline, getSpellById } from './magicEngine';
+import { ABILITY_DATABASE } from './abilityResolver';
 
 export { PersonalityType, NpcPersonality };
 
@@ -232,11 +233,34 @@ export function decideNpcAction(npc: NPC, state: WorldState): Action {
     };
   }
 
-  // Tactical: mixed approach with occasional spell casting
+  // Tactical: mixed approach with occasional spell casting or ability usage (Phase 7)
   if (personality.type === 'tactical') {
     const npcMp = (npc as any).mp || 0;
+    
+    // Phase 7: 20% chance to use an ability if available
+    if (random() < 0.2 && npcMp > 10) {
+      const availableAbilities = Object.values(ABILITY_DATABASE).filter(ability => {
+        // Check if NPC has enough mana and stats to use this ability
+        return ability.manaCost <= npcMp && npcStats.int >= 10;
+      });
+      
+      if (availableAbilities.length > 0) {
+        const selectedAbility = availableAbilities[Math.floor(random() * availableAbilities.length)];
+        return {
+          worldId: state.id,
+          playerId: npc.id,
+          type: 'USE_ABILITY',
+          payload: {
+            abilityId: selectedAbility.id,
+            targetId: state.player.id,
+            reason: 'tactical-ability'
+          }
+        };
+      }
+    }
+    
+    // 30% chance to cast a spell if mana available
     if (random() < 0.3 && npcMp > 15 && npcStats.int > 12) {
-      // 30% chance to cast a spell if mana available
       const tacticalSpells = getSpellsByDiscipline('ruin').filter(spell =>
         spell.manaCost <= npcMp && npcStats.int >= spell.requiredInt
       );
@@ -280,6 +304,65 @@ export function decideNpcAction(npc: NPC, state: WorldState): Action {
     playerId: npc.id,
     type: 'ATTACK',
     payload: { targetId: state.player.id }
+  };
+}
+
+/**
+ * Phase 41: Predict NPC's next action and update their intent field
+ * This allows the player to see what the NPC will do, enabling tactical card play
+ * The intent is computed at the end of the turn and displayed until the next turn
+ */
+export function predictNextNpcAction(npc: NPC, state: WorldState): void {
+  // Only predict intents for NPCs actively in combat
+  if (!state.combatState?.active || !state.combatState?.participants?.includes(npc.id)) {
+    npc.intent = undefined;
+    return;
+  }
+
+  // Decide what action the NPC would take
+  const plannedAction = decideNpcAction(npc, state);
+  
+  // Map action type to human-readable intent
+  const intentTypeMap: Record<string, string> = {
+    'ATTACK': 'attack',
+    'CAST_SPELL': 'cast-spell',
+    'HEAL': 'heal',
+    'ATTEMPT_SURRENDER': 'surrender',
+    'FLEE': 'flee',
+    'WAIT': 'wait',
+    'DEFEND': 'defend'
+  };
+
+  const actionTypeId = intentTypeMap[plannedAction.type] || 'unknown';
+  const targetId = plannedAction.payload?.targetId || state.player.id;
+  
+  // Get personality to determine intensity
+  const personality = getNpcPersonality(npc);
+  const healthPercent = getHealthPercent(npc);
+  
+  // Calculate intensity based on health and personality
+  let intensity = 50; // Base intensity
+  if (healthPercent > personality.attackThreshold) {
+    intensity = 75; // High intensity when healthy
+  } else if (healthPercent < personality.defendThreshold) {
+    intensity = 30; // Low intensity when wounded
+  }
+  
+  // Estimate predicted damage (simplified)
+  let predictedDamage = 0;
+  if (actionTypeId === 'attack') {
+    const npcStats = npc.stats || { str: 10 };
+    predictedDamage = Math.floor(npcStats.str * 0.5 + 5); // Rough estimate
+  }
+
+  // Update the NPC's intent for the UI to display
+  npc.intent = {
+    actionTypeId,
+    targetId,
+    intensity,
+    predictedDamage,
+    predictedCost: 1, // Most NPC actions cost 1 AP in Phase 41
+    lastComputedTick: state.tick
   };
 }
 
